@@ -1,0 +1,30 @@
+[package]
+name = "launcabs"
+version = "0.9.2-22"
+edition = "2021"
+authors = ["Paijo"]
+description = "Launcher for ABS"
+build = "build.rs"
+
+[build-dependencies]
+winresource = "0.1"
+
+[package.metadata.winresource]
+LegalCopyright = "By Paijo"
+OriginalFilename = "launcher2.exe"
+CompanyName = "Paijo"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+runtime = { path = "../runtime" }
+native-windows-gui = "1.0.13"
+native-windows-derive = "1.0.5"
+stretch = "0.3.2"
+winapi = { version = "0.3", features = ["winuser", "winbase", "wingdi", "commctrl"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+single-instance = "0.1.0"
+chrono = "0.4"
+windows-version = "0.1.1"

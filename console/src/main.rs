@@ -1,0 +1,566 @@
+/*This Is a first version (beta) Prepare Auto Buy Shopee
+Whats new In 0.9.2-22 :
+    Integrated code with runtime library
+Whats new In 0.9.1-21 :
+	fix get_product
+Whats new In 0.9.1-20 :
+	drop support reqwest (Apply all full cronet API)
+	Reduce frustation code from json
+	Add Structopt
+	Add place_order function
+*/
+use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
+use runtime::task::{self};
+use chrono::{Local, Duration, NaiveDateTime};
+use std::io::{self, Write};
+use std::thread;
+use std::process;
+use std::process::Command;
+use std::time::Duration as StdDuration;
+use anyhow::Result;
+use std::fs::File;
+use std::io::Read;
+use structopt::StructOpt;
+
+#[derive(Debug, StructOpt)]
+#[structopt(name = "Auto Buy Shopee", about = "Make fast buy from shopee.co.id")]
+struct Opt {
+    #[structopt(short, long, help = "URL product")]
+    url: Option<String>,  
+    #[structopt(short, long, help = "selected file cookie")]
+    file: Option<String>,    
+    #[structopt(short, long, help = "time to run checkout")]
+    time: Option<String>,    
+    #[structopt(long, help = "Select Product")]
+    product: Option<String>,    
+    #[structopt(short, long, help = "Select Courier")]
+    kurir: Option<String>,    
+    #[structopt(long, help = "Select Payment Method")]
+    payment: Option<String>,    
+	#[structopt(short, long, help = "Set Harga MAX")]
+    harga: Option<String>,	
+	#[structopt(short, long, help = "Set quantity")]
+    quantity: Option<String>,
+	
+	#[structopt(short, long, help = "Apply Voucher(test)")]
+    voucher: bool,
+	#[structopt(short, long, help = "Apply platform Voucher(test)")]
+    platform_vouchers: bool,
+	#[structopt(short, long, help = "Apply shop Voucher(test)")]
+    shop_vouchers: bool,
+	#[structopt(short, long, help = "Apply Platform Voucher klaim(claim_platform_voucher) enable pro_id&sign ")]
+    claim_platform_vouchers: bool,
+	#[structopt(short, long, help = "Set Platform kode voucher")]
+    code_platform: Option<String>,
+	#[structopt(short, long, help = "Set shop kode Voucher")]
+    code_shop: Option<String>,
+	#[structopt(short, long, help = "Set promotionid(need claim_platform_vouchers)")]
+    pro_id: Option<String>,
+	#[structopt(short, long, help = "Set signature(need claim_platform_vouchers)")]
+    sign: Option<String>,
+	
+}
+
+#[cfg(windows)]
+fn clear_screen() {
+    // Use the 'cls' command to clear the screen on Windows
+    if Command::new("cmd")
+        .args(&["/c", "cls"])
+        .status()
+        .expect("Failed to execute command")
+        .success()
+    {
+        // Clearing was successful
+    } else {
+        // Handle the case where clearing the screen failed
+        print!("\x1B[2J\x1B[1;1H");
+        io::stdout().flush().unwrap();
+    }
+}
+#[cfg(not(windows))]
+fn clear_screen() {
+    print!("\x1B[2J\x1B[1;1H");
+    io::stdout().flush().unwrap();
+}
+
+async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: &str, voucher_code_shop: &str, opt: &Opt, target_url: &str, task_time_str: &str, selected_file: &str, username: &str, name: &str, max_price: &str, chosen_model: &ModelInfo, chosen_shipping: &ShippingInfo, chosen_payment: &PaymentInfo) {
+    let version_info = env!("CARGO_PKG_VERSION");
+	println!("---------------------------------------------------------------");
+    println!("              Auto Buy Shopee [Version {} ]              ", version_info);
+    println!("cookie file    : {}", selected_file);
+    println!("Username       : {}", username);
+    println!("URL            : {}", target_url);
+    println!("Time           : {}", task_time_str);
+    println!("Product        : {}", name);
+    println!("Variant        : {}", chosen_model.name);
+    println!("Model Id       : {}", chosen_model.modelid);
+    println!("Kurir          : {}", chosen_shipping.channel_name);
+    println!("Max Price      : {}", max_price);
+    println!("Payment        : {}", chosen_payment.name);
+	if opt.claim_platform_vouchers {
+		println!("Mode           : Klaim Platform Voucher");
+		println!("Promotion_Id   : {}", opt.pro_id.clone().unwrap_or_else(|| promotionid.to_string()));
+		println!("Signature      : {}", opt.sign.clone().unwrap_or_else(|| signature.to_string()));
+	}else if opt.platform_vouchers {
+		println!("Mode           : Code Platform Voucher");
+		println!("Code           : {}", opt.code_platform.clone().unwrap_or_else(|| voucher_code_platform.to_string()));
+	}else if opt.shop_vouchers {
+		println!("Mode           : Code Shop Voucher");
+		println!("Code           : {}", opt.code_shop.clone().unwrap_or_else(|| voucher_code_shop.to_string()));
+	}
+    println!("---------------------------------------------------------------");
+    println!("");
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+	let version_info = env!("CARGO_PKG_VERSION");
+	let opt = Opt::from_args();
+	args_checking(&opt);
+    clear_screen();
+    // Welcome Header
+    println!("Auto Buy Shopee [Version {} ]", version_info);
+    println!("");
+
+    // Get account details
+    let selected_file = opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"));
+    
+    let cookie_content = prepare::read_cookie_file(&selected_file);
+	
+    let csrftoken = prepare::extract_csrftoken(&cookie_content);
+    println!("csrftoken: {}", csrftoken);
+	
+    // Get target URL
+	let target_url = opt.url.clone().unwrap_or_else(|| get_user_input("Masukan URL: "));
+	
+	let mut promotionid = String::new();
+	let mut signature = String::new();
+	let mut voucher_code_platform = String::new();
+	let mut voucher_code_shop = String::new();
+
+	if opt.platform_vouchers {
+		println!("voucher code platform enable");
+		voucher_code_platform = opt.code_platform.clone().unwrap_or_else(|| get_user_input("Masukan voucher code platform: "));
+	}
+	if opt.shop_vouchers {
+		println!("voucher code shop enable");
+		voucher_code_shop = opt.code_shop.clone().unwrap_or_else(|| get_user_input("Masukan voucher code shop: "));
+	}
+	if opt.claim_platform_vouchers {
+		println!("voucher claim enable");
+		promotionid = opt.pro_id.clone().unwrap_or_else(|| get_user_input("Masukan Promotion_Id: "));
+		signature = opt.sign.clone().unwrap_or_else(|| get_user_input("Masukan Signature: "));	
+	}
+	if !promotionid.is_empty() && !signature.is_empty(){
+		println!("promotionid: {}", promotionid);
+		println!("signature: {}", signature);		
+	}
+
+    // Get task_time from user input
+	let task_time_str = opt.time.clone().unwrap_or_else(|| get_user_input("Enter task time (HH:MM:SS.NNNNNNNNN): "));
+    let task_time_dt = parse_task_time(&task_time_str)?;
+
+    clear_screen();
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &ModelInfo {
+    name: String::from("NOT SET"),
+    price: 0,
+    stock: 0,
+    modelid: 0,
+    promotionid: 0,
+	}, &ShippingInfo {
+    original_cost: 0,
+    channelid: 0,
+    channel_name: String::from("NOT SET"),
+	}, & PaymentInfo {
+    name: String::from("NOT SET"),
+    channel_id: String::from("Zero"),
+    option_info: String::from("Zero"),
+    version: String::from("Zero"),
+    txn_fee: 0,
+	}).await;
+
+    // Perform the main task
+    let (username, email, phone) = prepare::info_akun(&cookie_content).await?;
+	let (state, city, district, addressid) = prepare::address(&cookie_content).await?;
+	println!("Username  : {}", username);
+	println!("Email     : {}", email);
+	println!("Phone     : {}", phone);
+	println!("State     : {}", state);
+	println!("City      : {}", city);
+	println!("District  : {}", district);
+	//std::thread::sleep(std::time::Duration::from_secs(2));
+    clear_screen();
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &opt, &target_url, &task_time_str, &selected_file, &username, "", "", &ModelInfo {
+    name: String::from("NOT SET"),
+    price: 0,
+    stock: 0,
+    modelid: 0,
+    promotionid: 0,
+	}, &ShippingInfo {
+    original_cost: 0,
+    channelid: 0,
+    channel_name: String::from("NOT SET"),
+	}, & PaymentInfo {
+    name: String::from("NOT SET"),
+    channel_id: String::from("Zero"),
+    option_info: String::from("Zero"),
+    version: String::from("Zero"),
+    txn_fee: 0,
+	}).await;
+	let url_1 = target_url.trim();
+	// Memproses URL
+    let mut shop_id = String::new();
+    let mut item_id = String::new();
+
+    if !url_1.is_empty() {
+        if !url_1.contains("/product/") {
+            let split: Vec<&str> = url_1.split('.').collect();
+            shop_id = split[split.len() - 2].to_string();
+            item_id = split[split.len() - 1].split('?').next().unwrap_or("").to_string();
+        } else {
+            let split2: Vec<&str> = url_1.split('/').collect();
+            shop_id = split2[split2.len() - 2].to_string();
+            item_id = split2[split2.len() - 1].split('?').next().unwrap_or("").to_string();
+        }
+    }
+
+	println!("shop_id: {}", shop_id);
+    println!("item_id: {}", item_id);
+	let (name, model_info, is_official_shop, status_code) = prepare::get_product(&shop_id, &item_id, &cookie_content).await?;
+    if status_code != "200 OK"{
+        println!("Status: {}", status_code);
+        println!("Harap Ganti akun");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("Gagal membaca baris");
+        process::exit(1);
+    }
+    clear_screen();
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &ModelInfo {
+    name: String::from("NOT SET"),
+    price: 0,
+    stock: 0,
+    modelid: 0,
+    promotionid: 0,
+	}, &ShippingInfo {
+    original_cost: 0,
+    channelid: 0,
+    channel_name: String::from("NOT SET"),
+	}, & PaymentInfo {
+    name: String::from("NOT SET"),
+    channel_id: String::from("Zero"),
+    option_info: String::from("Zero"),
+    version: String::from("Zero"),
+    txn_fee: 0,
+	}).await;
+	println!("addressid  : {}", addressid);
+	println!("name             : {}", name);
+    // println!("models           : \n{:#?}", model_info);
+    println!("Official Shop ?  : {}", is_official_shop);
+	
+	//std::thread::sleep(std::time::Duration::from_secs(2));
+    let mut chosen_model = ModelInfo {
+        name: String::from("Unknown"),
+        price: 0,
+        stock: 0,
+        modelid: 0,
+        promotionid: 0,
+    };
+    if let Some(model) = choose_model(&model_info, &opt){
+        chosen_model = model;
+        println!("Anda memilih model: {:#?}", chosen_model);
+        // Lanjutkan dengan logika berikutnya
+    } else {
+        println!("Model tidak valid.");
+		process::exit(1);
+        // Handle jika model tidak valid
+    }
+
+    println!("Anda memilih model: {}", chosen_model.name);
+	let shipping_info = prepare::kurir(&cookie_content, &shop_id, &item_id, &state, &city, &district).await?;
+	clear_screen();
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &ShippingInfo {
+    original_cost: 0,
+    channelid: 0,
+    channel_name: String::from("NOT SET"),
+	}, & PaymentInfo {
+    name: String::from("NOT SET"),
+    channel_id: String::from("Zero"),
+    option_info: String::from("Zero"),
+    version: String::from("Zero"),
+    txn_fee: 0,
+	}).await;
+
+	let mut chosen_shipping = ShippingInfo {
+		original_cost: i64::default(),
+		channelid: i64::default(),
+		channel_name: String::default(),
+	};
+
+	if let Some(shipping) = choose_shipping(&shipping_info, &opt) {
+		chosen_shipping = shipping;
+		println!("Anda memilih shipping: {:#?}", chosen_shipping);
+		// Continue with the next logic
+	} else {
+		println!("shipping tidak valid.");
+		process::exit(1);
+		// Handle if the shipping is not valid
+	}
+	println!("{:?}", chosen_shipping);
+	clear_screen();
+	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, & PaymentInfo {
+    name: String::from("NOT SET"),
+    channel_id: String::from("Zero"),
+    option_info: String::from("Zero"),
+    version: String::from("Zero"),
+    txn_fee: 0,
+	}).await;
+	let max_price = opt.harga.clone().unwrap_or_else(|| get_user_input("Harga MAX: "));
+	let quantity = opt.quantity.clone().unwrap_or_else(|| get_user_input("Kuantiti: "));
+	
+	let payment_info = prepare::get_payment().await?;
+	let mut chosen_payment = PaymentInfo {
+		name: String::from("Unknown"),
+		channel_id: String::from("Unknown"),
+		option_info: String::from("Unknown"),
+		version: String::from("Unknown"),
+		txn_fee: 0,
+	};
+
+	if let Some(payment) = choose_payment(&payment_info, &opt) {
+		chosen_payment = payment;
+		println!("Anda memilih payment: {:#?}", chosen_payment);
+		// Continue with the next logic
+	} else {
+		println!("payment tidak valid.");
+		process::exit(1);
+		// Handle if the payment is not valid
+	}
+
+	println!("{:?}", chosen_payment);
+	clear_screen();
+	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &opt, &target_url, &task_time_str, &selected_file, &username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
+	countdown_to_task(&task_time_dt).await;
+	println!("Anda memilih model: {:?}", chosen_model.name);
+	
+	/* Code 0.9.0
+	get();
+	checkout();
+	place_order();
+	*/
+	let vp1 = if opt.claim_platform_vouchers && !promotionid.is_empty() && !signature.is_empty(){
+		println!("promotionid: {}", promotionid);
+		println!("signature: {}", signature);
+        true	
+	}else{
+        false
+    };
+
+	task::checkout_get(&cookie_content, &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, vp1).await;
+	
+	println!("\nTask completed! Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+    // Tunggu input dari pengguna sebelum keluar
+    println!("Tekan 'Enter' untuk keluar.");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).expect("Gagal membaca baris");
+    Ok(())
+}
+
+fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {
+	println!("payment yang tersedia:");
+
+    for (index, payment) in payments.iter().enumerate() {
+        println!("{}. {} - Services: {} - Id: {}", index + 1, payment.name, payment.txn_fee / 100000, payment.channel_id);
+    }
+
+    if let Some(bayar) = opt.payment.clone() {
+        // If opt.payment is present, find the payment with a matching name
+        if let Some(selected_payment) = payments.iter().find(|payment| payment.name == bayar) {
+            println!("{:?}", selected_payment);
+            return Some(selected_payment.clone());
+        } else {
+            println!("Tidak ada payment dengan nama '{}'", bayar);
+            return None;
+        }
+    }
+
+	let user_input = get_user_input("Pilih payment yang disediakan: ");
+
+    // Convert user input to a number
+    if let Ok(choice_index) = user_input.trim().parse::<usize>() {
+        // Return the selected payment based on the index
+        println!("{:?}", payments.get(choice_index - 1).cloned());
+        return payments.get(choice_index - 1).cloned();
+    }
+
+    None
+}
+
+fn choose_shipping(shippings: &[ShippingInfo], opt: &Opt) -> Option<ShippingInfo> {
+    println!("shipping yang tersedia:");
+
+    for (index, shipping) in shippings.iter().enumerate() {
+        println!("{}. {} - Harga: {} - Id: {}", index + 1, shipping.channel_name, shipping.original_cost / 100000, shipping.channelid);
+    }
+
+    if let Some(kurir) = opt.kurir.clone() {
+        // If opt.kurir is present, find the shipping with a matching channel_name
+        if let Some(selected_shipping) = shippings.iter().find(|shipping| shipping.channel_name == kurir) {
+            println!("{:?}", selected_shipping);
+            return Some(selected_shipping.clone());
+        } else {
+            println!("Tidak ada shipping dengan nama '{}'", kurir);
+            return None;
+        }
+    }
+
+	let user_input = get_user_input("Pilih Shipping yang disediakan: ");
+
+    // Convert user input to a number
+    if let Ok(choice_index) = user_input.trim().parse::<usize>() {
+        // Return the selected shipping based on the index
+        println!("{:?}", shippings.get(choice_index - 1).cloned());
+        return shippings.get(choice_index - 1).cloned();
+    }
+
+    None
+}
+
+fn choose_model(models: &[ModelInfo], opt: &Opt) -> Option<ModelInfo> {
+    println!("Variasi yang tersedia:");
+
+    for (index, model) in models.iter().enumerate() {
+        println!("{}. {} - Harga: {} - Stok: {}", index + 1, model.name, model.price / 100000, model.stock);
+    }
+    // Check if there is only one model
+    if models.len() == 1 {
+        println!("Hanya satu variasi tersedia. Memilih secara otomatis.");
+        return Some(models[0].clone());
+    }
+
+    if let Some(product) = opt.product.clone() {
+        // If opt.product is present, find the model with a matching name
+        if let Some(selected_model) = models.iter().find(|model| model.name == product) {
+            println!("{:?}", selected_model);
+            return Some(selected_model.clone());
+        } else {
+            println!("Tidak ada model dengan nama '{}'", product);
+            return None;
+        }
+    }
+
+    let user_input = get_user_input("Pilih Variasi yang disediakan: ");
+
+    // Mengubah input pengguna ke dalam bentuk angka
+    if let Ok(choice_index) = user_input.trim().parse::<usize>() {
+        // If opt.product is not present, proceed with user input logic
+        if let Some(selected_model) = models.get(choice_index - 1) {
+            println!("{:?}", selected_model);
+            return Some(selected_model.clone());
+        }
+    }
+
+    None
+}
+
+async fn countdown_to_task(task_time_dt: &NaiveDateTime) {
+    loop {
+        let current_time = Local::now().naive_local();
+        let task_time_naive = task_time_dt.time();
+        let time_until_task = task_time_naive.signed_duration_since(current_time.time());
+
+        if time_until_task < Duration::zero() {
+            println!("\nTask completed! Current time: {}", current_time.format("%H:%M:%S.%3f"));
+            tugas_utama();
+            break;
+        }
+
+        let formatted_time = format_duration(time_until_task);
+        print!("\r{}", formatted_time);
+        io::stdout().flush().unwrap();
+
+        thread::sleep(StdDuration::from_secs_f64(0.001));
+    }
+}
+
+fn tugas_utama() {
+    println!("Performing the task...");
+    println!("\nTask completed! Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+}
+
+fn format_duration(duration: Duration) -> String {
+    let hours = duration.num_hours();
+    let minutes = duration.num_minutes() % 60;
+    let seconds = duration.num_seconds() % 60;
+    let milliseconds = duration.num_milliseconds() % 1_000;
+
+    format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, milliseconds)
+}
+
+fn get_user_input(prompt: &str) -> String {
+    print!("{}", prompt);
+    io::stdout().flush().unwrap();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
+}
+
+fn parse_task_time(task_time_str: &str) -> Result<NaiveDateTime> {
+    match NaiveDateTime::parse_from_str(&format!("2023-01-01 {}", task_time_str), "%Y-%m-%d %H:%M:%S%.f") {
+        Ok(dt) => Ok(dt),
+        Err(e) => Err(e.into()),
+    }
+}
+
+fn select_cookie_file() -> Result<String> {
+    println!("Daftar file cookie yang tersedia:");
+    let files = match std::fs::read_dir("./akun") {
+        Ok(files) => files,
+        Err(err) => return Err(err.into()),
+    };
+
+    let mut file_options = Vec::new();
+    for (index, file) in files.enumerate() {
+        if let Ok(file) = file {
+            let file_name = file.file_name();
+            println!("{}. {}", index + 1, file_name.to_string_lossy());
+            file_options.push(file_name.to_string_lossy().to_string());
+        }
+    }
+
+    let selected_file = loop {
+		let input = get_user_input("Pilih nomor file cookie yang ingin digunakan: ");
+
+        if let Ok(index) = input.trim().parse::<usize>() {
+            if index > 0 && index <= file_options.len() {
+                break file_options[index - 1].clone();
+            }
+        }
+    };
+
+    Ok(selected_file)
+}
+
+fn args_checking(opt: &Opt){
+	if opt.pro_id.is_some() && opt.sign.is_some() && !opt.claim_platform_vouchers {
+        eprintln!("Error: The --pro-id and --sign argument requires --claim_platform_vouchers to be enabled.");
+        std::process::exit(1);	
+    }else if opt.pro_id.is_some() && !opt.claim_platform_vouchers {
+        eprintln!("Error: The --pro-id argument requires --claim_platform_vouchers to be enabled.");
+        std::process::exit(1);
+	}else if opt.pro_id.is_some() && opt.claim_platform_vouchers && !opt.sign.is_some() {
+        eprintln!("Error: The --pro-id argument need --sign argument to be function.");
+        std::process::exit(1);
+    }else if opt.sign.is_some() && !opt.claim_platform_vouchers {
+		eprintln!("Error: The --sign argument requires --claim_platform_vouchers to be enabled.");
+		std::process::exit(1);
+	}else if opt.sign.is_some() && opt.claim_platform_vouchers  && !opt.pro_id.is_some() {
+		eprintln!("Error: The --sign argument need --pro-id argument to be function.");
+		std::process::exit(1);
+    }else if opt.code_platform.is_some() && !opt.platform_vouchers {
+		eprintln!("Error: The --code-platform argument requires --platform-vouchers to be enabled.");
+        std::process::exit(1);
+	}else if opt.code_shop.is_some() && !opt.shop_vouchers {
+		eprintln!("Error: The --code-shop argument requires --shop-vouchers to be enabled.");
+        std::process::exit(1);
+	}
+}
