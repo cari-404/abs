@@ -613,6 +613,8 @@ impl App {
         let mili = self.mili_text.text();
         let kuan = self.kuan_text.text();
         let time_arg = format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili);
+        let promotionid_text = self.promotionid_text.text();
+        let signature_text = self.signature_text.text();
         // Menjalankan program abs.exe dengan argumen yang dibuat
         let command = match (
             self.code_checkbox.check_state(),
@@ -655,11 +657,21 @@ impl App {
                     icons: nwg::MessageIcons::Info,
                 };
                 assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                None
-                /*Some(vec![
+                Some(vec![
                     "start",
                     "abs.exe",
-                ])*/
+                    "--file", &file,
+                    "--url", &url,
+                    "--time", &time_arg,
+                    "--product", &variasi,
+                    "--kurir", &kurir,
+                    "--payment", &payment,
+                    "--harga", &harga,
+                    "--quantity", &kuan,
+                    "--claim-platform-vouchers",
+                    "--pro-id", &promotionid_text,
+                    "--sign", &signature_text,
+                ])
             }
             _ => {
                 // Default case

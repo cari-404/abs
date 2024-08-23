@@ -1,14 +1,13 @@
 use rquest as reqwest;
 use reqwest::impersonate::Impersonate;
-use reqwest::{ClientBuilder, header::HeaderMap, Error, Response, Version, StatusCode};
+use reqwest::{ClientBuilder, header::HeaderMap, Version, StatusCode};
 use reqwest::header::HeaderValue;
-use serde::{Serialize, Deserialize};
+use serde::Deserialize;
 use std::process;
 use serde_json::Value;
 use anyhow::Result;
 use std::fs::File;
 use std::io::Read;
-use std::io;
 
 // Struct to represent model information
 #[derive(Debug, Clone)]

@@ -4,7 +4,7 @@ use native_windows_derive::NwgUi;
 use native_windows_gui::NativeUi;
 use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Write, Read};
 use std::time::Duration;
 
 use crate::new;
@@ -93,29 +93,63 @@ impl App {
 		self.refresh_file_combo();
     }
     fn saved(&self) {
-		self.state_label.set_visible(true);
-		if let Some(file) = self.file_combo.selection_string() {
+        self.state_label.set_visible(true);
+        if let Some(file) = self.file_combo.selection_string() {
             if !file.is_empty() {
                 let file_path = format!("./akun/{}", file);
-                if let Ok(mut file) = File::create(&file_path) {
-                    let content = self.payment_text.text();
-                    if file.write_all(content.as_bytes()).is_ok() {
-                        self.state_label.set_text("Save file Success");
-                    } else {
-                        self.state_label.set_text("Failed to save file");
-                    }
-                } else {
-                    self.state_label.set_text("Failed to create file");
+                let fp_folder = format!("./header/{}/af-ac-enc-sz-token.txt", file);
+    
+                // Create the directory if it does not exist
+                if let Err(e) = fs::create_dir_all(format!("./header/{}", file)) {
+                    eprintln!("Failed to create directory: {}", e);
+                    self.state_label.set_text("Failed to create directory");
+                    return;
                 }
+    
+                // Create the file
+                let mut file = match File::create(&file_path) {
+                    Ok(file) => file,
+                    Err(e) => {
+                        eprintln!("Failed to create file: {}", e);
+                        self.state_label.set_text("Failed to create file");
+                        return;
+                    }
+                };
+                // Create the file
+                let mut file_fp = match File::create(&fp_folder) {
+                    Ok(file) => file,
+                    Err(e) => {
+                        eprintln!("Failed to create file: {}", e);
+                        self.state_label.set_text("Failed to create file");
+                        return;
+                    }
+                };
+    
+                // Write content to the file
+                let content_cookie = self.payment_text.text();
+                let content_fp = self.harga_text.text();
+                if let Err(e) = file.write_all(content_cookie.as_bytes()) {
+                    eprintln!("Failed to write content_cookie to file: {}", e);
+                    self.state_label.set_text("Failed to write content_cookie to file");
+                    return;
+                }
+    
+                if let Err(e) = file_fp.write_all(content_fp.as_bytes()) {
+                    eprintln!("Failed to write content_fp to file: {}", e);
+                    self.state_label.set_text("Failed to write content_fp to file");
+                    return;
+                }
+    
+                self.state_label.set_text("Save file Success");
             } else {
                 self.state_label.set_text("No file selected");
             }
         } else {
             self.state_label.set_text("No file selected");
         }
-		self.state_label.set_visible(true);
+        self.state_label.set_visible(true);
         self.timer.start();
-	}
+    }
     fn hide_label(&self) {
         self.state_label.set_visible(false);
         self.timer.stop();
@@ -124,7 +158,35 @@ impl App {
 		if let Some(file) = self.file_combo.selection_string() {
 			if !file.is_empty() {
                 let cookie_content = prepare::read_cookie_file(&file);
+                let fp_folder = format!("./header/{}/af-ac-enc-sz-token.txt", &file);
+                // Create the header folder if it doesn't exist
+                if let Err(e) = fs::create_dir_all(&format!("./header/{}", &file)) {
+                    eprintln!("Failed to create directory: {}", e);
+                    return;
+                }
+
+                // Check if the file exists, and create it if not
+                if File::open(&fp_folder).is_err() {
+                    if let Err(e) = File::create(&fp_folder) {
+                        eprintln!("Failed to create file: {}", e);
+                        return;
+                    }
+                }
+
+                // Read the contents of the sz-token file
+                let mut sz_token_content = String::new();
+                if let Ok(mut file) = File::open(&fp_folder) {
+                    if let Err(e) = file.read_to_string(&mut sz_token_content) {
+                        eprintln!("Failed to read file: {}", e);
+                        return;
+                    }
+                } else {
+                    eprintln!("Failed to open file: {}", fp_folder);
+                    return;
+                }
+                println!("sz-token:{}", sz_token_content);
 				self.payment_text.set_text(&cookie_content);
+				self.harga_text.set_text(&sz_token_content);
 			}
 		}
 	}
