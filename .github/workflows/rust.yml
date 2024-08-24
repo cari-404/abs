@@ -1,0 +1,173 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.platform.os_name }} with rust ${{ matrix.toolchain }}
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - os_name: Android-aarch64
+            os: ubuntu-20.04
+            target: aarch64-linux-android
+            bin: main-linux-android-arm64
+          - os_name: Linux-aarch64
+            os: ubuntu-20.04
+            target: aarch64-unknown-linux-gnu
+            bin: main-linux-arm64
+          - os_name: Linux-x86_64
+            os: ubuntu-20.04
+            target: x86_64-unknown-linux-gnu
+            bin: main-linux-amd64
+          - os_name: Linux-i686
+            os: ubuntu-20.04
+            target: i686-unknown-linux-gnu
+            bin: main-linux-i686
+          - os_name: Windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: main-amd64.exe
+            gui: launcabs-amd64.exe
+          - os_name: Windows7-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: main7-amd64.exe
+            gui: launcabs7-amd64.exe
+          - os_name: Windows-i686
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            bin: main-i686.exe
+            gui: launcabs-i686.exe
+          - os_name: Windows7-i686
+            os: windows-latest
+            target: i686-pc-windows-msvc
+            bin: main7-i686.exe
+            gui: launcabs7-i686.exe
+          - os_name: Windows-i586
+            os: windows-latest
+            target: i586-pc-windows-msvc
+            bin: main-i586.exe
+        toolchain:
+          - stable
+    steps:
+    - uses: actions/checkout@v3
+    - name: Dependency
+      if: matrix.platform.os_name == 'Linux-i686'
+      run: |
+        sudo dpkg --add-architecture i386
+        sudo apt update
+        sudo apt install gcc-mingw-w64 libc6-dev-i386 libssl-dev:i386 -y
+
+    - name: Convert
+      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686'  && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Linux-x86_64'
+      run: |
+        rm Cargo.toml
+        mv cross.toml Cargo.toml
+        sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
+        sudo apt install gcc-i686-linux-gnu g++-i686-linux-gnu libc6-dev-i386-cross
+        sudo apt install llvm-dev libclang-dev clang
+
+
+    - name: Convert2
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'Windows-i586'
+      run: |
+        choco install nasm
+
+    - name: Build binary
+      uses: houseabsolute/actions-rust-cross@v0
+      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
+      with:
+        command: "build"
+        target: ${{ matrix.platform.target }}
+        toolchain: ${{ matrix.toolchain }}
+        args: "--release -p abs"
+        strip: true
+
+    - name: Build binary
+      uses: houseabsolute/actions-rust-cross@v0
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686'
+      with:
+        command: "build"
+        target: ${{ matrix.platform.target }}
+        toolchain: ${{ matrix.toolchain }}
+        args: "--release -p launcabs"
+        strip: true
+    - name: Build binary
+      if: matrix.platform.os_name == 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
+      uses: actions-rs/toolchain@v1
+      with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+          target: ${{ matrix.platform.target }}
+
+    - name: install
+      if: matrix.platform.os_name == 'Android-aarch64'
+      run: |
+        cargo install cargo-ndk
+        rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p abs
+
+    - name: install
+      if: matrix.platform.os_name == 'Windows7-x86_64'
+      run: |
+        rustup install 1.77.2
+        rustup default 1.77.2-${{ matrix.platform.target }}
+        cargo build --release --target ${{ matrix.platform.target }} -p abs
+        cargo build --release --target ${{ matrix.platform.target }} -p launcabs
+
+    - name: install 7 32
+      if: matrix.platform.os_name == 'Windows7-i686'
+      run: |
+        choco install llvm --x86 --force
+        ls -R "C:\Program Files (x86)\LLVM\bin"
+        ls -R "C:\Program Files\LLVM\bin"
+        $env:LIBCLANG_PATH="C:\Program Files (x86)\LLVM\bin"
+        rustup install 1.77.2
+        rustup default 1.77.2-${{ matrix.platform.target }}
+        cargo build --release --target ${{ matrix.platform.target }} -p abs
+        cargo build --release --target ${{ matrix.platform.target }} -p launcabs
+
+    - name: install
+      if: matrix.platform.os_name == 'Windows-i586'
+      run: |
+        rustup target add i586-pc-windows-msvc
+        cargo add windows
+        cargo build --release --target i586-pc-windows-msvc -p launcabs
+        cargo build --release --target i586-pc-windows-msvc -p abs
+
+    - name: Run tests
+      run: ls -R
+
+    - name: Rename binary (linux and macos)
+      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'Windows-i586'
+      run: mv target/${{ matrix.platform.target }}/release/abs target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+
+    - name: Rename binary (windows)
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'Windows-i586'
+      run: |
+        mv target/${{ matrix.platform.target }}/release/abs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+        mv target/${{ matrix.platform.target }}/release/launcabs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}
+
+    - name: Generate SHA-256
+      run: shasum -a 256 target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} | cut -d ' ' -f 1 > target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}.sha256
+    - name: Release binary and SHA-256 checksum to GitHub
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v0.9.3
+        files: |
+          target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+          target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}
