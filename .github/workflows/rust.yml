@@ -124,8 +124,8 @@ jobs:
       run: |
         rustup toolchain install stable-x86_64-pc-windows-msvc
         rustup component add rust-src --toolchain stable-x86_64-pc-windows-msvc
-        cargo +stable-x86_64-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p launcabs
-        cargo +stable-x86_64-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p abs
+        cargo +stable-x86_64-pc-windows-msvc b --release --target ${{ matrix.platform.target }} -p launcabs
+        cargo +stable-x86_64-pc-windows-msvc b --release --target ${{ matrix.platform.target }} -p abs
 
     - name: install 7 32
       if: matrix.platform.os_name == 'Windows7-i686'
@@ -136,8 +136,8 @@ jobs:
         $env:LIBCLANG_PATH="C:\Program Files (x86)\LLVM\bin"
         rustup toolchain install stable-i686-pc-windows-msvc
         rustup component add rust-src --toolchain stable-i686-pc-windows-msvc
-        cargo +stable-i686-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p launcabs
-        cargo +stable-i686-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p abs
+        cargo +stable-i686-pc-windows-msvc b --release --target ${{ matrix.platform.target }} -p launcabs
+        cargo +stable-i686-pc-windows-msvc b --release --target ${{ matrix.platform.target }} -p abs
 
     - name: install
       if: matrix.platform.os_name == 'Windows-i586'
