@@ -23,43 +23,43 @@ jobs:
           - os_name: Android-aarch64
             os: ubuntu-20.04
             target: aarch64-linux-android
-            bin: main-linux-android-arm64
+            bin: abs-linux-android-arm64
           - os_name: Linux-aarch64
             os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
-            bin: main-linux-arm64
+            bin: abs-linux-arm64
           - os_name: Linux-x86_64
             os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
-            bin: main-linux-amd64
+            bin: abs-linux-amd64
           - os_name: Linux-i686
             os: ubuntu-20.04
             target: i686-unknown-linux-gnu
-            bin: main-linux-i686
+            bin: abs-linux-i686
           - os_name: Windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            bin: main-amd64.exe
+            bin: abs-amd64.exe
             gui: launcabs-amd64.exe
           - os_name: Windows7-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
-            bin: main7-amd64.exe
+            bin: abs7-amd64.exe
             gui: launcabs7-amd64.exe
           - os_name: Windows-i686
             os: windows-latest
             target: i686-pc-windows-msvc
-            bin: main-i686.exe
+            bin: abs-i686.exe
             gui: launcabs-i686.exe
           - os_name: Windows7-i686
             os: windows-latest
             target: i686-pc-windows-msvc
-            bin: main7-i686.exe
+            bin: abs7-i686.exe
             gui: launcabs7-i686.exe
           - os_name: Windows-i586
             os: windows-latest
             target: i586-pc-windows-msvc
-            bin: main-i586.exe
+            bin: abs-i586.exe
         toolchain:
           - stable
     steps:
