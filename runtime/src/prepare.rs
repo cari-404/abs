@@ -1,5 +1,5 @@
 use rquest as reqwest;
-use reqwest::impersonate::Impersonate;
+use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, header::HeaderMap, Version, StatusCode};
 use reqwest::header::HeaderValue;
 use serde::Deserialize;
@@ -157,7 +157,7 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
     // Buat klien HTTP
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Cronet)
+        .impersonate_with_headers(Impersonate::Chrome127, false)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)

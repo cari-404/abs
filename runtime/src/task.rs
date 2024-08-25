@@ -1,5 +1,5 @@
 use rquest as reqwest;
-use reqwest::impersonate::Impersonate;
+use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, header::HeaderMap, Version, Body};
 use reqwest::header::HeaderValue;
 use chrono::{Utc};
@@ -26,7 +26,7 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Cronet)
+        .impersonate_with_headers(Impersonate::Chrome127, false)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
@@ -252,7 +252,7 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Cronet)
+        .impersonate_with_headers(Impersonate::Chrome127, false)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)

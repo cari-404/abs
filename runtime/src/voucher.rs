@@ -1,5 +1,5 @@
 use rquest as reqwest;
-use reqwest::impersonate::Impersonate;
+use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, header::HeaderMap, Version, Body};
 use reqwest::header::HeaderValue;
 use serde_json::{json, to_string, Value};
@@ -50,7 +50,6 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
 
     // Convert struct to JSON
     let body_str = serde_json::to_string(&body_json).unwrap();
-    let body = Body::from(body_str.clone());
     //println!("{:?}", body_str);
     //println!("{:?}", body);
     //println!("Request Headers:\n{:?}", headers);
@@ -61,7 +60,7 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
         // Buat klien HTTP
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .impersonate(Impersonate::Cronet)
+            .impersonate_with_headers(Impersonate::Chrome127, false)
             .enable_ech_grease()
             .permute_extensions()
             .gzip(true)
@@ -165,7 +164,7 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 	loop {
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .impersonate(Impersonate::Cronet)
+            .impersonate_with_headers(Impersonate::Chrome127, false)
             .enable_ech_grease()
             .permute_extensions()
             .gzip(true)
@@ -300,7 +299,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
     // Buat klien HTTP
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Cronet)
+        .impersonate_with_headers(Impersonate::Chrome127, false)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
