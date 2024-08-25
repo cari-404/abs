@@ -74,8 +74,6 @@ jobs:
     - name: Convert
       if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686'  && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Linux-x86_64'
       run: |
-        rm Cargo.toml
-        mv cross.toml Cargo.toml
         sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
         sudo apt install gcc-i686-linux-gnu g++-i686-linux-gnu libc6-dev-i386-cross
         sudo apt install llvm-dev libclang-dev clang
