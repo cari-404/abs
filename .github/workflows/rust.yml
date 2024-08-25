@@ -43,7 +43,7 @@ jobs:
             gui: launcabs-amd64.exe
           - os_name: Windows7-x86_64
             os: windows-latest
-            target: x86_64-pc-windows-msvc
+            target: x86_64-win7-windows-msvc
             bin: abs7-amd64.exe
             gui: launcabs7-amd64.exe
           - os_name: Windows-i686
@@ -53,7 +53,7 @@ jobs:
             gui: launcabs-i686.exe
           - os_name: Windows7-i686
             os: windows-latest
-            target: i686-pc-windows-msvc
+            target: i686-win7-windows-msvc
             bin: abs7-i686.exe
             gui: launcabs7-i686.exe
           - os_name: Windows-i586
@@ -122,10 +122,10 @@ jobs:
     - name: install
       if: matrix.platform.os_name == 'Windows7-x86_64'
       run: |
-        rustup install 1.77.2
-        rustup default 1.77.2-${{ matrix.platform.target }}
-        cargo build --release --target ${{ matrix.platform.target }} -p abs
-        cargo build --release --target ${{ matrix.platform.target }} -p launcabs
+        rustup toolchain install nightly-x86_64-pc-windows-msvc
+        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
+        cargo +nightly-x86_64-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p launcabs
+        cargo +nightly-x86_64-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p abs
 
     - name: install 7 32
       if: matrix.platform.os_name == 'Windows7-i686'
@@ -134,10 +134,10 @@ jobs:
         ls -R "C:\Program Files (x86)\LLVM\bin"
         ls -R "C:\Program Files\LLVM\bin"
         $env:LIBCLANG_PATH="C:\Program Files (x86)\LLVM\bin"
-        rustup install 1.77.2
-        rustup default 1.77.2-${{ matrix.platform.target }}
-        cargo build --release --target ${{ matrix.platform.target }} -p abs
-        cargo build --release --target ${{ matrix.platform.target }} -p launcabs
+        rustup toolchain install nightly-i686-pc-windows-msvc
+        rustup component add rust-src --toolchain nightly-i686-pc-windows-msvc
+        cargo +nightly-i686-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p launcabs
+        cargo +nightly-i686-pc-windows-msvc b --release -Z build-std --target ${{ matrix.platform.target }} -p abs
 
     - name: install
       if: matrix.platform.os_name == 'Windows-i586'
