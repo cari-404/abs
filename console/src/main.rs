@@ -1,4 +1,7 @@
 /*This Is a first version (beta) Prepare Auto Buy Shopee
+Whats new In 0.9.4-A :
+    Experimental!!!!
+    Add loop from voucher
 Whats new In 0.9.4 :
     Experimental!!!!
     Add token for media live
@@ -450,10 +453,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Voucher is None");
         }
     
-        let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher, final_voucher).await?;
-        let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
-        let place_order_body = task::place_order_builder(device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-        task::place_order(&cookie_content, place_order_body).await?;
+        loop{
+            let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone()).await?;
+            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
+            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let mpp = task::place_order(&cookie_content, place_order_body).await?;
+            // Mengecek apakah `mpp` memiliki field `checkoutid`
+            println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+            if let Some(checkout_id) = mpp.get("checkoutid") {
+                let checkout_id = checkout_id.as_i64().unwrap();
+                let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
+                println!("{}", url);
+                break;
+            }
+        }
     } else if !token.is_empty(){
         let get_body = task::get_wtoken_builder(&token, device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
         let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body.clone()).await?;

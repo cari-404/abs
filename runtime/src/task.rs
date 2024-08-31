@@ -12,7 +12,7 @@ use crate::prepare::extract_csrftoken;
 use crate::voucher::Vouchers;
 use crate::crypt::{self};
 
-pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let headers = headers_checkout(&cookie_content);
 
     // Convert struct to JSON
@@ -47,8 +47,9 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	println!("Status: Done Place_Order");
 	//println!("Status: {}", response.status());
 	let body = response.text().await?;
+	let v: serde_json::Value = serde_json::from_str(&body).unwrap();
 	println!("Body: {}", body);
-	Ok(())
+	Ok(body_json)
 }
 
 pub async fn place_order_builder(device_info: serde_json::Value, checkout_price_data: serde_json::Value, order_update_info: serde_json::Value, dropshipping_info: serde_json::Value, promotion_data: serde_json::Value, selected_payment_channel_data: serde_json::Value, shoporders: serde_json::Value, shipping_orders: serde_json::Value, display_meta_data: serde_json::Value, fsv_selection_infos: serde_json::Value, buyer_info: serde_json::Value, client_event_info: serde_json::Value, buyer_txn_fee_info: serde_json::Value, disabled_checkout_info: serde_json::Value, buyer_service_fee_info: serde_json::Value, iof_info: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
