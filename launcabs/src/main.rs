@@ -29,7 +29,7 @@ pub struct SharedData {
 #[derive(Default, NwgUi)]
 pub struct App {
     #[nwg_control(
-        size: (500, 300),
+        size: (500, 330),
         position: (300, 300),
         title: "Launcher for ABS",
         //flags: "WINDOW|VISIBLE|MINIMIZE_BOX|SYS_MENU",
@@ -68,8 +68,12 @@ pub struct App {
     harga_label: nwg::Label,
 
     #[nwg_control(text: "")]
-    #[nwg_layout_item(layout: grid, col: 1, row: 2, col_span: 2)]
+    #[nwg_layout_item(layout: grid, col: 1, row: 2)]
     harga_text: nwg::TextInput,
+
+    #[nwg_control(text: "Apply")]
+    #[nwg_layout_item(layout: grid, col: 2, row: 2)]
+    harga_checkbox: nwg::CheckBox,
     
     #[nwg_control(text: "Kuantiti")]
     #[nwg_layout_item(layout: grid, col: 0, row: 3)]
@@ -187,7 +191,12 @@ pub struct App {
     #[nwg_layout_item(layout: grid, col: 0, row: 7)]
     #[nwg_events( OnButtonClick: [App::refresh_file_combo], OnMouseMove: [App::on_hover])]
     refresh_button: nwg::Button,
-    
+
+    #[nwg_control(text: "fsv only")]
+    #[nwg_layout_item(layout: grid, col: 0, row: 7)]
+    #[nwg_events( OnButtonClick: [App::on_fsv_checkbox_change])]
+    fsv_checkbox: nwg::CheckBox,
+
     #[nwg_control(text: "Voucher")]
     #[nwg_layout_item(layout: grid, col: 1, row: 7)]
     #[nwg_events( OnButtonClick: [App::on_voucher_checkbox_change])]
@@ -201,6 +210,14 @@ pub struct App {
     #[nwg_control(v_align: nwg::VTextAlign::Bottom, font: Some(&data.font_combo))]
     #[nwg_layout_item(layout: grid, col: 3, row: 7)]
     media_combo: nwg::ComboBox<String>,
+
+    #[nwg_control(text: "Token")]
+    #[nwg_layout_item(layout: grid, col: 0, row: 8)]
+    token_label: nwg::Label,
+
+    #[nwg_control(text: "")]
+    #[nwg_layout_item(layout: grid, col: 1, row: 8, col_span: 4)]
+    token_text: nwg::TextInput,
 
     #[nwg_resource(family: "Segoe UI", size: 18)]
     font_combo: nwg::Font,	
@@ -417,10 +434,27 @@ impl App {
         // Close the version info window when OK button is clicked
         self.version_info_window.set_visible(false);
     }
+    fn on_fsv_checkbox_change(&self) {
+        if self.fsv_checkbox.check_state() == nwg::CheckBoxState::Checked{
+            self.code_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.voucher_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.on_code_checkbox_change();
+            self.on_voucher_checkbox_change();
+            self.promotionid_label.set_visible(false);
+            self.promotionid_text.set_visible(false);
+            self.signature_label.set_visible(false);
+            self.signature_text.set_visible(false);
+            self.code_label.set_visible(false);
+            self.code_text.set_visible(false);
+            self.shop_checkbox.set_visible(false);
+        }
+    }	
     fn on_voucher_checkbox_change(&self) {
         if self.voucher_checkbox.check_state() == nwg::CheckBoxState::Checked{
             self.code_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.fsv_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.on_code_checkbox_change();
+            self.on_fsv_checkbox_change();
             self.promotionid_label.set_visible(true);
             self.promotionid_text.set_visible(true);
             self.signature_label.set_visible(true);
@@ -435,7 +469,9 @@ impl App {
     fn on_code_checkbox_change(&self) {
         if self.code_checkbox.check_state() == nwg::CheckBoxState::Checked{
             self.voucher_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.fsv_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.on_voucher_checkbox_change();
+            self.on_fsv_checkbox_change();
             self.code_label.set_visible(true);
             self.code_text.set_visible(true);
             self.shop_checkbox.set_visible(true);
@@ -603,7 +639,11 @@ impl App {
     fn run(&self) {
         let url = self.url_text.text();
         let payment = self.payment_combo.selection_string().unwrap_or_default();
-        let harga = self.harga_text.text();
+        let harga = if self.harga_checkbox.check_state() == nwg::CheckBoxState::Checked{
+            self.harga_text.text()
+        }else{
+            String::new()
+        };
         let file = self.file_combo.selection_string().unwrap_or_default();
         let variasi = self.variasi_combo.selection_string().unwrap_or_default();
         let kurir = self.kurir_combo.selection_string().unwrap_or_default();
@@ -613,6 +653,8 @@ impl App {
         let mili = self.mili_text.text();
         let kuan = self.kuan_text.text();
         let time_arg = format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili);
+        let token = self.token_text.text();
+        let code_text = self.code_text.text();
         let promotionid_text = self.promotionid_text.text();
         let signature_text = self.signature_text.text();
         // Menjalankan program abs.exe dengan argumen yang dibuat
@@ -629,11 +671,21 @@ impl App {
                         icons: nwg::MessageIcons::Info,
                     };
                     assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                    None
-                    /*Some(vec![
+                    Some(vec![
                         "start",
                         "abs.exe",
-                    ])*/
+                        "--file", &file,
+                        "--url", &url,
+                        "--time", &time_arg,
+                        "--product", &variasi,
+                        "--kurir", &kurir,
+                        "--payment", &payment,
+                        "--harga", &harga,
+                        "--quantity", &kuan,
+                        "--shop-vouchers",
+                        "--code-shop", &code_text,
+                        "--token", &token,
+                    ])
                 } else {
                     let p1 = nwg::MessageParams {
                         title: "Newer feature detected 2",
@@ -642,11 +694,21 @@ impl App {
                         icons: nwg::MessageIcons::Info,
                     };
                     assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                    None
-                    /*Some(vec![
+                    Some(vec![
                         "start",
                         "abs.exe",
-                    ])*/
+                        "--file", &file,
+                        "--url", &url,
+                        "--time", &time_arg,
+                        "--product", &variasi,
+                        "--kurir", &kurir,
+                        "--payment", &payment,
+                        "--harga", &harga,
+                        "--quantity", &kuan,
+                        "--platform-vouchers",
+                        "--code-platform", &code_text,
+                        "--token", &token,
+                    ])
                 }
             }
             (_, nwg::CheckBoxState::Checked) => {
@@ -671,6 +733,7 @@ impl App {
                     "--claim-platform-vouchers",
                     "--pro-id", &promotionid_text,
                     "--sign", &signature_text,
+                    "--token", &token,
                 ])
             }
             _ => {
@@ -686,6 +749,7 @@ impl App {
                     "--payment", &payment,
                     "--harga", &harga,
                     "--quantity", &kuan,
+                    "--token", &token,
                 ])
             }
         };
@@ -827,10 +891,10 @@ async fn main_loop() {
 }
 fn show_already_running_error() {
     let p = nwg::MessageParams {
-        title: "Error",
+        title: "Warning",
         content: "Another instance is already running. Exiting...",
         buttons: nwg::MessageButtons::Ok,
-        icons: nwg::MessageIcons::Error,
+        icons: nwg::MessageIcons::Warning,
     };
     assert!(nwg::message(&p) == nwg::MessageChoice::Ok);
 }
@@ -842,7 +906,7 @@ fn main() {
     if !single_instance.is_single() {
         eprintln!("Another instance is already running.");
         show_already_running_error();
-        std::process::exit(1);
+        //std::process::exit(1);
     }
 
     // Create a runtime for async operations

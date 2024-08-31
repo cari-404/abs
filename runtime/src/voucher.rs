@@ -222,10 +222,9 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 	Ok(vouchers)
 }
 
-pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: &str, item_id_str: &str, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>), Box<dyn std::error::Error>>{
+pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: &str, item_id_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>), Box<dyn std::error::Error>>{
     let headers = headers_checkout(&cookie_content);
     let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
-	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
 	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
 	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
 	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");

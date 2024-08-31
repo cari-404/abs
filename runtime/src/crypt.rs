@@ -48,7 +48,7 @@ fn generate_device_fingerprint() -> String {
     format!("{}_unknow", random_hex_string(16))
 }
 
-fn random_hex_string(len: usize) -> String {
+pub fn random_hex_string(len: usize) -> String {
     let mut rng = rand::thread_rng();
     let charset = b"0123456789abcdef";
     let mut result = String::with_capacity(len);

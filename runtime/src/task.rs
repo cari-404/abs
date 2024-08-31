@@ -10,6 +10,7 @@ use crate::prepare::ModelInfo;
 use crate::prepare::PaymentInfo;
 use crate::prepare::extract_csrftoken;
 use crate::voucher::Vouchers;
+use crate::crypt::{self};
 
 pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
 	let headers = headers_checkout(&cookie_content);
@@ -88,6 +89,107 @@ pub async fn place_order_builder(device_info: serde_json::Value, checkout_price_
 		  24191
 		]
 	  });
+	//println!("{body_json}");
+	Ok(body_json)
+}
+pub async fn get_wtoken_builder(token: &str, device_info: serde_json::Value, shop_id_str: &str, item_id_str: &str, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
+	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
+	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
+	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
+	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
+	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
+	let optioninfo: String = chosen_payment.option_info.clone();
+
+	let body_json = json!({
+	  "shoporders": [
+		{
+		  "shop": {
+			"shopid": shop_id
+		  },
+		  "items": [
+			{
+			  "itemid": item_id as i64,
+			  "modelid": chosen_model.modelid as i64,
+			  "quantity": quantity as i64,
+			  "insurances": [],
+			  "channel_exclusive_info": {
+				"source_id": 1,
+				"token": token
+			  },
+			}
+		  ],
+		}
+	  ],
+	  "selected_payment_channel_data": {
+		"page": "OPC_PAYMENT_SELECTION",
+		"removed_vouchers": [],
+		"channel_id": channel_id,
+		"version": version,
+		"group_id": 0,
+		"channel_item_option_info": {
+		  "option_info": optioninfo
+		},
+		"additional_info": {}
+	  },
+	  "promotion_data": {
+		"auto_apply_shop_voucher": true,
+		"check_shop_voucher_entrances": true,
+		"auto_apply_platform_voucher": true,
+		"auto_apply_spl_voucher": true,
+		"spl_voucher_info": null,
+		"free_shipping_voucher_info": {},
+		"platform_vouchers": [],
+		"shop_vouchers": [],
+		"use_coins": false
+	  },
+	  "fsv_selection_infos": [],
+	  "device_info": device_info,
+	  "buyer_info": {
+		"kyc_info": null,
+		"checkout_email": ""
+	  },
+	  "cart_type": 1,
+	  "client_id": 5,
+	  "tax_info": {
+		"tax_id": ""
+	  },
+	  "client_event_info": {
+		"is_fsv_changed": false,
+		"is_platform_voucher_changed": false
+	  },
+	  "add_to_cart_info": {},
+	  "_cft": [469696383],
+	  "dropshipping_info": {},
+	  "shipping_orders": [
+		{
+		  "sync": true,
+		  "buyer_address_data": {
+			"addressid": addressid as i64,
+			"address_type": 0,
+			"tax_address": ""
+		  },
+		  "selected_logistic_channelid": chosen_shipping.channelid,
+		  "shipping_id": 1,
+		  "shoporder_indexes": [
+			0
+		  ],
+		  "selected_preferred_delivery_time_option_id": 0,
+		  "prescription_info": {
+			"images": []
+		  },
+		  "fulfillment_info": {
+			"fulfillment_flag": 18,
+			"fulfillment_source": "IDE",
+			"managed_by_sbs": false,
+			"order_fulfillment_type": 1,
+			"warehouse_address_id": 0,
+			"is_from_overseas": false
+		  }
+		}
+	  ],
+	  "order_update_info": {}
+	});
 	//println!("{body_json}");
 	Ok(body_json)
 }
@@ -298,13 +400,14 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 
 fn headers_checkout(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
+	let data = crypt::random_hex_string(16);
     let mut headers = reqwest::header::HeaderMap::new();
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
 	headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
 	headers.insert("x-sap-access-f", HeaderValue::from_static(" "));
 	headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));
 	headers.insert("x-sap-access-t", HeaderValue::from_static(" "));
-	headers.insert("af-ac-enc-dat", HeaderValue::from_static(" "));
+	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
 	headers.insert("af-ac-enc-id", HeaderValue::from_static(" "));
 	headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(" "));
 	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));

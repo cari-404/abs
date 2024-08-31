@@ -1,13 +1,13 @@
 /*This Is a first version (beta) Prepare Auto Buy Shopee
+Whats new In 0.9.4 :
+    Experimental!!!!
+    Add token for media live
+    for media live only fsv can auto apply by default
+Whats new In 0.9.3 :
+    remove build minor version
+    complete code platform, collection, claim, auto apply, and no voucher. except shop voucher and pricemax
 Whats new In 0.9.2-22 :
     Integrated code with runtime library
-Whats new In 0.9.1-21 :
-	fix get_product
-Whats new In 0.9.1-20 :
-	drop support reqwest (Apply all full cronet API)
-	Reduce frustation code from json
-	Add Structopt
-	Add place_order function
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task::{self};
@@ -44,10 +44,14 @@ struct Opt {
     harga: Option<String>,	
 	#[structopt(short, long, help = "Set quantity")]
     quantity: Option<String>,
+	#[structopt(short, long, help = "Set token media")]
+    token: Option<String>,
 	
-	#[structopt(short, long, help = "Apply Voucher(test)")]
-    voucher: bool,
-	#[structopt(short, long, help = "Apply platform Voucher(test)")]
+	#[structopt(short, long, help = "Apply token media")]
+    media: bool,
+	#[structopt(short, long, help = "Apply freeshipping voucher only")]
+    fsv_only: bool,
+	#[structopt(short, long, help = "Apply platform Voucher")]
     platform_vouchers: bool,
 	#[structopt(short, long, help = "Apply shop Voucher(test)")]
     shop_vouchers: bool,
@@ -103,7 +107,9 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     println!("Variant        : {}", chosen_model.name);
     println!("Model Id       : {}", chosen_model.modelid);
     println!("Kurir          : {}", chosen_shipping.channel_name);
-    println!("Max Price      : {}", max_price);
+    if !max_price.is_empty() {
+        println!("Max Price      : {}", max_price);
+    }
     println!("Payment        : {}", chosen_payment.name);
 	if opt.claim_platform_vouchers {
 		println!("Mode           : Klaim Platform Voucher");
@@ -351,6 +357,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}).await;
 	let max_price = opt.harga.clone().unwrap_or_else(|| get_user_input("Harga MAX: "));
 	let quantity = opt.quantity.clone().unwrap_or_else(|| get_user_input("Kuantiti: "));
+    let token = opt.token.clone().unwrap_or_else(|| get_user_input("Token Media: "));
 	
 	let payment_info = prepare::get_payment().await?;
 	let mut chosen_payment = PaymentInfo {
@@ -382,7 +389,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	place_order();
 	*/
 
-    if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers {
+    if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only {
         if !voucher_collectionid.is_empty() {
             let (promo_id, sig) = voucher::some_function(&voucher_collectionid, &cookie_content).await?;
             promotionid = promo_id;
@@ -410,12 +417,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         let (freeshipping_voucher, platform_vouchers_target) = join!(
             voucher::get_recommend_platform_vouchers(
-                &cookie_content, &shop_id, &item_id, &addressid, &quantity, 
+                &cookie_content, &shop_id, &item_id, &quantity, 
                 &chosen_model, &chosen_payment, &chosen_shipping
             )
         ).0?;
         
-        let final_voucher = selected_platform_voucher.unwrap_or(platform_vouchers_target);
+        let final_voucher = if opt.fsv_only {
+            None
+        } else {
+            selected_platform_voucher.unwrap_or(platform_vouchers_target)
+        };
     
         if let Some(ref voucher) = freeshipping_voucher {
             println!(
@@ -443,7 +454,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
         let place_order_body = task::place_order_builder(device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
         task::place_order(&cookie_content, place_order_body).await?;
-    } else {
+    } else if !token.is_empty(){
+        let get_body = task::get_wtoken_builder(&token, device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
+        let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body.clone()).await?;
+        let place_order_body = task::place_order_builder(device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+        task::place_order(&cookie_content, place_order_body).await?;
+    }else {
         let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None).await?;
         let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
         let place_order_body = task::place_order_builder(device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
