@@ -1,4 +1,6 @@
 /*This Is a first version (beta) Prepare Auto Buy Shopee
+Whats new In 0.9.4-B :
+    Fix bug loops
 Whats new In 0.9.4-A :
     Experimental!!!!
     Add loop from voucher
@@ -6,11 +8,6 @@ Whats new In 0.9.4 :
     Experimental!!!!
     Add token for media live
     for media live only fsv can auto apply by default
-Whats new In 0.9.3 :
-    remove build minor version
-    complete code platform, collection, claim, auto apply, and no voucher. except shop voucher and pricemax
-Whats new In 0.9.2-22 :
-    Integrated code with runtime library
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task::{self};
