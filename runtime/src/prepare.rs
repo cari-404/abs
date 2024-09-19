@@ -174,13 +174,12 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
         .await?;
 
     let mut models_info = Vec::new();
-    let mut name = String::new();
-    let mut status_code = String::new();
+    let mut name = "INVALID".to_string();
     let mut is_official_shop = false;
 
     //println!("Status: {}", response.status());
     //println!("Headers: {:#?}", response.headers());
-    status_code = response.status().to_string();
+    let status_code = response.status().to_string();
     let body = response.text().await?;
     //println!("Body: {}", &body);
 
@@ -219,7 +218,6 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
         is_official_shop = data.get("is_official_shop").and_then(|i| i.as_bool()).unwrap_or(false);
     } else {
         println!("Status: {}", status_code);
-        name = "INVALID".to_string();
     }
 	Ok((name.to_string(), models_info, is_official_shop.to_string(), status_code))
 }

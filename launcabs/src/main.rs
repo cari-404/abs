@@ -2,7 +2,7 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-use ::runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
+use ::runtime::prepare::{self};
 use native_windows_gui as nwg;
 use native_windows_derive::NwgUi;
 use native_windows_gui::NativeUi;
@@ -73,6 +73,7 @@ pub struct App {
 
     #[nwg_control(text: "Apply")]
     #[nwg_layout_item(layout: grid, col: 2, row: 2)]
+    #[nwg_events( OnButtonClick: [App::on_price_checkbox_change])]
     harga_checkbox: nwg::CheckBox,
     
     #[nwg_control(text: "Kuantiti")]
@@ -434,6 +435,15 @@ impl App {
         // Close the version info window when OK button is clicked
         self.version_info_window.set_visible(false);
     }
+    fn on_price_checkbox_change(&self) {
+        if self.harga_checkbox.check_state() == nwg::CheckBoxState::Checked{
+            self.harga_text.set_enabled(true);
+            self.harga_label.set_enabled(true);
+        }else{
+            self.harga_text.set_enabled(false);
+            self.harga_label.set_enabled(false);
+        }
+    }	
     fn on_fsv_checkbox_change(&self) {
         if self.fsv_checkbox.check_state() == nwg::CheckBoxState::Checked{
             self.code_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
@@ -658,60 +668,61 @@ impl App {
         let promotionid_text = self.promotionid_text.text();
         let signature_text = self.signature_text.text();
         // Menjalankan program abs.exe dengan argumen yang dibuat
+        let create_command = |extra_args: Vec<String>| -> Vec<String> {
+            let mut command = vec![
+                "start".to_string(),
+                "abs.exe".to_string(),
+                "--file".to_string(), file.clone(),
+                "--url".to_string(), url.clone(),
+                "--time".to_string(), time_arg.clone(),
+                "--product".to_string(), variasi.clone(),
+                "--kurir".to_string(), kurir.clone(),
+                "--payment".to_string(), payment.clone(),
+                "--harga".to_string(), harga.clone(),
+                "--quantity".to_string(), kuan.clone(),
+                "--token".to_string(), token.clone(),
+            ];
+            command.extend(extra_args);
+            command
+        };
+        
         let command = match (
             self.code_checkbox.check_state(),
             self.voucher_checkbox.check_state(),
         ) {
             (nwg::CheckBoxState::Checked, _) => {
-                if self.shop_checkbox.check_state() == nwg::CheckBoxState::Checked {
-                    let p1 = nwg::MessageParams {
+                /*
+                let p1 = if self.shop_checkbox.check_state() == nwg::CheckBoxState::Checked {
+                    nwg::MessageParams {
                         title: "Newer feature detected 1",
                         content: "Tes new features code shop",
                         buttons: nwg::MessageButtons::Ok,
                         icons: nwg::MessageIcons::Info,
-                    };
-                    assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                    Some(vec![
-                        "start",
-                        "abs.exe",
-                        "--file", &file,
-                        "--url", &url,
-                        "--time", &time_arg,
-                        "--product", &variasi,
-                        "--kurir", &kurir,
-                        "--payment", &payment,
-                        "--harga", &harga,
-                        "--quantity", &kuan,
-                        "--shop-vouchers",
-                        "--code-shop", &code_text,
-                        "--token", &token,
-                    ])
+                    }
                 } else {
-                    let p1 = nwg::MessageParams {
+                    nwg::MessageParams {
                         title: "Newer feature detected 2",
                         content: "Tes new features code",
                         buttons: nwg::MessageButtons::Ok,
                         icons: nwg::MessageIcons::Info,
-                    };
-                    assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                    Some(vec![
-                        "start",
-                        "abs.exe",
-                        "--file", &file,
-                        "--url", &url,
-                        "--time", &time_arg,
-                        "--product", &variasi,
-                        "--kurir", &kurir,
-                        "--payment", &payment,
-                        "--harga", &harga,
-                        "--quantity", &kuan,
-                        "--platform-vouchers",
-                        "--code-platform", &code_text,
-                        "--token", &token,
-                    ])
+                    }
+                };
+                assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
+                */
+                if self.shop_checkbox.check_state() == nwg::CheckBoxState::Checked {
+                    Some(create_command(vec![
+                        "--shop-vouchers".to_string(),
+                        "--code-shop".to_string(), code_text.clone(),
+                    ]))
+                } else {
+                    Some(create_command(vec![
+                        "--platform-vouchers".to_string(),
+                        "--code-platform".to_string(), code_text.clone(),
+                    ]))
                 }
             }
             (_, nwg::CheckBoxState::Checked) => {
+                /*
                 let p1 = nwg::MessageParams {
                     title: "Newer feature detected 3",
                     content: "Tes new features voucher",
@@ -719,40 +730,18 @@ impl App {
                     icons: nwg::MessageIcons::Info,
                 };
                 assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                Some(vec![
-                    "start",
-                    "abs.exe",
-                    "--file", &file,
-                    "--url", &url,
-                    "--time", &time_arg,
-                    "--product", &variasi,
-                    "--kurir", &kurir,
-                    "--payment", &payment,
-                    "--harga", &harga,
-                    "--quantity", &kuan,
-                    "--claim-platform-vouchers",
-                    "--pro-id", &promotionid_text,
-                    "--sign", &signature_text,
-                    "--token", &token,
-                ])
+                */
+                Some(create_command(vec![
+                    "--claim-platform-vouchers".to_string(),
+                    "--pro-id".to_string(), promotionid_text.clone(),
+                    "--sign".to_string(), signature_text.clone(),
+                ]))
             }
             _ => {
                 // Default case
-                Some(vec![
-                    "start",
-                    "abs.exe",
-                    "--file", &file,
-                    "--url", &url,
-                    "--time", &time_arg,
-                    "--product", &variasi,
-                    "--kurir", &kurir,
-                    "--payment", &payment,
-                    "--harga", &harga,
-                    "--quantity", &kuan,
-                    "--token", &token,
-                ])
+                Some(create_command(vec![]))
             }
-        };
+        };             
         
         if let Some(command) = command {
             if !file.is_empty() {
@@ -864,6 +853,8 @@ impl App {
         self.media_extension.set_checked(true);
         self.logs_view.set_checked(true);
         self.host_edit.set_enabled(false);
+        self.harga_text.set_enabled(false);
+        self.harga_label.set_enabled(false);
         for name in &media_model {
             self.media_combo.push(name.to_string());
             self.media_combo.set_selection(Some(0));

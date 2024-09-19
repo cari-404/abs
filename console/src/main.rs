@@ -1,13 +1,11 @@
 /*This Is a first version (beta) Prepare Auto Buy Shopee
+Whats new In 0.9.5 :
+    Initial add shop voucher
 Whats new In 0.9.4-B :
     Fix bug loops
 Whats new In 0.9.4-A :
     Experimental!!!!
     Add loop from voucher
-Whats new In 0.9.4 :
-    Experimental!!!!
-    Add token for media live
-    for media live only fsv can auto apply by default
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task::{self};
@@ -69,8 +67,6 @@ struct Opt {
     sign: Option<String>,
 	#[structopt(short, long, help = "Set Voucher from collection_id")]
     collectionid: Option<String>,
-    
-	
 }
 
 #[cfg(windows)]
@@ -96,35 +92,36 @@ fn clear_screen() {
 }
 
 async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: &str, voucher_code_shop: &str, voucher_collectionid: &str, opt: &Opt, target_url: &str, task_time_str: &str, selected_file: &str, username: &str, name: &str, max_price: &str, chosen_model: &ModelInfo, chosen_shipping: &ShippingInfo, chosen_payment: &PaymentInfo) {
+    let padding = 15;
     let version_info = env!("CARGO_PKG_VERSION");
 	println!("---------------------------------------------------------------");
     println!("              Auto Buy Shopee [Version {} ]              ", version_info);
-    println!("cookie file    : {}", selected_file);
-    println!("Username       : {}", username);
-    println!("URL            : {}", target_url);
-    println!("Time           : {}", task_time_str);
-    println!("Product        : {}", name);
-    println!("Variant        : {}", chosen_model.name);
-    println!("Model Id       : {}", chosen_model.modelid);
-    println!("Kurir          : {}", chosen_shipping.channel_name);
+    println!("{:<padding$}: {}", "Cookie file", selected_file, padding = padding);
+    println!("{:<padding$}: {}", "Username", username, padding = padding);
+    println!("{:<padding$}: {}", "URL", target_url, padding = padding);
+    println!("{:<padding$}: {}", "Time", task_time_str, padding = padding);
+    println!("{:<padding$}: {}", "Product", name, padding = padding);
+    println!("{:<padding$}: {}", "Variant", chosen_model.name, padding = padding);
+    println!("{:<padding$}: {}", "Model Id", chosen_model.modelid, padding = padding);
+    println!("{:<padding$}: {}", "Kurir", chosen_shipping.channel_name, padding = padding);
     if !max_price.is_empty() {
-        println!("Max Price      : {}", max_price);
+        println!("{:<padding$}: {}", "Max Price", max_price, padding = padding);
     }
-    println!("Payment        : {}", chosen_payment.name);
-	if opt.claim_platform_vouchers {
-		println!("Mode           : Klaim Platform Voucher");
-		println!("Promotion_Id   : {}", opt.pro_id.clone().unwrap_or_else(|| promotionid.to_string()));
-		println!("Signature      : {}", opt.sign.clone().unwrap_or_else(|| signature.to_string()));
-	}else if opt.platform_vouchers {
-		println!("Mode           : Code Platform Voucher");
-		println!("Code           : {}", opt.code_platform.clone().unwrap_or_else(|| voucher_code_platform.to_string()));
-	}else if opt.shop_vouchers {
-		println!("Mode           : Code Shop Voucher");
-		println!("Code           : {}", opt.code_shop.clone().unwrap_or_else(|| voucher_code_shop.to_string()));
-	}else if opt.collection_vouchers {
-        println!("Mode           : voucher collection");
-		println!("collection     : {}", opt.collectionid.clone().unwrap_or_else(|| voucher_collectionid.to_string()));
-	}
+    println!("{:<padding$}: {}", "Payment", chosen_payment.name, padding = padding);
+    if opt.claim_platform_vouchers {
+        println!("{:<padding$}: {}", "Mode", "Klaim Platform Voucher", padding = padding);
+        println!("{:<padding$}: {}", "Promotion_Id", opt.pro_id.clone().unwrap_or_else(|| promotionid.to_string()), padding = padding);
+        println!("{:<padding$}: {}", "Signature", opt.sign.clone().unwrap_or_else(|| signature.to_string()), padding = padding);
+    } else if opt.platform_vouchers {
+        println!("{:<padding$}: {}", "Mode", "Code Platform Voucher", padding = padding);
+        println!("{:<padding$}: {}", "Code", opt.code_platform.clone().unwrap_or_else(|| voucher_code_platform.to_string()), padding = padding);
+    } else if opt.shop_vouchers {
+        println!("{:<padding$}: {}", "Mode", "Code Shop Voucher", padding = padding);
+        println!("{:<padding$}: {}", "Code", opt.code_shop.clone().unwrap_or_else(|| voucher_code_shop.to_string()), padding = padding);
+    } else if opt.collection_vouchers {
+        println!("{:<padding$}: {}", "Mode", "Voucher Collection", padding = padding);
+        println!("{:<padding$}: {}", "Collection", opt.collectionid.clone().unwrap_or_else(|| voucher_collectionid.to_string()), padding = padding);
+    }
     println!("---------------------------------------------------------------");
     println!("");
 }
@@ -389,12 +386,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	place_order();
 	*/
 
-    if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only {
+    if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only || opt.shop_vouchers {
         if !voucher_collectionid.is_empty() {
             let (promo_id, sig) = voucher::some_function(&voucher_collectionid, &cookie_content).await?;
             promotionid = promo_id;
             signature = sig;
         }
+        let selected_shop_voucher = if !voucher_code_shop.is_empty() {
+            let (result,) = join!(
+                voucher::save_shop_voucher_by_voucher_code(&voucher_code_shop, &cookie_content, &shop_id)
+            );
+            match result {
+                Ok(voucher) => voucher,
+                Err(e) => return Err(e),
+            }
+        }else{
+            None
+        };
         let selected_platform_voucher = if !promotionid.is_empty() && !signature.is_empty() {
             let (result,) = join!(
                 voucher::save_voucher(&promotionid, &signature, &cookie_content)
@@ -422,7 +430,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         ).0?;
         
-        let final_voucher = if opt.fsv_only {
+        let final_voucher = if opt.fsv_only || opt.shop_vouchers {
             None
         } else {
             selected_platform_voucher.unwrap_or(platform_vouchers_target)
@@ -449,9 +457,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } else {
             println!("Voucher is None");
         }
+
+        if let Some(ref voucher) = selected_shop_voucher {
+            println!(
+                "Voucher: {}, {}, {}",
+                voucher.promotionid,
+                voucher.voucher_code,
+                voucher.signature
+            );
+        } else {
+            println!("Voucher is None");
+        }
     
         loop{
-            let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone()).await?;
+            let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
             let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
             let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
             let mpp = task::place_order(&cookie_content, place_order_body).await?;
@@ -465,15 +484,95 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     } else if !token.is_empty(){
-        let get_body = task::get_wtoken_builder(&token, device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
-        let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body.clone()).await?;
-        let place_order_body = task::place_order_builder(device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-        task::place_order(&cookie_content, place_order_body).await?;
+        loop{
+            // Loop untuk menyesuaikan `merchandise_subtotal`
+            let checkout_price_data;
+            let order_update_info;
+            let dropshipping_info;
+            let promotion_data;
+            let selected_payment_channel_data;
+            let shoporders;
+            let shipping_orders;
+            let display_meta_data;
+            let fsv_selection_infos;
+            let buyer_info;
+            let client_event_info;
+            let buyer_txn_fee_info;
+            let disabled_checkout_info;
+            let buyer_service_fee_info;
+            let iof_info;
+            loop{
+                let get_body = task::get_wtoken_builder(&token, device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
+                let (
+                    price_data, update_info, dropship_info, promo_data, payment_data, 
+                    orders, shipping_orders_data, meta_data, fsv_infos, buyer_info_data, 
+                    event_info, txn_fee_info, disabled_info, service_fee_info, iof_data
+                ) = task::checkout_get(&cookie_content, get_body.clone()).await?;
+                // Cek apakah `merchandise_subtotal` sesuai dengan `max_price * 100000`
+                if let Some(merchandise_subtotal) = price_data["merchandise_subtotal"].as_i64() {
+                    println!("merchandise_subtotal: {}", merchandise_subtotal);
+                    let max_price_no_comma = max_price.replace(",", "");
+                    let cleaned_max_price = max_price_no_comma.trim(); 
+                    if let Ok(parsed_max_price) = cleaned_max_price.parse::<i64>() {
+                        let adjusted_max_price = parsed_max_price * 100_000;
+                        println!("max_price (setelah dikali 100000): {}", adjusted_max_price);
+                        if merchandise_subtotal <= adjusted_max_price {
+                            println!("Harga merchandise_subtotal sesuai dengan max_price * 100000.");
+                            // Menyimpan variabel dari loop dalam ke luar
+                            checkout_price_data = price_data;
+                            order_update_info = update_info;
+                            dropshipping_info = dropship_info;
+                            promotion_data = promo_data;
+                            selected_payment_channel_data = payment_data;
+                            shoporders = orders;
+                            shipping_orders = shipping_orders_data;
+                            display_meta_data = meta_data;
+                            fsv_selection_infos = fsv_infos;
+                            buyer_info = buyer_info_data;
+                            client_event_info = event_info;
+                            buyer_txn_fee_info = txn_fee_info;
+                            disabled_checkout_info = disabled_info;
+                            buyer_service_fee_info = service_fee_info;
+                            iof_info = iof_data;
+                            break; // Keluar dari loop dalam jika kondisi terpenuhi
+                        } else {
+                            println!("Harga merchandise_subtotal lebih besar dari max_price * 100000.");
+                        }
+                    } else {
+                        println!("Gagal mengonversi max_price menjadi angka.");
+                    }
+                } else {
+                    println!("Gagal mendapatkan nilai merchandise_subtotal.");
+                }
+                println!("Harga merchandise_subtotal tidak sesuai, ulangi...");
+                // Loop akan berlanjut jika kondisi tidak terpenuhi
+            }
+            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let mpp = task::place_order(&cookie_content, place_order_body).await?;
+            // Mengecek apakah `mpp` memiliki field `checkoutid`
+            println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+            if let Some(checkout_id) = mpp.get("checkoutid") {
+                let checkout_id = checkout_id.as_i64().unwrap();
+                let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
+                println!("{}", url);
+                break;
+            }
+        } 
     }else {
-        let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None).await?;
-        let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
-        let place_order_body = task::place_order_builder(device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-        task::place_order(&cookie_content, place_order_body).await?;
+        loop{
+            let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
+            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
+            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let mpp = task::place_order(&cookie_content, place_order_body).await?;
+            // Mengecek apakah `mpp` memiliki field `checkoutid`
+            println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+            if let Some(checkout_id) = mpp.get("checkoutid") {
+                let checkout_id = checkout_id.as_i64().unwrap();
+                let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
+                println!("{}", url);
+                break;
+            }
+        }
     }
     
 	

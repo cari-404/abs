@@ -44,7 +44,7 @@ pub fn generate_device_id() -> String {
     println!("Generated Device Fingerprint: {}", device_fingerprint);
 }*/
 
-fn generate_device_fingerprint() -> String {
+pub fn generate_device_fingerprint() -> String {
     format!("{}_unknow", random_hex_string(16))
 }
 

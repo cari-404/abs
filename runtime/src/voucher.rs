@@ -41,11 +41,13 @@ struct VoucherCollectionRequest {
     number_of_vouchers_per_row: i64,
 }
 
-pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
+pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str, shop_id_str: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
+	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
     let headers = headers_checkout(&cookie_content);
 
     let body_json = json!({
-        "voucher_code": code.to_string()
+        "voucher_code": code.to_string(),
+        "shopid": shop_id
     });
 
     // Convert struct to JSON
@@ -55,7 +57,88 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
     //println!("Request Headers:\n{:?}", headers);
     let mut vouchers: Option<Vouchers> = None;
 	loop {
-        let url2 = format!("https://mall.shopee.co.id/api/v2/voucher_wallet/save_platform_voucher_by_voucher_code");
+        let url2 = format!("https://mall.shopee.co.id/api/v2/voucher_wallet/save_shop_voucher_by_voucher_code");
+        println!("{}", url2);
+        // Buat klien HTTP
+        let client = ClientBuilder::new()
+            .danger_accept_invalid_certs(true)
+            .impersonate_with_headers(Impersonate::Chrome127, false)
+            .enable_ech_grease()
+            .permute_extensions()
+            .gzip(true)
+            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
+            .build()?;
+
+        // Buat permintaan HTTP POST
+        let response = client
+            .post(&url2)
+            .header("Content-Type", "application/json")
+			.headers(headers.clone())
+			.body(body_str.clone())
+            .version(Version::HTTP_2) 
+            .send()
+            .await?;
+
+        println!("Status: get_voucher");
+        // Handle response as needed
+        //println!("Request Headers:\n{:?}", headers);
+		let status = response.status();
+		println!("{}", status);
+		let text = response.text().await?;	
+        //println!("Body: {}", body);
+        // Parse response body as JSON
+        if status == reqwest::StatusCode::OK {
+            let parsed: serde_json::Value = serde_json::from_str(&text).expect("JSON parsing failed");
+            if let Some(error) = parsed.get("error").and_then(|e| e.as_i64()) {
+                if error == 5 || error == 0 {
+                    println!("Berhasil: {} - {}", error, parsed.get("error_msg").unwrap_or(&serde_json::Value::Null));
+                } else {
+                    println!("Error: {} - {}", error, parsed.get("error_msg").unwrap_or(&serde_json::Value::Null));
+                    continue;
+                }
+            }
+            if let Some(data) = parsed.get("data") {
+                if let Some(voucher) = data.get("voucher") {
+                    let promotionid = voucher.get("promotionid").and_then(|v| v.as_i64()).unwrap_or_default();
+                    let voucher_code = code.to_string();
+                    let signature = voucher.get("signature").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    println!("promotionid: {}, voucher_code: {}, signature: {}", promotionid, voucher_code, signature);
+                    vouchers = Some(Vouchers {
+                        promotionid,
+                        voucher_code,
+                        signature,
+                    });
+                }
+            }
+            break;
+        } else if status == reqwest::StatusCode::IM_A_TEAPOT {
+            println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
+            println!("{}", text);
+            continue;
+        }else {
+            println!("Status: {}", status);
+            break;
+        }
+    }
+    Ok(vouchers)
+}
+
+pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
+    let headers = headers_checkout(&cookie_content);
+
+    let body_json = json!({
+        "voucher_code": code.to_string(),
+        "need_user_voucher_status":true
+    });
+
+    // Convert struct to JSON
+    let body_str = serde_json::to_string(&body_json).unwrap();
+    //println!("{:?}", body_str);
+    //println!("{:?}", body);
+    //println!("Request Headers:\n{:?}", headers);
+    let mut vouchers: Option<Vouchers> = None;
+	loop {
+        let url2 = format!("https://mall.shopee.co.id/api/v2/voucher_wallet/save_voucher");
         println!("{}", url2);
         // Buat klien HTTP
         let client = ClientBuilder::new()

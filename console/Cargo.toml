@@ -1,6 +1,6 @@
 [package]
 name = "abs"
-version = "0.9.4-B"
+version = "0.9.5"
 edition = "2021"
 authors = ["Paijo"]
 description = "Auto Buy from Shopee.co.id"
@@ -20,3 +20,5 @@ tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
 anyhow = "1.0"
 structopt = "0.3"
+crossterm = "0.28.1"
+ctrlc = "3.4.5"

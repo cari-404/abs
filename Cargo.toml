@@ -2,8 +2,8 @@
 members = [
     "runtime",
     "console",
-    "launcabs"
-]
+    "launcabs",
+    "video", "live"]
 resolver = "2"
 
 [profile.release]

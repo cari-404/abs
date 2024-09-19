@@ -194,7 +194,7 @@ pub async fn get_wtoken_builder(token: &str, device_info: serde_json::Value, sho
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item_id_str: &str, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item_id_str: &str, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
 	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
 	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
@@ -203,6 +203,21 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
 	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
+	let shop_vouchers = if let Some(shop) = shop_vouchers_target {
+		json!([
+			{
+			  "shopid": shop_id,
+			  "promotionid": shop.promotionid,
+			  "voucher_code": shop.voucher_code,
+			  "applied_voucher_code": shop.voucher_code,
+			  "invalid_message_code": 0,
+			  "reward_type": 0,
+			  "shipping_order_distributions": []
+			}
+		  ])
+	} else {
+		json!([])
+	};
 	let platform_vouchers = if let Some(platform) = platform_vouchers_target {
 		json!([{
 			"voucher_code": platform.voucher_code,
@@ -211,7 +226,6 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 	} else {
 		json!([])
 	};
-
 	let free_shipping_voucher_info = if let Some(ref shipping_vc) = freeshipping_voucher {
 		json!({
 			"free_shipping_voucher_id": shipping_vc.promotionid,
@@ -286,7 +300,7 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 		"use_coins": true,
 		"free_shipping_voucher_info": free_shipping_voucher_info,
 		"platform_vouchers": platform_vouchers,
-		"shop_vouchers": [],
+		"shop_vouchers": shop_vouchers,
 		"check_shop_voucher_entrances": true,
 		"auto_apply_shop_voucher": false
 	  },
@@ -380,23 +394,40 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 	//println!("Body: {}", body_resp);
     let v: serde_json::Value = serde_json::from_str(&body_resp).unwrap();
     // Mengambil data checkout_price_data
-	let checkout_price_data = v.get("checkout_price_data").cloned().unwrap_or_default();
-    let order_update_info = v.get("order_update_info").cloned().unwrap_or_default();
-    let dropshipping_info = v.get("dropshipping_info").cloned().unwrap_or_default();
-    let promotion_data = v.get("promotion_data").cloned().unwrap_or_default();
-    let selected_payment_channel_data = v.get("selected_payment_channel_data").cloned().unwrap_or_default();
-    let shoporders = v.get("shoporders").cloned().unwrap_or_default();
-    let shipping_orders = v.get("shipping_orders").cloned().unwrap_or_default();
-    let display_meta_data = v.get("display_meta_data").cloned().unwrap_or_default();
-    let fsv_selection_infos = v.get("fsv_selection_infos").cloned().unwrap_or_default();
-    let buyer_info = v.get("buyer_info").cloned().unwrap_or_default();
-    let client_event_info = v.get("client_event_info").cloned().unwrap_or_default();
-    let buyer_txn_fee_info = v.get("buyer_txn_fee_info").cloned().unwrap_or_default();
-    let disabled_checkout_info = v.get("disabled_checkout_info").cloned().unwrap_or_default();
-    let buyer_service_fee_info = v.get("buyer_service_fee_info").cloned().unwrap_or_default();
-    let iof_info = v.get("iof_info").cloned().unwrap_or_default();
- 
-	Ok((checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info))
+	// Mengambil referensi langsung tanpa cloning
+	let checkout_price_data = v.get("checkout_price_data").unwrap_or(&serde_json::Value::Null);
+	let order_update_info = v.get("order_update_info").unwrap_or(&serde_json::Value::Null);
+	let dropshipping_info = v.get("dropshipping_info").unwrap_or(&serde_json::Value::Null);
+	let promotion_data = v.get("promotion_data").unwrap_or(&serde_json::Value::Null);
+	let selected_payment_channel_data = v.get("selected_payment_channel_data").unwrap_or(&serde_json::Value::Null);
+	let shoporders = v.get("shoporders").unwrap_or(&serde_json::Value::Null);
+	let shipping_orders = v.get("shipping_orders").unwrap_or(&serde_json::Value::Null);
+	let display_meta_data = v.get("display_meta_data").unwrap_or(&serde_json::Value::Null);
+	let fsv_selection_infos = v.get("fsv_selection_infos").unwrap_or(&serde_json::Value::Null);
+	let buyer_info = v.get("buyer_info").unwrap_or(&serde_json::Value::Null);
+	let client_event_info = v.get("client_event_info").unwrap_or(&serde_json::Value::Null);
+	let buyer_txn_fee_info = v.get("buyer_txn_fee_info").unwrap_or(&serde_json::Value::Null);
+	let disabled_checkout_info = v.get("disabled_checkout_info").unwrap_or(&serde_json::Value::Null);
+	let buyer_service_fee_info = v.get("buyer_service_fee_info").unwrap_or(&serde_json::Value::Null);
+	let iof_info = v.get("iof_info").unwrap_or(&serde_json::Value::Null);
+
+	Ok((
+		checkout_price_data.clone(),
+		order_update_info.clone(),
+		dropshipping_info.clone(),
+		promotion_data.clone(),
+		selected_payment_channel_data.clone(),
+		shoporders.clone(),
+		shipping_orders.clone(),
+		display_meta_data.clone(),
+		fsv_selection_infos.clone(),
+		buyer_info.clone(),
+		client_event_info.clone(),
+		buyer_txn_fee_info.clone(),
+		disabled_checkout_info.clone(),
+		buyer_service_fee_info.clone(),
+		iof_info.clone(),
+	))
 }
 
 fn headers_checkout(cookie_content: &str) -> HeaderMap {
