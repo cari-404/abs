@@ -172,7 +172,7 @@ jobs:
     - name: Release binary and SHA-256 checksum to GitHub
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v0.9.5
+        tag_name: v0.9.5-1
         files: |
           target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
           target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}

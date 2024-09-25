@@ -143,7 +143,7 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
     println!("sending Get Shopee request...");
 	
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29333 app_type=13"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29333 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("x-shopee-language", HeaderValue::from_static("application/json"));
     headers.insert("if-none-match-", HeaderValue::from_static("8001"));
