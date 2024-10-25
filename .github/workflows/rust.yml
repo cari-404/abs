@@ -142,6 +142,7 @@ jobs:
         cargo install cargo-ndk
         rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p abs
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p savevoucher
 
     - name: Install nightly toolchain for Windows 7 64-bit
       if: matrix.platform.os_name == 'Windows7-x86_64'
@@ -183,7 +184,7 @@ jobs:
       if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'Windows-i586'
       run: |
         mv target/${{ matrix.platform.target }}/release/abs target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
-        mv target/${{ matrix.platform.target }}/release/savevoucher target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+        mv target/${{ matrix.platform.target }}/release/savevoucher target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
 
     - name: Rename binary (windows)
       if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'Windows-i586'
