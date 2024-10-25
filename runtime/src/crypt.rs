@@ -45,7 +45,7 @@ pub fn generate_device_id() -> String {
 }*/
 
 pub fn generate_device_fingerprint() -> String {
-    format!("{}_unknow", random_hex_string(16))
+    format!("{}_unknown", random_hex_string(16))
 }
 
 pub fn random_hex_string(len: usize) -> String {

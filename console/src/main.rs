@@ -1,15 +1,14 @@
-/*This Is a first version (beta) Prepare Auto Buy Shopee
+/*This Is a first version (beta) Auto Buy Shopee
+Whats new In 0.9.6 :
+    Fix payment error
 Whats new In 0.9.5 :
     Initial add shop voucher
 Whats new In 0.9.4-B :
     Fix bug loops
-Whats new In 0.9.4-A :
-    Experimental!!!!
-    Add loop from voucher
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task::{self};
-use runtime::voucher::{self, Vouchers};
+use runtime::voucher::{self};
 use runtime::crypt::{self};
 use chrono::{Local, Duration, NaiveDateTime};
 use std::io::{self, Write};
@@ -128,6 +127,27 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut chosen_model = ModelInfo {
+        name: String::from("NOT SET"),
+        price: 0,
+        stock: 0,
+        modelid: 0,
+        promotionid: 0,
+    };
+    let mut chosen_shipping = ShippingInfo {
+		original_cost: i64::default(),
+		channelid: i64::default(),
+		channel_name: String::default(),
+	};
+    let mut chosen_payment = PaymentInfo {
+		name: String::from("NOT SET"),
+		channel_id: String::from("NOT SET"),
+		option_info: String::from("NOT SET"),
+		version: String::from("NOT SET"),
+		txn_fee: 0,
+        selected_get: serde_json::Value::Null,
+        place_order: serde_json::Value::Null,
+	};
 	let version_info = env!("CARGO_PKG_VERSION");
 	let opt = Opt::from_args();
 	args_checking(&opt);
@@ -199,23 +219,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let task_time_dt = parse_task_time(&task_time_str)?;
 
     clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &ModelInfo {
-    name: String::from("NOT SET"),
-    price: 0,
-    stock: 0,
-    modelid: 0,
-    promotionid: 0,
-	}, &ShippingInfo {
-    original_cost: 0,
-    channelid: 0,
-    channel_name: String::from("NOT SET"),
-	}, & PaymentInfo {
-    name: String::from("NOT SET"),
-    channel_id: String::from("Zero"),
-    option_info: String::from("Zero"),
-    version: String::from("Zero"),
-    txn_fee: 0,
-	}).await;
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 
     // Perform the main task
     let (username, email, phone) = prepare::info_akun(&cookie_content).await?;
@@ -228,40 +232,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("District  : {}", district);
 	//std::thread::sleep(std::time::Duration::from_secs(2));
     clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, "", "", &ModelInfo {
-    name: String::from("NOT SET"),
-    price: 0,
-    stock: 0,
-    modelid: 0,
-    promotionid: 0,
-	}, &ShippingInfo {
-    original_cost: 0,
-    channelid: 0,
-    channel_name: String::from("NOT SET"),
-	}, & PaymentInfo {
-    name: String::from("NOT SET"),
-    channel_id: String::from("Zero"),
-    option_info: String::from("Zero"),
-    version: String::from("Zero"),
-    txn_fee: 0,
-	}).await;
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 	let url_1 = target_url.trim();
-	// Memproses URL
-    let mut shop_id = String::new();
-    let mut item_id = String::new();
-
-    if !url_1.is_empty() {
-        if !url_1.contains("/product/") {
-            let split: Vec<&str> = url_1.split('.').collect();
-            shop_id = split[split.len() - 2].to_string();
-            item_id = split[split.len() - 1].split('?').next().unwrap_or("").to_string();
-        } else {
-            let split2: Vec<&str> = url_1.split('/').collect();
-            shop_id = split2[split2.len() - 2].to_string();
-            item_id = split2[split2.len() - 1].split('?').next().unwrap_or("").to_string();
-        }
-    }
-
+    let (shop_id, item_id) = prepare::process_url(url_1);
 	println!("shop_id: {}", shop_id);
     println!("item_id: {}", item_id);
 	let (name, model_info, is_official_shop, status_code) = prepare::get_product(&shop_id, &item_id, &cookie_content).await?;
@@ -273,36 +246,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         process::exit(1);
     }
     clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &ModelInfo {
-    name: String::from("NOT SET"),
-    price: 0,
-    stock: 0,
-    modelid: 0,
-    promotionid: 0,
-	}, &ShippingInfo {
-    original_cost: 0,
-    channelid: 0,
-    channel_name: String::from("NOT SET"),
-	}, & PaymentInfo {
-    name: String::from("NOT SET"),
-    channel_id: String::from("Zero"),
-    option_info: String::from("Zero"),
-    version: String::from("Zero"),
-    txn_fee: 0,
-	}).await;
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 	println!("addressid  : {}", addressid);
 	println!("name             : {}", name);
     // println!("models           : \n{:#?}", model_info);
     println!("Official Shop ?  : {}", is_official_shop);
 	
 	//std::thread::sleep(std::time::Duration::from_secs(2));
-    let mut chosen_model = ModelInfo {
-        name: String::from("Unknown"),
-        price: 0,
-        stock: 0,
-        modelid: 0,
-        promotionid: 0,
-    };
     if let Some(model) = choose_model(&model_info, &opt){
         chosen_model = model;
         println!("Anda memilih model: {:#?}", chosen_model);
@@ -316,23 +266,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Anda memilih model: {}", chosen_model.name);
 	let shipping_info = prepare::kurir(&cookie_content, &shop_id, &item_id, &state, &city, &district).await?;
 	clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &ShippingInfo {
-    original_cost: 0,
-    channelid: 0,
-    channel_name: String::from("NOT SET"),
-	}, & PaymentInfo {
-    name: String::from("NOT SET"),
-    channel_id: String::from("Zero"),
-    option_info: String::from("Zero"),
-    version: String::from("Zero"),
-    txn_fee: 0,
-	}).await;
-
-	let mut chosen_shipping = ShippingInfo {
-		original_cost: i64::default(),
-		channelid: i64::default(),
-		channel_name: String::default(),
-	};
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
 
 	if let Some(shipping) = choose_shipping(&shipping_info, &opt) {
 		chosen_shipping = shipping;
@@ -345,25 +279,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 	println!("{:?}", chosen_shipping);
 	clear_screen();
-	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, & PaymentInfo {
-    name: String::from("NOT SET"),
-    channel_id: String::from("Zero"),
-    option_info: String::from("Zero"),
-    version: String::from("Zero"),
-    txn_fee: 0,
-	}).await;
-	let max_price = opt.harga.clone().unwrap_or_else(|| get_user_input("Harga MAX: "));
+	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
+	let max_price = opt.harga.clone().unwrap_or_else(|| get_user_input("Harga MAX:")).trim().to_string();
 	let quantity = opt.quantity.clone().unwrap_or_else(|| get_user_input("Kuantiti: "));
-    let token = opt.token.clone().unwrap_or_else(|| get_user_input("Token Media: "));
+    let token = opt.token.clone().unwrap_or_else(|| get_user_input("Token Media: ")).trim().to_string();
 	
 	let payment_info = prepare::get_payment().await?;
-	let mut chosen_payment = PaymentInfo {
-		name: String::from("Unknown"),
-		channel_id: String::from("Unknown"),
-		option_info: String::from("Unknown"),
-		version: String::from("Unknown"),
-		txn_fee: 0,
-	};
 
 	if let Some(payment) = choose_payment(&payment_info, &opt) {
 		chosen_payment = payment;
@@ -378,7 +299,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("{:?}", chosen_payment);
 	clear_screen();
 	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
-	countdown_to_task(&task_time_dt).await;
+    println!("{:?}", chosen_payment);
+    countdown_to_task(&task_time_dt).await;
 	
 	/* Code 0.9.0
 	get();
@@ -472,7 +394,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop{
             let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
             let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
-            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
             let mpp = task::place_order(&cookie_content, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
@@ -547,7 +469,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Harga merchandise_subtotal tidak sesuai, ulangi...");
                 // Loop akan berlanjut jika kondisi tidak terpenuhi
             }
-            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
             let mpp = task::place_order(&cookie_content, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
@@ -562,7 +484,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         loop{
             let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
             let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
-            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
             let mpp = task::place_order(&cookie_content, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
@@ -689,7 +611,6 @@ async fn countdown_to_task(task_time_dt: &NaiveDateTime) {
 
         if time_until_task < Duration::zero() {
             println!("\nTask completed! Current time: {}", current_time.format("%H:%M:%S.%3f"));
-            tugas_utama();
             break;
         }
 
@@ -699,11 +620,6 @@ async fn countdown_to_task(task_time_dt: &NaiveDateTime) {
 
         thread::sleep(StdDuration::from_secs_f64(0.001));
     }
-}
-
-fn tugas_utama() {
-    println!("Performing the task...");
-    println!("\nTask completed! Current time: {}", Local::now().format("%H:%M:%S.%3f"));
 }
 
 fn format_duration(duration: Duration) -> String {

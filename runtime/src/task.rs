@@ -13,8 +13,9 @@ use crate::voucher::Vouchers;
 use crate::crypt::{self};
 
 pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let headers = headers_checkout(&cookie_content);
-
+	let mut headers = headers_checkout(&cookie_content);
+	let data = crypt::random_hex_string(16);
+	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
     // Convert struct to JSON
     let body_str = serde_json::to_string(&body_json).unwrap();
 	let body = Body::from(body_str.clone());
@@ -27,7 +28,7 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate_with_headers(Impersonate::Chrome127, false)
+        .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
@@ -52,8 +53,22 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	Ok(v)
 }
 
-pub async fn place_order_builder(device_info: serde_json::Value, checkout_price_data: serde_json::Value, order_update_info: serde_json::Value, dropshipping_info: serde_json::Value, promotion_data: serde_json::Value, selected_payment_channel_data: serde_json::Value, shoporders: serde_json::Value, shipping_orders: serde_json::Value, display_meta_data: serde_json::Value, fsv_selection_infos: serde_json::Value, buyer_info: serde_json::Value, client_event_info: serde_json::Value, buyer_txn_fee_info: serde_json::Value, disabled_checkout_info: serde_json::Value, buyer_service_fee_info: serde_json::Value, iof_info: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn place_order_builder(device_info: serde_json::Value, checkout_price_data: serde_json::Value, order_update_info: serde_json::Value, dropshipping_info: serde_json::Value, promotion_data: serde_json::Value, chosen_payment: &PaymentInfo, shoporders: serde_json::Value, shipping_orders: serde_json::Value, display_meta_data: serde_json::Value, fsv_selection_infos: serde_json::Value, buyer_info: serde_json::Value, client_event_info: serde_json::Value, buyer_txn_fee_info: serde_json::Value, disabled_checkout_info: serde_json::Value, buyer_service_fee_info: serde_json::Value, iof_info: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
+	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
+	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
+	let selected_payment_channel_data = if chosen_payment.place_order.is_null(){
+		json!({
+			"channel_id": channel_id,
+			"channel_item_option_info": {
+			  "option_info": optioninfo
+			},
+			"version": version
+		})
+	}else{
+		chosen_payment.place_order.clone()
+	};
 	let body_json = json!({
 		"client_id": 5,
 		"cart_type": 1,
@@ -203,6 +218,22 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
 	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
+	let selected_payment_channel_data = if chosen_payment.selected_get.is_null(){
+		json!({
+			"page": "OPC_PAYMENT_SELECTION",
+			"removed_vouchers": [],
+			"channel_id": channel_id,
+			"version": version,
+			"group_id": 0,
+			"channel_item_option_info": {
+			  "option_info": optioninfo
+			},
+			"additional_info": {}
+		  })
+	}else{
+		chosen_payment.selected_get.clone()
+	};
+
 	let shop_vouchers = if let Some(shop) = shop_vouchers_target {
 		json!([
 			{
@@ -285,17 +316,7 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 		  "shipping_id": 1
 		}
 	  ],
-	  "selected_payment_channel_data": {
-		"page": "OPC_PAYMENT_SELECTION",
-		"removed_vouchers": [],
-		"channel_id": channel_id,
-		"version": version,
-		"group_id": 0,
-		"channel_item_option_info": {
-		  "option_info": optioninfo
-		},
-		"additional_info": {}
-	  },
+	  "selected_payment_channel_data": selected_payment_channel_data,
 	  "promotion_data": {
 		"use_coins": true,
 		"free_shipping_voucher_info": free_shipping_voucher_info,
@@ -355,8 +376,9 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 	Ok(body_json)
 }
 pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
-	let headers = headers_checkout(&cookie_content);
-
+	let mut headers = headers_checkout(&cookie_content);
+	let data = crypt::random_hex_string(16);
+	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
     // Convert struct to JSON
     let body_str = serde_json::to_string(&body_json).unwrap();
 	let body = Body::from(body_str.clone());
@@ -369,7 +391,7 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate_with_headers(Impersonate::Chrome127, false)
+        .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
@@ -432,21 +454,19 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 
 fn headers_checkout(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
-	let data = crypt::random_hex_string(16);
     let mut headers = reqwest::header::HeaderMap::new();
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
 	headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
-	headers.insert("x-sap-access-f", HeaderValue::from_static(" "));
+	headers.insert("x-sap-access-f", HeaderValue::from_static(""));
 	headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));
-	headers.insert("x-sap-access-t", HeaderValue::from_static(" "));
-	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
-	headers.insert("af-ac-enc-id", HeaderValue::from_static(" "));
-	headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(" "));
+	headers.insert("x-sap-access-t", HeaderValue::from_static(""));
+	headers.insert("af-ac-enc-id", HeaderValue::from_static(""));
+	headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(""));
 	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
 	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
-	headers.insert("x-sap-access-s", HeaderValue::from_static(" "));
+	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
 	headers.insert("x-csrftoken", HeaderValue::from_str(csrftoken).unwrap());
-	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=31215 app_type=1"));
+	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29335 app_type=1"));
 	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Cannouncement%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Cearly_life_zone%25252Ccampaign_modules%25252Cflash_sales%25252Clive_streaming%25252Cvideo%25252Cdigital_products%25252Cdeals_nearby%25252Ccutline%25252Cdaily_discover%25252Cfood_order_status"));
 	headers.insert("accept", HeaderValue::from_static("application/json"));
 	headers.insert("content-type", HeaderValue::from_static("application/json"));

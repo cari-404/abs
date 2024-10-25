@@ -10,6 +10,7 @@ use crate::prepare::ShippingInfo;
 use crate::prepare::ModelInfo;
 use crate::prepare::PaymentInfo;
 use crate::prepare::extract_csrftoken;
+use crate::crypt::random_hex_string;
 
 #[derive(Debug, Clone)]
 pub struct Vouchers {
@@ -43,7 +44,7 @@ struct VoucherCollectionRequest {
 
 pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str, shop_id_str: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
 	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
-    let headers = headers_checkout(&cookie_content);
+    let headers = headers_checkout(&cookie_content).await;
 
     let body_json = json!({
         "voucher_code": code.to_string(),
@@ -62,7 +63,7 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str,
         // Buat klien HTTP
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .impersonate_with_headers(Impersonate::Chrome127, false)
+            .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease()
             .permute_extensions()
             .gzip(true)
@@ -124,7 +125,7 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str,
 }
 
 pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
-    let headers = headers_checkout(&cookie_content);
+    let headers = headers_checkout(&cookie_content).await;
 
     let body_json = json!({
         "voucher_code": code.to_string(),
@@ -143,7 +144,7 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
         // Buat klien HTTP
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .impersonate_with_headers(Impersonate::Chrome127, false)
+            .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease()
             .permute_extensions()
             .gzip(true)
@@ -205,12 +206,7 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
 }
 
 pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
-	let cookie_content_owned = cookie_content.to_string();
-
-	// Pass the cloned String to extract_csrftoken
-	let csrftoken = extract_csrftoken(&cookie_content_owned);
-	//println!("csrftoken: {}", csrftoken);
-	let csrftoken_string = csrftoken.to_string();
+    let headers = headers_checkout(&cookie_content).await;
 	let start: i64 = start.trim().parse().expect("Input tidak valid");
 
 	let body_json = SaveVoucherRequest {
@@ -223,23 +219,6 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 	let body_str = serde_json::to_string(&body_json)?;
 
 	println!("{}", body_str);
-	
-	let mut headers = reqwest::header::HeaderMap::new();
-	headers.insert("User-Agent", reqwest::header::HeaderValue::from_static("Android app Shopee appver=29330 app_type=1"));
-	headers.insert("accept", reqwest::header::HeaderValue::from_static("application/json"));
-	headers.insert("Content-Type", reqwest::header::HeaderValue::from_static("application/json"));
-	headers.insert("x-api-source", reqwest::header::HeaderValue::from_static("rn"));
-	headers.insert("if-none-match-", reqwest::header::HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922f"));
-	headers.insert("shopee_http_dns_mode", reqwest::header::HeaderValue::from_static("1"));
-	headers.insert("x-shopee-client-timezone", reqwest::header::HeaderValue::from_static("Asia/Jakarta"));
-	headers.insert("af-ac-enc-dat", reqwest::header::HeaderValue::from_static(""));
-	headers.insert("af-ac-enc-id", reqwest::header::HeaderValue::from_static(""));
-	headers.insert("x-sap-access-t", reqwest::header::HeaderValue::from_static(""));
-	headers.insert("x-sap-access-f", reqwest::header::HeaderValue::from_static(""));
-	headers.insert("referer", reqwest::header::HeaderValue::from_static("https://mall.shopee.co.id/"));
-	headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&csrftoken_string)?);
-	headers.insert("af-ac-enc-sz-token", reqwest::header::HeaderValue::from_static(""));
-	headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content)?);
 
 	//println!("");
 	//println!("header:{:#?}", headers);
@@ -247,7 +226,7 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 	loop {
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .impersonate_with_headers(Impersonate::Chrome127, false)
+            .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease()
             .permute_extensions()
             .gzip(true)
@@ -306,7 +285,7 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 }
 
 pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: &str, item_id_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>), Box<dyn std::error::Error>>{
-    let headers = headers_checkout(&cookie_content);
+    let headers = headers_checkout(&cookie_content).await;
     let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
 	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
 	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
@@ -381,10 +360,11 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
     // Buat klien HTTP
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate_with_headers(Impersonate::Chrome127, false)
+        .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
+        .http2_max_concurrent_streams(1000)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;
 
@@ -402,14 +382,14 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
     // Handle response as needed
     //println!("Request Headers:\n{:?}", headers);
     println!("Status: {}", response.status());
-    let body = response.text().await?;
-    //println!("Body: {}", body);
+    let body_resp = response.text().await?;
+    //println!("Body: {}", body_resp);
     // Parse response body as JSON
-    let json: Value = serde_json::from_str(&body)?;
+    let json_resp: Value = serde_json::from_str(&body_resp)?;
     let mut freeshipping_voucher: Option<Vouchers> = None;
     let mut vouchers: Option<Vouchers> = None;
     // Extract freeshipping_vouchers
-    if let Some(freeshipping_vouchers_array) = json["data"]["freeshipping_vouchers"].as_array() {
+    if let Some(freeshipping_vouchers_array) = json_resp["data"]["freeshipping_vouchers"].as_array() {
         for voucher in freeshipping_vouchers_array {
             if voucher["fsv_error_message"].is_null() {
                 let promotionid = voucher["promotionid"].as_i64().unwrap_or_default();
@@ -427,7 +407,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
     }
 
     // Extract vouchers
-    if let Some(vouchers_array) = json["data"]["vouchers"].as_array() {
+    if let Some(vouchers_array) = json_resp["data"]["vouchers"].as_array() {
         for voucher in vouchers_array {
             if voucher["fsv_error_message"].is_null() {
                 let promotionid = voucher["promotionid"].as_i64().unwrap_or_default();
@@ -445,21 +425,21 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
     }
     Ok((freeshipping_voucher, vouchers))
 }
-fn headers_checkout(cookie_content: &str) -> HeaderMap {
+async fn headers_checkout(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
     let mut headers = reqwest::header::HeaderMap::new();
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
 	headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
-	headers.insert("x-sap-access-f", HeaderValue::from_static(" "));
-	headers.insert("x-sap-access-t", HeaderValue::from_static(" "));
-	headers.insert("af-ac-enc-dat", HeaderValue::from_static("f2b1b94227db5eab"));
-	headers.insert("af-ac-enc-id", HeaderValue::from_static(" "));
-	headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(" "));
+	headers.insert("x-sap-access-f", HeaderValue::from_static(""));
+	headers.insert("x-sap-access-t", HeaderValue::from_static(""));
+	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&format!("{}", random_hex_string(16))).unwrap());
+	headers.insert("af-ac-enc-id", HeaderValue::from_static(""));
+	headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(""));
 	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
 	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
-	headers.insert("x-sap-access-s", HeaderValue::from_static(" "));
+	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
 	headers.insert("x-csrftoken", HeaderValue::from_str(csrftoken).unwrap());
-	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29313 app_type=1"));
+	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29333 app_type=1"));
 	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id"));
 	headers.insert("accept", HeaderValue::from_static("application/json"));
 	headers.insert("content-type", HeaderValue::from_static("application/json; charset=utf-8"));
@@ -484,27 +464,22 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
 	};
 	
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29335 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    headers.insert("accept", HeaderValue::from_static("application/json"));
+    headers.insert("Accept", HeaderValue::from_static("application/json"));
     headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
     headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-    headers.insert("sec-ch-ua", HeaderValue::from_static("\"Not)A;Brand\";v=\"99\", \"Google Chrome\";v=\"127\", \"Chromium\";v=\"127\""));
-    headers.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
-    headers.insert("x-sz-sdk-version", HeaderValue::from_static("1.10.12"));
-    headers.insert("x-api-source", HeaderValue::from_static("pc"));
-    headers.insert("x-sap-ri", HeaderValue::from_static("8fab8288812ce5572fd20624a59333cea398a23b43b3f793"));
-    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
-    headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));
-    headers.insert("af-ac-enc-dat", HeaderValue::from_static("d4fd3f0079b47b69"));
-    headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(" "));
-    headers.insert("sec-ch-ua-platform", HeaderValue::from_static("\"Windows\""));
-    headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
-    headers.insert("sec-fetch-site", HeaderValue::from_static("same-origin"));
-    headers.insert("sec-fetch-mode", HeaderValue::from_static("cors"));
-    headers.insert("sec-fetch-dest", HeaderValue::from_static("empty"));
-    headers.insert("accept-language", HeaderValue::from_static("en-US,en;q=0.9,id;q=0.8"));
-    headers.insert("referer", HeaderValue::from_static("https://shopee.co.id/"));
+    headers.insert("x-api-source", HeaderValue::from_static("rn"));
+    headers.insert("if-none-match-", HeaderValue::from_static("55b03-1e991df3597baecb4f87bfbe85b99329"));
+    headers.insert("af-ac-enc-dat", HeaderValue::from_static(""));
+    headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(""));
+    headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
+    headers.insert("af-ac-enc-id", HeaderValue::from_static(""));
+    headers.insert("x-sap-access-t", HeaderValue::from_static(""));
+    headers.insert("x-sap-access-s", HeaderValue::from_static(""));
+    headers.insert("x-sap-access-f", HeaderValue::from_static(""));
+    headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
+    headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/"));
     headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&csrftoken_string)?);
     headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content)?);
 
@@ -520,7 +495,7 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
 	loop {
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .impersonate(Impersonate::Chrome127)
+            .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease()
             .permute_extensions()
             .gzip(true)
@@ -613,7 +588,7 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 	loop {
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
-            .impersonate(Impersonate::Chrome127)
+            .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease()
             .permute_extensions()
             .gzip(true)

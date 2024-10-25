@@ -51,7 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let (rep_task_id, rep_eventcode, rep_period_num, rep_reward) = report_reward(&cookie_content, &device_id, &device_fingerprint, task_id, period_num, current_reward).await?;
             println!("{}, {}, {}, {}",rep_task_id, rep_eventcode, rep_period_num, rep_reward.expect("REASON").to_string());
-            if current_reward == 15 || current_reward == 60{
+            if current_reward == 5 || current_reward == 15 || current_reward == 60{
                 claim_reward(&cookie_content, &device_id, &device_fingerprint, task_id, eventcode, period_num, current_reward).await?;
             }
             let next_task_time_dt = Local::now().naive_local() + chrono::Duration::minutes(1);
@@ -129,7 +129,7 @@ async fn claim_reward(cookie_content: &str, device_id: &str, device_fingerprint:
 
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate_with_headers(Impersonate::Chrome127, false)
+        .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
@@ -217,7 +217,7 @@ async fn report_reward(cookie_content: &str, device_id: &str, device_fingerprint
 
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate_with_headers(Impersonate::Chrome127, false)
+        .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
@@ -311,7 +311,7 @@ async fn cek_reward(cookie_content: &str, device_id: &str, device_fingerprint: &
 
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate_with_headers(Impersonate::Chrome127, false)
+        .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)

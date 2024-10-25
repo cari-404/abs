@@ -24,42 +24,51 @@ jobs:
             os: ubuntu-20.04
             target: aarch64-linux-android
             bin: abs-linux-android-arm64
+            savevoucher: savevoucher-linux-android-arm64
           - os_name: Linux-aarch64
             os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             bin: abs-linux-arm64
+            savevoucher: savevoucher-linux-arm64
           - os_name: Linux-x86_64
             os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             bin: abs-linux-amd64
+            savevoucher: savevoucher-linux-amd64
           - os_name: Linux-i686
             os: ubuntu-20.04
             target: i686-unknown-linux-gnu
             bin: abs-linux-i686
+            savevoucher: savevoucher-linux-i686
           - os_name: Windows-x86_64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             bin: abs-amd64.exe
+            savevoucher: savevoucher-amd64.exe
             gui: launcabs-amd64.exe
           - os_name: Windows-aarch64
             os: windows-latest
             target: aarch64-pc-windows-msvc
             bin: abs-arm64.exe
+            savevoucher: savevoucher-arm64.exe
             gui: launcabs-arm64.exe
           - os_name: Windows7-x86_64
             os: windows-latest
             target: x86_64-win7-windows-msvc
             bin: abs7-amd64.exe
+            savevoucher: savevoucher7-amd64.exe
             gui: launcabs7-amd64.exe
           - os_name: Windows-i686
             os: windows-latest
             target: i686-pc-windows-msvc
             bin: abs-i686.exe
+            savevoucher: savevoucher-i686.exe
             gui: launcabs-i686.exe
           - os_name: Windows7-i686
             os: windows-latest
             target: i686-win7-windows-msvc
             bin: abs7-i686.exe
+            savevoucher: savevoucher7-i686.exe
             gui: launcabs7-i686.exe
           - os_name: Windows-i586
             os: windows-latest
@@ -89,7 +98,7 @@ jobs:
       run: |
         choco install nasm
 
-    - name: Build binary
+    - name: Build binary(abs)
       uses: houseabsolute/actions-rust-cross@v0
       if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
       with:
@@ -99,7 +108,17 @@ jobs:
         args: "--release -p abs"
         strip: true
 
-    - name: Build binary
+    - name: Build binary(savevoucher)
+      uses: houseabsolute/actions-rust-cross@v0
+      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
+      with:
+        command: "build"
+        target: ${{ matrix.platform.target }}
+        toolchain: ${{ matrix.toolchain }}
+        args: "--release -p savevoucher"
+        strip: true
+
+    - name: Build binary (lauchabs)
       uses: houseabsolute/actions-rust-cross@v0
       if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' 
       with:
@@ -132,6 +151,7 @@ jobs:
         rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launcabs
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
+        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
 
     - name: Install nightly toolchain for Windows 7 32-bit
       if: matrix.platform.os_name == 'Windows7-i686'
@@ -145,6 +165,7 @@ jobs:
         rustup component add rust-src --toolchain nightly-i686-pc-windows-msvc
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launcabs
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
+        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
 
     - name: install
       if: matrix.platform.os_name == 'Windows-i586'
@@ -153,17 +174,21 @@ jobs:
         cargo add windows
         cargo build --release --target i586-pc-windows-msvc -p launcabs
         cargo build --release --target i586-pc-windows-msvc -p abs
+        cargo build --release --target i586-pc-windows-msvc -p savevoucher
 
     - name: Run tests
       run: ls -R
 
     - name: Rename binary (linux and macos)
       if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'Windows-i586'
-      run: mv target/${{ matrix.platform.target }}/release/abs target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+      run: |
+        mv target/${{ matrix.platform.target }}/release/abs target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
+        mv target/${{ matrix.platform.target }}/release/savevoucher target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
 
     - name: Rename binary (windows)
       if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'Windows-i586'
       run: |
+        mv target/${{ matrix.platform.target }}/release/savevoucher.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
         mv target/${{ matrix.platform.target }}/release/abs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
         mv target/${{ matrix.platform.target }}/release/launcabs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}
 
@@ -172,7 +197,8 @@ jobs:
     - name: Release binary and SHA-256 checksum to GitHub
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v0.9.5-1
+        tag_name: v0.9.6
         files: |
+          target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
           target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
           target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}

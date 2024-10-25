@@ -2,7 +2,7 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-use ::runtime::prepare::{self};
+use ::runtime::prepare::{self, ModelInfo};
 use native_windows_gui as nwg;
 use native_windows_derive::NwgUi;
 use native_windows_gui::NativeUi;
@@ -20,6 +20,7 @@ mod new;
 #[derive(Default)]
 pub struct SharedData {
     name_model: Vec<String>,
+    model_infos: Vec<ModelInfo>,
     kurirs: Vec<String>,
     rcode: String,
     logs: Vec<String>,
@@ -115,6 +116,14 @@ pub struct App {
     #[nwg_control(text: "")]
     #[nwg_layout_item(layout: grid, col: 1, row: 4, col_span: 2)]
     promotionid_text: nwg::TextInput,
+
+    #[nwg_control(text: "Collection Id", h_align: nwg::HTextAlign::Center)]
+    #[nwg_layout_item(layout: grid, col: 0, row: 4)]
+    cid_label: nwg::Label,
+    
+    #[nwg_control(text: "")]
+    #[nwg_layout_item(layout: grid, col: 1, row: 4, col_span: 2)]
+    cid_text: nwg::TextInput,
     
     #[nwg_control(text: "Code", h_align: nwg::HTextAlign::Center)]
     #[nwg_layout_item(layout: grid, col: 0, row: 4)]
@@ -185,8 +194,12 @@ pub struct App {
     quick: nwg::MenuItem,
     
     #[nwg_control(parent: launch, text: "Generate Sruct")]
-    #[nwg_events(OnMenuItemSelected: [App::quick])]
+    #[nwg_events(OnMenuItemSelected: [App::generate_cmd])]
     gen_launch: nwg::MenuItem,
+
+    #[nwg_control(parent: launch, text: "Claim Voucher")]
+    #[nwg_events(OnMenuItemSelected: [App::run_vouc])]
+    gen_vouc: nwg::MenuItem,
     
     #[nwg_control(text: "Refresh", flags: "VISIBLE|DISABLED",)]
     #[nwg_layout_item(layout: grid, col: 0, row: 7)]
@@ -207,8 +220,13 @@ pub struct App {
     #[nwg_layout_item(layout: grid, col: 2, row: 7)]
     #[nwg_events( OnButtonClick: [App::on_code_checkbox_change])]
     code_checkbox: nwg::CheckBox,
+
+    #[nwg_control(text: "Collection id")]
+    #[nwg_layout_item(layout: grid, col: 3, row: 7)]
+    #[nwg_events( OnButtonClick: [App::on_cid_checkbox_change])]
+    cid_checkbox: nwg::CheckBox,
     
-    #[nwg_control(v_align: nwg::VTextAlign::Bottom, font: Some(&data.font_combo))]
+    #[nwg_control(v_align: nwg::VTextAlign::Bottom, font: Some(&data.font_combo), flags: "NONE",)]
     #[nwg_layout_item(layout: grid, col: 3, row: 7)]
     media_combo: nwg::ComboBox<String>,
 
@@ -448,8 +466,10 @@ impl App {
         if self.fsv_checkbox.check_state() == nwg::CheckBoxState::Checked{
             self.code_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.voucher_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.cid_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.on_code_checkbox_change();
             self.on_voucher_checkbox_change();
+            self.on_cid_checkbox_change();
             self.promotionid_label.set_visible(false);
             self.promotionid_text.set_visible(false);
             self.signature_label.set_visible(false);
@@ -463,8 +483,10 @@ impl App {
         if self.voucher_checkbox.check_state() == nwg::CheckBoxState::Checked{
             self.code_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.fsv_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.cid_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.on_code_checkbox_change();
             self.on_fsv_checkbox_change();
+            self.on_cid_checkbox_change();
             self.promotionid_label.set_visible(true);
             self.promotionid_text.set_visible(true);
             self.signature_label.set_visible(true);
@@ -480,8 +502,10 @@ impl App {
         if self.code_checkbox.check_state() == nwg::CheckBoxState::Checked{
             self.voucher_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.fsv_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.cid_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
             self.on_voucher_checkbox_change();
             self.on_fsv_checkbox_change();
+            self.on_cid_checkbox_change();
             self.code_label.set_visible(true);
             self.code_text.set_visible(true);
             self.shop_checkbox.set_visible(true);
@@ -489,6 +513,21 @@ impl App {
             self.code_label.set_visible(false);
             self.code_text.set_visible(false);
             self.shop_checkbox.set_visible(false);
+        }
+    }
+    fn on_cid_checkbox_change(&self) {
+        if self.cid_checkbox.check_state() == nwg::CheckBoxState::Checked{
+            self.voucher_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.fsv_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.code_checkbox.set_check_state(nwg::CheckBoxState::Unchecked);
+            self.on_voucher_checkbox_change();
+            self.on_fsv_checkbox_change();
+            self.on_code_checkbox_change();
+            self.cid_label.set_visible(true);
+            self.cid_text.set_visible(true);
+        }else {
+            self.cid_label.set_visible(false);
+            self.cid_text.set_visible(false);
         }
     }
     fn on_hover(&self) {
@@ -500,45 +539,58 @@ impl App {
     fn exit(&self) {
         nwg::stop_thread_dispatch();
     }
+    fn error_cek(&self, title: &str, content: &str){
+        let p = nwg::MessageParams {
+            title: title,
+            content: content,
+            buttons: nwg::MessageButtons::Ok,
+            icons: nwg::MessageIcons::Error
+            };
+        assert!(nwg::modal_message(&self.file_combo, &p) == nwg::MessageChoice::Ok);
+        self.cek_button.set_enabled(true);
+        self.cek_button.set_text("Cek");
+        return;
+    }
     fn cek(&self) {
         // Disable the button to prevent multiple async tasks from being started
         self.cek_button.set_enabled(false);
         self.cek_button.set_text("Wait");
         clear_combo_box(&self.variasi_combo);
         clear_combo_box(&self.kurir_combo);
-        let start = self.url_text.text();
         let file = self.file_combo.selection_string().unwrap_or_default();
-        let cookie_content = prepare::read_cookie_file(&file);
-        let url_1 = start.trim();
-        println!("{}", url_1);
-        // Memproses URL
-        let mut shop_id = String::new();
-        let mut item_id = String::new();
-        if !url_1.is_empty() {
-            if !url_1.contains("/product/") {
-                let split: Vec<&str> = url_1.split('.').collect();
-                shop_id = split[split.len() - 2].to_string();
-                item_id = split[split.len() - 1].split('?').next().unwrap_or("").to_string();
-            } else {
-                let split2: Vec<&str> = url_1.split('/').collect();
-                shop_id = split2[split2.len() - 2].to_string();
-                item_id = split2[split2.len() - 1].split('?').next().unwrap_or("").to_string();
+        if self.url_text.text().is_empty() {
+            self.error_cek("Error", "Empty URL")
+        } else if file.is_empty() {
+            self.error_cek("Error", "Please select a file before running the program")
+        }else{
+            let start = self.url_text.text();
+            let cookie_content = prepare::read_cookie_file(&file);
+            let url_1 = start.trim();
+            println!("{}", url_1);
+            let (shop_id_str, item_id_str) = prepare::process_url(url_1);
+            // Parsing dari String ke i64
+            let shop_id: i64 = shop_id_str.parse::<i64>().unwrap_or(0);
+            let item_id: i64 = item_id_str.parse::<i64>().unwrap_or(0);
+            println!("{}, {}", shop_id, item_id);
+            if shop_id != 0 && item_id != 0 {
+                // Clone the notice sender and runtime to move into the new thread
+                let notice_sender = self.notice.sender();
+                let shared_data = self.shared_data.clone();
+        
+                thread::spawn(move || {
+                    let rt = tokio::runtime::Runtime::new().unwrap();
+        
+                    rt.block_on(async {
+                        App::cek_async(&shop_id_str, &item_id_str, &cookie_content, shared_data).await;
+        
+                        // Send a notice to update the UI
+                        notice_sender.notice();
+                    });
+                });
+            }else{
+                self.error_cek("Error", "Invalid URL")
             }
         }
-        // Clone the notice sender and runtime to move into the new thread
-        let notice_sender = self.notice.sender();
-        let shared_data = self.shared_data.clone();
-
-        thread::spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-
-            rt.block_on(async {
-                App::cek_async(&shop_id, &item_id, &cookie_content, shared_data).await;
-
-                // Send a notice to update the UI
-                notice_sender.notice();
-            });
-        });
     }
     async fn cek_async(shop_id: &str, item_id: &str, cookie_content: &str, shared_data: Arc<RwLock<SharedData>>) {
         // Memanggil get_product dengan timeout
@@ -546,6 +598,7 @@ impl App {
             Ok(Ok((name, model_info, is_official_shop, rcode))) => {
                 let mut data = shared_data.write().unwrap();
                 data.name_model = model_info.iter().map(|model| model.name.clone()).collect();
+                data.model_infos = model_info;
                 data.rcode = rcode;
             },
             Ok(Err(e)) => {
@@ -589,8 +642,8 @@ impl App {
         if data.rcode == "200 OK" {
             self.variasi_combo.set_collection(data.name_model.clone());
             self.variasi_combo.set_selection(Some(0));
-            for log in &data.name_model {
-                self.append_log(log);
+            for (index, model) in data.model_infos.iter().enumerate() {
+                self.append_log(&format!("{}. {} - Harga: {} - Stok: {}", index + 1, model.name, model.price / 100000, model.stock));
             }
         } else if data.rcode.contains("CronetError"){
             let isi = format!("OH SNAP!!!\nSolution:\nCHECK INTERNET CONNECTION\n\nError : {}", data.rcode);
@@ -646,7 +699,7 @@ impl App {
             .expect("Gagal menjalankan program");
         println!("{:?}", command);
     }
-    fn run(&self) {
+    fn collect_gui_input(&self) -> Option<Vec<String>> {
         let url = self.url_text.text();
         let payment = self.payment_combo.selection_string().unwrap_or_default();
         let harga = if self.harga_checkbox.check_state() == nwg::CheckBoxState::Checked{
@@ -667,48 +720,37 @@ impl App {
         let code_text = self.code_text.text();
         let promotionid_text = self.promotionid_text.text();
         let signature_text = self.signature_text.text();
+        let collectionid = self.cid_text.text();
+        let url_1 = url.trim();
+        println!("{}", url_1);
+        let (shop_id, item_id) = prepare::process_url(url_1);
+        let refe = format!("https://shopee.co.id/product/{}/{}", shop_id, item_id);
         // Menjalankan program abs.exe dengan argumen yang dibuat
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
             let mut command = vec![
                 "start".to_string(),
                 "abs.exe".to_string(),
                 "--file".to_string(), file.clone(),
-                "--url".to_string(), url.clone(),
+                "--url".to_string(), refe.clone(),
                 "--time".to_string(), time_arg.clone(),
-                "--product".to_string(), variasi.clone(),
                 "--kurir".to_string(), kurir.clone(),
                 "--payment".to_string(), payment.clone(),
                 "--harga".to_string(), harga.clone(),
                 "--quantity".to_string(), kuan.clone(),
                 "--token".to_string(), token.clone(),
             ];
+            // Tambahkan --product hanya jika variasi_combo memiliki lebih dari 1 item
+            if self.variasi_combo.len() > 1 {
+                command.push("--product".to_string());
+                command.push(variasi.clone());
+            }
             command.extend(extra_args);
             command
         };
         
-        let command = match (
-            self.code_checkbox.check_state(),
-            self.voucher_checkbox.check_state(),
-        ) {
-            (nwg::CheckBoxState::Checked, _) => {
-                /*
-                let p1 = if self.shop_checkbox.check_state() == nwg::CheckBoxState::Checked {
-                    nwg::MessageParams {
-                        title: "Newer feature detected 1",
-                        content: "Tes new features code shop",
-                        buttons: nwg::MessageButtons::Ok,
-                        icons: nwg::MessageIcons::Info,
-                    }
-                } else {
-                    nwg::MessageParams {
-                        title: "Newer feature detected 2",
-                        content: "Tes new features code",
-                        buttons: nwg::MessageButtons::Ok,
-                        icons: nwg::MessageIcons::Info,
-                    }
-                };
-                assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                */
+        // Menentukan perintah berdasarkan checkbox
+        match (self.code_checkbox.check_state(), self.voucher_checkbox.check_state(), self.cid_checkbox.check_state()) {
+            (nwg::CheckBoxState::Checked, _, _) => {
                 if self.shop_checkbox.check_state() == nwg::CheckBoxState::Checked {
                     Some(create_command(vec![
                         "--shop-vouchers".to_string(),
@@ -721,28 +763,90 @@ impl App {
                     ]))
                 }
             }
-            (_, nwg::CheckBoxState::Checked) => {
-                /*
-                let p1 = nwg::MessageParams {
-                    title: "Newer feature detected 3",
-                    content: "Tes new features voucher",
-                    buttons: nwg::MessageButtons::Ok,
-                    icons: nwg::MessageIcons::Info,
-                };
-                assert!(nwg::modal_message(&self.window, &p1) == nwg::MessageChoice::Ok);
-                */
+            (_, nwg::CheckBoxState::Checked, _) => {
                 Some(create_command(vec![
                     "--claim-platform-vouchers".to_string(),
                     "--pro-id".to_string(), promotionid_text.clone(),
                     "--sign".to_string(), signature_text.clone(),
                 ]))
             }
-            _ => {
-                // Default case
-                Some(create_command(vec![]))
+            (_, _, nwg::CheckBoxState::Checked) => {
+                Some(create_command(vec![
+                    "--collection-vouchers".to_string(),
+                    "--collectionid".to_string(), collectionid.clone(),
+                ]))
             }
-        };             
+            _ => Some(create_command(vec![])),
+        }
+    }
+    fn generate_vouc(&self) -> Option<Vec<String>> {
+        let file = self.file_combo.selection_string().unwrap_or_default();
+        let jam = self.jam_text.text();
+        let menit = self.menit_text.text();
+        let detik = self.detik_text.text();
+        let mili = self.mili_text.text();
+        let time_arg = format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili);
+        let promotionid_text = self.promotionid_text.text();
+        let signature_text = self.signature_text.text();
+        let collectionid = self.cid_text.text();
+        let create_command = |extra_args: Vec<String>| -> Vec<String> {
+            let mut command = vec![
+                "start".to_string(),
+                "savevoucher.exe".to_string(),
+                "--file".to_string(), file.clone(),
+                "--time".to_string(), time_arg.clone(),
+            ];
+            command.extend(extra_args);
+            command
+        };
         
+        // Menentukan perintah berdasarkan checkbox
+        match (self.voucher_checkbox.check_state(), self.cid_checkbox.check_state()) {
+            (nwg::CheckBoxState::Checked, _) => {
+                Some(create_command(vec![
+                    "--mode".to_string(), "1".to_string(),
+                    "--pro-id".to_string(), promotionid_text.clone(),
+                    "--sign".to_string(), signature_text.clone(),
+                ]))
+            }
+            (_, nwg::CheckBoxState::Checked) => {
+                Some(create_command(vec![
+                    "--mode".to_string(), "2".to_string(),
+                    "--collectionid".to_string(), collectionid.clone(),
+                ]))
+            }
+            _ => Some(create_command(vec![])),
+        }
+    }
+    fn generate_cmd(&self) {
+        let command = self.collect_gui_input();
+        if let Some(command) = command {
+            let command_str = command
+                .iter()
+                .map(|s| {
+                    if s.trim().is_empty() {
+                        "\" \"".to_string() // Mengganti nilai kosong dengan " "
+                    } else {
+                        format!("\"{}\"", s) // Format nilai asli
+                    }
+                })
+                .collect::<Vec<String>>()
+                .join(" ");
+            self.append_log(&command_str);
+        } else {
+            self.append_log("No command generated.");
+        }
+    }
+    fn run_vouc(&self){
+        let command = self.generate_vouc();
+        self.cmd(command);
+    }
+    fn run(&self) {
+        let command = self.collect_gui_input();
+        self.cmd(command);
+    }
+    fn cmd(&self, command: Option<Vec<String>>) {
+        let file = self.file_combo.selection_string().unwrap_or_default();
         if let Some(command) = command {
             if !file.is_empty() {
                 let _status = std::process::Command::new("cmd")
@@ -762,7 +866,6 @@ impl App {
                 return;
             }
         }
-        
     }
     fn populate_file_combo(&self) {
         let folder_path = "akun";
@@ -848,6 +951,8 @@ impl App {
         self.signature_text.set_visible(false);
         self.code_label.set_visible(false);
         self.code_text.set_visible(false);
+        self.cid_label.set_visible(false);
+        self.cid_text.set_visible(false);
         self.shop_checkbox.set_visible(false);
         self.voucher_extension.set_checked(true);
         self.media_extension.set_checked(true);

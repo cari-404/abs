@@ -31,6 +31,8 @@ pub struct PaymentInfo {
     pub option_info: String,
     pub version: String,
     pub txn_fee: i64,
+    pub selected_get: Value,
+    pub place_order: Value,
 }
 
 pub async fn get_payment() -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error>> {
@@ -52,6 +54,8 @@ pub async fn get_payment() -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error
                     let option_info = payment_info.get("optionInfo").and_then(|info| info.as_str()).unwrap_or("Unknown");
                     let version = payment_info.get("version").and_then(|v| v.as_str()).unwrap_or("Unknown");
                     let txn_fee = payment_info.get("txnFee").and_then(|fee| fee.as_i64()).unwrap_or(0);
+                    let selected_get = payment_info.get("get").unwrap_or(&serde_json::Value::Null);
+                    let place_order = payment_info.get("place_order").unwrap_or(&serde_json::Value::Null);
 
                     PaymentInfo {
                         name: name.to_string(),
@@ -59,6 +63,8 @@ pub async fn get_payment() -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error
                         option_info: option_info.to_string(),
                         version: version.to_string(),
                         txn_fee,
+                        selected_get: selected_get.clone(),
+                        place_order: place_order.clone(),
                     }
                 })
             })
@@ -145,8 +151,8 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29333 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    headers.insert("x-shopee-language", HeaderValue::from_static("application/json"));
-    headers.insert("if-none-match-", HeaderValue::from_static("8001"));
+    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
+    headers.insert("if-none-match-", HeaderValue::from_static("55b03-8476c83de1a4cf3b74cc77b08ce741f9"));
     headers.insert("x-api-source", HeaderValue::from_static("rn"));
     headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
     headers.insert("referer", reqwest::header::HeaderValue::from_str(&refe)?);
@@ -157,7 +163,7 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
     // Buat klien HTTP
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
-        .impersonate_with_headers(Impersonate::Chrome127, false)
+        .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease()
         .permute_extensions()
         .gzip(true)
@@ -308,6 +314,26 @@ pub async fn info_akun(cookie_content: &str) -> Result<(String, String, String),
         println!("Harap Ganti akun");
         process::exit(1);
     }
+}
+pub fn process_url(url: &str) -> (String, String) {
+    let mut shop_id = String::new();
+    let mut item_id = String::new();
+    if !url.is_empty() {
+        if !url.contains("/product/") {
+            let split: Vec<&str> = url.split('.').collect();
+            if split.len() >= 2 {
+                shop_id = split[split.len() - 2].to_string();
+                item_id = split[split.len() - 1].split('?').next().unwrap_or("").to_string();
+            }
+        } else {
+            let split2: Vec<&str> = url.split('/').collect();
+            if split2.len() >= 2 {
+                shop_id = split2[split2.len() - 2].to_string();
+                item_id = split2[split2.len() - 1].split('?').next().unwrap_or("").to_string();
+            }
+        }
+    }
+    (shop_id, item_id)
 }
 fn create_headers(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
