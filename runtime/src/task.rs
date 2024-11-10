@@ -29,8 +29,8 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
-        .enable_ech_grease()
-        .permute_extensions()
+        .enable_ech_grease(true)
+        .permute_extensions(true)
         .gzip(true)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;
@@ -392,8 +392,8 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
-        .enable_ech_grease()
-        .permute_extensions()
+        .enable_ech_grease(true)
+        .permute_extensions(true)
         .gzip(true)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;

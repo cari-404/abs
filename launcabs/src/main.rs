@@ -13,6 +13,7 @@ use tokio::{runtime, time::{timeout, Duration}};
 use std::sync::{Arc, RwLock};
 use chrono::prelude::*;
 use windows_version::*;
+use num_cpus;
 
 mod manager;
 mod new;
@@ -389,7 +390,9 @@ impl App {
         self.logs_window.set_visible(true);
         let version_info = env!("CARGO_PKG_VERSION");
         let log_message1 = format!("Launcher Auto Buy Shopee Version : {} (PREVIEW)", version_info);
+        let lcpu = format!("Logical CPUs: {}", num_cpus::get());
         self.append_log(&log_message1);
+        self.append_log(&lcpu);
         let version_message = match (is_server(), OsVersion::current()) {
             (true, version) if version >= OsVersion::new(10, 0, 0, 20348) => "Windows Server 2022".to_string(),
             (true, version) if version >= OsVersion::new(10, 0, 0, 17763) => "Windows Server 2019".to_string(),

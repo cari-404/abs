@@ -64,8 +64,8 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str,
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
-            .enable_ech_grease()
-            .permute_extensions()
+            .enable_ech_grease(true)
+            .permute_extensions(true)
             .gzip(true)
             //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
             .build()?;
@@ -145,8 +145,8 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
-            .enable_ech_grease()
-            .permute_extensions()
+            .enable_ech_grease(true)
+            .permute_extensions(true)
             .gzip(true)
             //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
             .build()?;
@@ -227,8 +227,8 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
-            .enable_ech_grease()
-            .permute_extensions()
+            .enable_ech_grease(true)
+            .permute_extensions(true)
             .gzip(true)
             //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
             .build()?;
@@ -345,7 +345,8 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
         "need_wallet_active_info": true,
         "sorting_flag": 8,
         "priority_promotion_ids": [],
-        "has_redeem_coins": false
+        "has_redeem_coins": false,
+        "payment_manual_change": true
     });
 
     // Convert struct to JSON
@@ -361,8 +362,8 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
-        .enable_ech_grease()
-        .permute_extensions()
+        .enable_ech_grease(true)
+        .permute_extensions(true)
         .gzip(true)
         .http2_max_concurrent_streams(1000)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
@@ -496,8 +497,8 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
-            .enable_ech_grease()
-            .permute_extensions()
+            .enable_ech_grease(true)
+            .permute_extensions(true)
             .gzip(true)
             //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
             .build()?;
@@ -589,8 +590,8 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
         let client = ClientBuilder::new()
             .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
-            .enable_ech_grease()
-            .permute_extensions()
+            .enable_ech_grease(true)
+            .permute_extensions(true)
             .gzip(true)
             //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
             .build()?;

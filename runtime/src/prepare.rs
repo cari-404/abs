@@ -89,8 +89,8 @@ pub async fn kurir(cookie_content: &str, shop_id: &str, item_id: &str, state: &s
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
-        .enable_ech_grease()
-        .permute_extensions()
+        .enable_ech_grease(true)
+        .permute_extensions(true)
         .gzip(true)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;
@@ -164,8 +164,8 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
-        .enable_ech_grease()
-        .permute_extensions()
+        .enable_ech_grease(true)
+        .permute_extensions(true)
         .gzip(true)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;
@@ -234,8 +234,8 @@ pub async fn address(cookie_content: &str) -> Result<(String, String, String, St
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
-        .enable_ech_grease()
-        .permute_extensions()
+        .enable_ech_grease(true)
+        .permute_extensions(true)
         .gzip(true)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;
@@ -280,8 +280,8 @@ pub async fn info_akun(cookie_content: &str) -> Result<(String, String, String),
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
-        .enable_ech_grease()
-        .permute_extensions()
+        .enable_ech_grease(true)
+        .permute_extensions(true)
         .gzip(true)
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;
@@ -372,8 +372,10 @@ pub fn read_cookie_file(file_name: &str) -> String {
     let file = File::open(&file_path);
     let mut cookie_content = String::new();
     let _ = file.expect("REASON").read_to_string(&mut cookie_content);
-    if cookie_content.is_empty() {
-        cookie_content.push(' ');
+    let trimmed_content = cookie_content.trim().to_string();
+    if trimmed_content.is_empty() {
+        " ".to_string()
+    } else {
+        trimmed_content
     }
-    cookie_content
 }

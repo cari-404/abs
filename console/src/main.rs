@@ -1,10 +1,11 @@
 /*This Is a first version (beta) Auto Buy Shopee
+Whats new In 0.9.7 :
+    Fix mismatch fsv
+    More adjustment
 Whats new In 0.9.6 :
     Fix payment error
 Whats new In 0.9.5 :
     Initial add shop voucher
-Whats new In 0.9.4-B :
-    Fix bug loops
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task::{self};
@@ -21,6 +22,7 @@ use std::fs::File;
 use std::io::Read;
 use structopt::StructOpt;
 use tokio::join;
+use num_cpus;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Auto Buy Shopee", about = "Make fast buy from shopee.co.id")]
@@ -125,7 +127,7 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     println!("");
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chosen_model = ModelInfo {
         name: String::from("NOT SET"),
@@ -154,6 +156,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     clear_screen();
     // Welcome Header
     println!("Auto Buy Shopee [Version {} ]", version_info);
+    println!("Logical CPUs: {}", num_cpus::get());
     println!("");
 
     // Get account details
@@ -358,38 +361,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             selected_platform_voucher.unwrap_or(platform_vouchers_target)
         };
     
-        if let Some(ref voucher) = freeshipping_voucher {
-            println!(
-                "freeshipping_voucher: {}, {}, {}",
-                voucher.promotionid,
-                voucher.voucher_code,
-                voucher.signature
-            );
-        } else {
-            println!("freeshipping_voucher is None");
-        }
-    
-        if let Some(ref voucher) = final_voucher {
-            println!(
-                "Voucher: {}, {}, {}",
-                voucher.promotionid,
-                voucher.voucher_code,
-                voucher.signature
-            );
-        } else {
-            println!("Voucher is None");
-        }
-
-        if let Some(ref voucher) = selected_shop_voucher {
-            println!(
-                "Voucher: {}, {}, {}",
-                voucher.promotionid,
-                voucher.voucher_code,
-                voucher.signature
-            );
-        } else {
-            println!("Voucher is None");
-        }
+        print_voucher_info("freeshipping_voucher", &freeshipping_voucher).await;
+        print_voucher_info("platform_voucher", &final_voucher).await;
+        print_voucher_info("shop_voucher", &selected_shop_voucher).await;
     
         loop{
             let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
@@ -506,6 +480,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+async fn print_voucher_info(voucher_type: &str, voucher: &Option<voucher::Vouchers>) {
+    match voucher {
+        Some(v) => println!(
+            "{}: {}, {}, {}",
+            voucher_type, v.promotionid, v.voucher_code, v.signature
+        ),
+        None => println!("{} is None", voucher_type),
+    }
+}
 fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {
 	println!("payment yang tersedia:");
 

@@ -1,6 +1,6 @@
 [package]
 name = "live"
-version = "0.9.6"
+version = "0.9.7"
 edition = "2021"
 
 [dependencies]
@@ -9,5 +9,5 @@ tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
 anyhow = "1.0"
 structopt = "0.3"
-rquest = { git = "https://github.com/cari-404/rquest2", features = ["gzip"] }
+rquest = { version = "0.27.5", features = ["gzip"] }
 serde_json = "1"
