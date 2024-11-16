@@ -1,9 +1,9 @@
 use rquest as reqwest;
 use reqwest::tls::Impersonate;
-use reqwest::{ClientBuilder, header::HeaderMap, Version, Body};
+use reqwest::{ClientBuilder, header::HeaderMap, Version};
 use reqwest::header::HeaderValue;
 use serde_json::{json, to_string, Value};
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
 use crate::prepare::ShippingInfo;
@@ -40,6 +40,91 @@ struct VoucherCollectionRequest {
     microsite_id: i64,
     offset: i64,
     number_of_vouchers_per_row: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Orders {
+    shopid: i64,
+    carrier_ids: Vec<i64>,
+    shop_vouchers: Vec<ShopVoucher>,
+    auto_apply: bool,
+    iteminfos: Vec<ItemInfo>,
+    selected_carrier_id: i64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ShopVoucher;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct ItemInfo {
+    itemid: i64,
+    modelid: i64,
+    quantity: i64,
+    item_group_id: Option<i64>,
+    insurances: Vec<Insurance>,
+    shopid: i64,
+    shippable: bool,
+    non_shippable_err: String,
+    none_shippable_reason: String,
+    none_shippable_full_reason: String,
+    add_on_deal_id: i64,
+    is_add_on_sub_item: bool,
+    is_pre_order: bool,
+    is_streaming_price: bool,
+    checkout: bool,
+    categories: Vec<Category>,
+    is_spl_zero_interest: bool,
+    is_prescription: bool,
+    offerid: i64,
+    supports_free_returns: bool,
+    user_path: i64,
+    models: Option<Models>,
+    tier_variations: Option<TierVariations>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Category {
+    catids: Vec<i64>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Insurance;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Models;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct TierVariations;
+
+#[derive(Serialize)]
+struct SelectedPaymentChannelDataOnRecommendPlatform {
+    version: i64,
+    option_info: String,
+    channel_id: i64,
+    channel_item_option_info: ChannelItemOptionInfoOnRecommendPlatform,
+    text_info: TextInfo,
+}
+
+#[derive(Serialize)]
+struct ChannelItemOptionInfoOnRecommendPlatform {
+    option_info: String,
+}
+
+#[derive(Serialize)]
+struct TextInfo {}
+
+#[derive(Serialize)]
+struct RecommendPlatform {
+    orders: String,
+    voucher_market_type: i64,
+    check_voucher_payment_criteria: bool,
+    selected_payment_channel_data: SelectedPaymentChannelDataOnRecommendPlatform,
+    spm_channel_id: i64,
+    need_wallet_active_info: bool,
+    sorting_flag: i64,
+    priority_promotion_ids: Vec<i64>,
+    has_redeem_coins: bool,
+    payment_manual_change: bool,
 }
 
 pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str, shop_id_str: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
@@ -289,69 +374,68 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
     let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
 	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
 	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
-	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
-	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
+	let channel_id: i64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
+	let version: i64 = chosen_payment.version.parse().expect("Failed to parse version");
 	let optioninfo: String = chosen_payment.option_info.clone();
-    let orders_json = json!([{
-        "shopid": shop_id,
-        "carrier_ids": [8005, 8003, 80099, 80055, 8006, 80021],
-        "shop_vouchers": [],
-        "auto_apply": true,
-        "iteminfos": [{
-            "itemid": item_id,
-            "modelid": chosen_model.modelid,
-            "quantity": quantity,
-            "item_group_id": null,
-            "insurances": [],
-            "shopid": shop_id,
-            "shippable": true,
-            "non_shippable_err": "",
-            "none_shippable_reason": "",
-            "none_shippable_full_reason": "",
-            "add_on_deal_id": 0,
-            "is_add_on_sub_item": false,
-            "is_pre_order": false,
-            "is_streaming_price": false,
-            "checkout": true,
-            "categories": [{
-                "catids": [100013, 100073]
+    let orders_json = vec![Orders {
+        shopid: shop_id,
+        carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
+        shop_vouchers: vec![],
+        auto_apply: true,
+        iteminfos: vec![ItemInfo {
+            itemid: item_id,
+            modelid: chosen_model.modelid,
+            quantity,
+            item_group_id: None,
+            insurances: vec![],
+            shopid: shop_id,
+            shippable: true,
+            non_shippable_err: String::new(),
+            none_shippable_reason: String::new(),
+            none_shippable_full_reason: String::new(),
+            add_on_deal_id: 0,
+            is_add_on_sub_item: false,
+            is_pre_order: false,
+            is_streaming_price: false,
+            checkout: true,
+            categories: vec![Category {
+                catids: vec![100013, 100073],
             }],
-            "is_spl_zero_interest": false,
-            "is_prescription": false,
-            "offerid": 0,
-            "supports_free_returns": false,
-            "user_path": 1,
-            "models": null,
-            "tier_variations": null
+            is_spl_zero_interest: false,
+            is_prescription: false,
+            offerid: 0,
+            supports_free_returns: false,
+            user_path: 1,
+            models: None,
+            tier_variations: None,
         }],
-        "selected_carrier_id": chosen_shipping.channelid
-    }]);
+        selected_carrier_id: chosen_shipping.channelid,
+    }];
     // Konversi orders_json menjadi string
-    let orders_string = to_string(&orders_json).unwrap();
-    let body_json = json!({
-        "orders": orders_string,
-        "voucher_market_type": 1,
-        "check_voucher_payment_criteria": true,
-        "selected_payment_channel_data": {
-            "version": version,
-            "option_info": "",
-            "channel_id": channel_id,
-            "channel_item_option_info": {
-                "option_info": optioninfo
+    let orders_string = to_string(&orders_json)?;
+    let body_json = RecommendPlatform {
+        orders: orders_string,
+        voucher_market_type: 1,
+        check_voucher_payment_criteria: true,
+        selected_payment_channel_data: SelectedPaymentChannelDataOnRecommendPlatform {
+            version,
+            option_info: String::new(),
+            channel_id,
+            channel_item_option_info: ChannelItemOptionInfoOnRecommendPlatform {
+                option_info: optioninfo,
             },
-            "text_info": {}
+            text_info: TextInfo {},
         },
-        "spm_channel_id": channel_id,
-        "need_wallet_active_info": true,
-        "sorting_flag": 8,
-        "priority_promotion_ids": [],
-        "has_redeem_coins": false,
-        "payment_manual_change": true
-    });
+        spm_channel_id: channel_id,
+        need_wallet_active_info: true,
+        sorting_flag: 8,
+        priority_promotion_ids: vec![],
+        has_redeem_coins: false,
+        payment_manual_change: true,
+    };
 
     // Convert struct to JSON
-    let body_str = serde_json::to_string(&body_json).unwrap();
-    let body = Body::from(body_str.clone());
+    let body_str = serde_json::to_string(&body_json)?;
     //println!("{:?}", body_str);
     //println!("{:?}", body);
     //println!("Request Headers:\n{:?}", headers);
@@ -374,7 +458,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
         .post(&url2)
         .header("Content-Type", "application/json")
         .headers(headers)
-        .body(body)
+        .body(body_str)
         .version(Version::HTTP_2) 
         .send()
         .await?;
@@ -440,7 +524,7 @@ async fn headers_checkout(cookie_content: &str) -> HeaderMap {
 	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
 	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
 	headers.insert("x-csrftoken", HeaderValue::from_str(csrftoken).unwrap());
-	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29333 app_type=1"));
+	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
 	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id"));
 	headers.insert("accept", HeaderValue::from_static("application/json"));
 	headers.insert("content-type", HeaderValue::from_static("application/json; charset=utf-8"));

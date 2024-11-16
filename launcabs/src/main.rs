@@ -6,7 +6,6 @@ use ::runtime::prepare::{self, ModelInfo};
 use native_windows_gui as nwg;
 use native_windows_derive::NwgUi;
 use native_windows_gui::NativeUi;
-use serde_json::{Value};
 use std::{fs, thread, io::Read};
 use single_instance::SingleInstance;
 use tokio::{runtime, time::{timeout, Duration}};
@@ -21,6 +20,7 @@ mod new;
 #[derive(Default)]
 pub struct SharedData {
     name_model: Vec<String>,
+    name_payment: Vec<String>,
     model_infos: Vec<ModelInfo>,
     kurirs: Vec<String>,
     rcode: String,
@@ -328,7 +328,11 @@ pub struct App {
     
     #[nwg_control]
     #[nwg_events( OnNotice: [App::update_ui] )]
-    notice: nwg::Notice,
+    notice_1: nwg::Notice,
+
+    #[nwg_control]
+    #[nwg_events( OnNotice: [App::update_ui_2] )]
+    notice_2: nwg::Notice,
     
     shared_data: Arc<RwLock<SharedData>>,
     
@@ -577,15 +581,13 @@ impl App {
             println!("{}, {}", shop_id, item_id);
             if shop_id != 0 && item_id != 0 {
                 // Clone the notice sender and runtime to move into the new thread
-                let notice_sender = self.notice.sender();
+                let notice_sender = self.notice_1.sender();
                 let shared_data = self.shared_data.clone();
         
                 thread::spawn(move || {
                     let rt = tokio::runtime::Runtime::new().unwrap();
-        
                     rt.block_on(async {
                         App::cek_async(&shop_id_str, &item_id_str, &cookie_content, shared_data).await;
-        
                         // Send a notice to update the UI
                         notice_sender.notice();
                     });
@@ -692,6 +694,13 @@ impl App {
         // Update the Button text and enable it
         self.cek_button.set_enabled(true);
         self.cek_button.set_text("Cek");
+    }
+    fn update_ui_2(&self) {
+        let data = self.shared_data.read().unwrap();
+        self.payment_combo.set_collection(data.name_payment.clone());
+        if !data.name_payment.is_empty() {
+            self.payment_combo.set_selection(Some(0));
+        }
     }
     fn quick(&self){
         let command = vec!["start","abs.exe",];
@@ -898,23 +907,26 @@ impl App {
         if let Ok(mut file) = fs::File::open("payment.txt") {
             let mut json_data = String::new();
             let _ = file.read_to_string(&mut json_data);
-            let hasil: Value = serde_json::from_str(&json_data).expect("REASON");
-            if let Some(data) = hasil.get("data").and_then(|data| data.as_array()) {
-                for data_value in data {
-                    if let Some(payment_array) = data_value.get("payment").and_then(|payment| payment.as_array()) {
-                        for payment_value in payment_array {
-                            if let Some(payment_obj) = payment_value.as_object() {
-                                if let Some(name) = payment_obj.get("name").and_then(|v| v.as_str()) {
-                                    self.payment_combo.push(name.to_string());
-                                    if !name.is_empty() {
-                                        self.payment_combo.set_selection(Some(0));
-                                    }
-                                }
-                            }
-                        }
+            let notice_sender = self.notice_2.sender();
+            let shared_data = self.shared_data.clone();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            println!("start opem");
+            thread::spawn(move || {
+                rt.block_on(async {
+                    match prepare::get_payment(&json_data).await {
+                        Ok(payment_info) => {
+                            let mut data = shared_data.write().unwrap();
+                            data.name_payment = payment_info.iter().map(|payment| payment.name.clone()).collect();
+                            println!("end opem");
+                            // Send a notice to update the UI
+                            notice_sender.notice();
+                        },
+                        Err(e) => {
+                            eprintln!("Error getting payment info: {}", e);
+                        },
                     }
-                }
-            }
+                });
+            });
         } else {
             let p = nwg::MessageParams {
                 title: "File not found",
@@ -972,7 +984,7 @@ impl App {
         clear_combo_box(&self.file_combo);
         clear_combo_box(&self.payment_combo);
         self.populate_file_combo();
-        self.populate_payment_combo()
+        self.populate_payment_combo();
     }
 }
 

@@ -1,14 +1,15 @@
 /*This Is a first version (beta) Auto Buy Shopee
+Whats new In 0.9.8 :
+    initial struct function task_ng
 Whats new In 0.9.7 :
     Fix mismatch fsv
     More adjustment
 Whats new In 0.9.6 :
     Fix payment error
-Whats new In 0.9.5 :
-    Initial add shop voucher
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task::{self};
+use runtime::task_ng::{self};
 use runtime::voucher::{self};
 use runtime::crypt::{self};
 use chrono::{Local, Duration, NaiveDateTime};
@@ -287,7 +288,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let quantity = opt.quantity.clone().unwrap_or_else(|| get_user_input("Kuantiti: "));
     let token = opt.token.clone().unwrap_or_else(|| get_user_input("Token Media: ")).trim().to_string();
 	
-	let payment_info = prepare::get_payment().await?;
+    let payment_json_data = prepare::open_payment_file().await?;
+	let payment_info = prepare::get_payment(&payment_json_data).await?;
 
 	if let Some(payment) = choose_payment(&payment_info, &opt) {
 		chosen_payment = payment;
@@ -366,10 +368,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
     
         loop{
-            let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
-            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
-            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-            let mpp = task::place_order(&cookie_content, place_order_body).await?;
+            let place_order_body = task_ng::get_builder(&cookie_content, device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
+            let mpp = task_ng::place_order_ng(&cookie_content, &place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
             if let Some(checkout_id) = mpp.get("checkoutid") {

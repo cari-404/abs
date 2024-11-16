@@ -6,7 +6,8 @@ use serde::Deserialize;
 use std::process;
 use serde_json::Value;
 use anyhow::Result;
-use std::fs::File;
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 use std::io::Read;
 
 // Struct to represent model information
@@ -35,12 +36,14 @@ pub struct PaymentInfo {
     pub place_order: Value,
 }
 
-pub async fn get_payment() -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error>> {
-    // Buka file "payment.txt"
-    let mut file = File::open("payment.txt")?;
+pub async fn open_payment_file() -> Result<String, Box<dyn std::error::Error>> {
+    let mut file = File::open("payment.txt").await?;
     let mut json_data = String::new();
-    file.read_to_string(&mut json_data)?;
+    file.read_to_string(&mut json_data).await?;
+    Ok(json_data)
+}
 
+pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error>> {
     let hasil: Value = serde_json::from_str(&json_data)?;
 
     if let Some(data) = hasil.get("data").and_then(|data| data.as_array()) {
@@ -149,7 +152,7 @@ pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> 
     println!("sending Get Shopee request...");
 	
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29333 app_type=1"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("x-shopee-language", HeaderValue::from_static("id"));
     headers.insert("if-none-match-", HeaderValue::from_static("55b03-8476c83de1a4cf3b74cc77b08ce741f9"));
@@ -369,7 +372,7 @@ pub fn extract_csrftoken(cookie_string: &str) -> &str {
 }
 pub fn read_cookie_file(file_name: &str) -> String {
     let file_path = format!("./akun/{}", file_name);
-    let file = File::open(&file_path);
+    let file = std::fs::File::open(&file_path);
     let mut cookie_content = String::new();
     let _ = file.expect("REASON").read_to_string(&mut cookie_content);
     let trimmed_content = cookie_content.trim().to_string();

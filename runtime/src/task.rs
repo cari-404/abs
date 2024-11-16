@@ -4,7 +4,8 @@ use reqwest::{ClientBuilder, header::HeaderMap, Version, Body};
 use reqwest::header::HeaderValue;
 use chrono::{Utc};
 use anyhow::Result;
-use serde_json::json;
+use serde_json::{json};
+
 use crate::prepare::ShippingInfo;
 use crate::prepare::ModelInfo;
 use crate::prepare::PaymentInfo;
@@ -452,7 +453,7 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 	))
 }
 
-fn headers_checkout(cookie_content: &str) -> HeaderMap {
+pub fn headers_checkout(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
     let mut headers = reqwest::header::HeaderMap::new();
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
@@ -466,7 +467,7 @@ fn headers_checkout(cookie_content: &str) -> HeaderMap {
 	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
 	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
 	headers.insert("x-csrftoken", HeaderValue::from_str(csrftoken).unwrap());
-	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29335 app_type=1"));
+	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
 	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Cannouncement%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Cearly_life_zone%25252Ccampaign_modules%25252Cflash_sales%25252Clive_streaming%25252Cvideo%25252Cdigital_products%25252Cdeals_nearby%25252Ccutline%25252Cdaily_discover%25252Cfood_order_status"));
 	headers.insert("accept", HeaderValue::from_static("application/json"));
 	headers.insert("content-type", HeaderValue::from_static("application/json"));
