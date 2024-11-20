@@ -6,12 +6,10 @@ use chrono::{Utc};
 use anyhow::Result;
 use serde_json::{json};
 
-use crate::prepare::ShippingInfo;
-use crate::prepare::ModelInfo;
-use crate::prepare::PaymentInfo;
+use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
 use crate::prepare::extract_csrftoken;
 use crate::voucher::Vouchers;
-use crate::crypt::{self};
+use crate::crypt::{self, DeviceInfo};
 
 pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let mut headers = headers_checkout(&cookie_content);
@@ -54,9 +52,9 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	Ok(v)
 }
 
-pub async fn place_order_builder(device_info: serde_json::Value, checkout_price_data: serde_json::Value, order_update_info: serde_json::Value, dropshipping_info: serde_json::Value, promotion_data: serde_json::Value, chosen_payment: &PaymentInfo, shoporders: serde_json::Value, shipping_orders: serde_json::Value, display_meta_data: serde_json::Value, fsv_selection_infos: serde_json::Value, buyer_info: serde_json::Value, client_event_info: serde_json::Value, buyer_txn_fee_info: serde_json::Value, disabled_checkout_info: serde_json::Value, buyer_service_fee_info: serde_json::Value, iof_info: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
-	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
+pub async fn place_order_builder(device_info: &DeviceInfo, checkout_price_data: serde_json::Value, order_update_info: serde_json::Value, dropshipping_info: serde_json::Value, promotion_data: serde_json::Value, chosen_payment: &PaymentInfo, shoporders: serde_json::Value, shipping_orders: serde_json::Value, display_meta_data: serde_json::Value, fsv_selection_infos: serde_json::Value, buyer_info: serde_json::Value, client_event_info: serde_json::Value, buyer_txn_fee_info: serde_json::Value, disabled_checkout_info: serde_json::Value, buyer_service_fee_info: serde_json::Value, iof_info: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+	let channel_id = chosen_payment.channel_id;
+	let version = chosen_payment.version;
 	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
 	let selected_payment_channel_data = if chosen_payment.place_order.is_null(){
@@ -109,24 +107,20 @@ pub async fn place_order_builder(device_info: serde_json::Value, checkout_price_
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn get_wtoken_builder(token: &str, device_info: serde_json::Value, shop_id_str: &str, item_id_str: &str, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
+pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_info: &ProductInfo, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
-	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
 	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
-	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
-	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
 	let optioninfo: String = chosen_payment.option_info.clone();
 
 	let body_json = json!({
 	  "shoporders": [
 		{
 		  "shop": {
-			"shopid": shop_id
+			"shopid": product_info.shop_id
 		  },
 		  "items": [
 			{
-			  "itemid": item_id as i64,
+			  "itemid": product_info.item_id,
 			  "modelid": chosen_model.modelid as i64,
 			  "quantity": quantity as i64,
 			  "insurances": [],
@@ -141,8 +135,8 @@ pub async fn get_wtoken_builder(token: &str, device_info: serde_json::Value, sho
 	  "selected_payment_channel_data": {
 		"page": "OPC_PAYMENT_SELECTION",
 		"removed_vouchers": [],
-		"channel_id": channel_id,
-		"version": version,
+		"channel_id": chosen_payment.channel_id,
+		"version": chosen_payment.version,
 		"group_id": 0,
 		"channel_item_option_info": {
 		  "option_info": optioninfo
@@ -210,21 +204,17 @@ pub async fn get_wtoken_builder(token: &str, device_info: serde_json::Value, sho
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item_id_str: &str, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
+pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
-	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
 	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
-	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
-	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
 	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
 	let selected_payment_channel_data = if chosen_payment.selected_get.is_null(){
 		json!({
 			"page": "OPC_PAYMENT_SELECTION",
 			"removed_vouchers": [],
-			"channel_id": channel_id,
-			"version": version,
+			"channel_id": chosen_payment.channel_id,
+			"version": chosen_payment.version,
 			"group_id": 0,
 			"channel_item_option_info": {
 			  "option_info": optioninfo
@@ -238,7 +228,7 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 	let shop_vouchers = if let Some(shop) = shop_vouchers_target {
 		json!([
 			{
-			  "shopid": shop_id,
+			  "shopid": product_info.shop_id,
 			  "promotionid": shop.promotionid,
 			  "voucher_code": shop.voucher_code,
 			  "applied_voucher_code": shop.voucher_code,
@@ -294,11 +284,11 @@ pub async fn get_builder(device_info: serde_json::Value, shop_id_str: &str, item
 	  "shoporders": [
 		{
 		  "shop": {
-			"shopid": shop_id
+			"shopid": product_info.shop_id
 		  },
 		  "items": [
 			{
-			  "itemid": item_id as i64,
+			  "itemid": product_info.item_id,
 			  "modelid": chosen_model.modelid as i64,
 			  "quantity": quantity as i64,
 			  "add_on_deal_id": 0,
@@ -456,6 +446,7 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 pub fn headers_checkout(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
     let mut headers = reqwest::header::HeaderMap::new();
+	headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
 	headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
 	headers.insert("x-sap-access-f", HeaderValue::from_static(""));

@@ -6,9 +6,7 @@ use serde_json::{json, to_string, Value};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-use crate::prepare::ShippingInfo;
-use crate::prepare::ModelInfo;
-use crate::prepare::PaymentInfo;
+use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
 use crate::prepare::extract_csrftoken;
 use crate::crypt::random_hex_string;
 
@@ -127,8 +125,8 @@ struct RecommendPlatform {
     payment_manual_change: bool,
 }
 
-pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str, shop_id_str: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
-	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
+pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str, product_info: &ProductInfo) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
+	let shop_id = product_info.shop_id;
     let headers = headers_checkout(&cookie_content).await;
 
     let body_json = json!({
@@ -369,26 +367,22 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 	Ok(vouchers)
 }
 
-pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: &str, item_id_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>), Box<dyn std::error::Error>>{
+pub async fn get_recommend_platform_vouchers(cookie_content: &str, product_info: &ProductInfo, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>), Box<dyn std::error::Error>>{
     let headers = headers_checkout(&cookie_content).await;
-    let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
-	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
 	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
-	let channel_id: i64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
-	let version: i64 = chosen_payment.version.parse().expect("Failed to parse version");
 	let optioninfo: String = chosen_payment.option_info.clone();
     let orders_json = vec![Orders {
-        shopid: shop_id,
+        shopid: product_info.shop_id,
         carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
         shop_vouchers: vec![],
         auto_apply: true,
         iteminfos: vec![ItemInfo {
-            itemid: item_id,
+            itemid: product_info.item_id,
             modelid: chosen_model.modelid,
             quantity,
             item_group_id: None,
             insurances: vec![],
-            shopid: shop_id,
+            shopid: product_info.shop_id,
             shippable: true,
             non_shippable_err: String::new(),
             none_shippable_reason: String::new(),
@@ -418,15 +412,15 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
         voucher_market_type: 1,
         check_voucher_payment_criteria: true,
         selected_payment_channel_data: SelectedPaymentChannelDataOnRecommendPlatform {
-            version,
+            version: chosen_payment.version,
             option_info: String::new(),
-            channel_id,
+            channel_id: chosen_payment.channel_id,
             channel_item_option_info: ChannelItemOptionInfoOnRecommendPlatform {
                 option_info: optioninfo,
             },
             text_info: TextInfo {},
         },
-        spm_channel_id: channel_id,
+        spm_channel_id: chosen_payment.channel_id,
         need_wallet_active_info: true,
         sorting_flag: 8,
         priority_promotion_ids: vec![],
@@ -513,6 +507,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, shop_id_str: 
 async fn headers_checkout(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
     let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
 	headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
 	headers.insert("x-sap-access-f", HeaderValue::from_static(""));

@@ -4,50 +4,109 @@ use reqwest::{ClientBuilder, Version};
 use reqwest::header::HeaderValue;
 use chrono::{Utc};
 use anyhow::Result;
-use serde_json::{Value, json};
+use serde_json::{Value};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use rayon::prelude::*;
+use std::thread;
 
-use crate::prepare::ShippingInfo;
-use crate::prepare::ModelInfo;
-use crate::prepare::PaymentInfo;
+use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
 use crate::voucher::Vouchers;
 use crate::task::headers_checkout;
-use crate::crypt::{self};
+use crate::crypt::{self, DeviceInfo};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct PlaceOrderBody {
     client_id: i64,
     cart_type: i64,
     timestamp: i64,
-    checkout_price_data: serde_json::Value, // Define more specific types if known
-    order_update_info: serde_json::Value,
-    dropshipping_info: serde_json::Value,
-    promotion_data: serde_json::Value,
-    selected_payment_channel_data: serde_json::Value,
-    shoporders: serde_json::Value,
-    shipping_orders: serde_json::Value,
-    display_meta_data: serde_json::Value,
-    fsv_selection_infos: serde_json::Value,
-    buyer_info: serde_json::Value,
-    client_event_info: serde_json::Value,
+    checkout_price_data: Option<Value>, // Define more specific types if known
+    order_update_info: Option<Value>,
+    dropshipping_info: Option<Value>,
+    promotion_data: Option<Value>,
+    selected_payment_channel_data: Option<Value>,
+    shoporders: Option<Value>,
+    shipping_orders: Option<Value>,
+    display_meta_data: Option<Value>,
+    fsv_selection_infos: Option<Value>,
+    buyer_info: Option<Value>,
+    client_event_info: Option<Value>,
     captcha_id: String,
-    buyer_txn_fee_info: serde_json::Value,
-    disabled_checkout_info: serde_json::Value,
+    buyer_txn_fee_info: Option<Value>,
+    disabled_checkout_info: Option<Value>,
     can_checkout: bool,
-    buyer_service_fee_info: serde_json::Value,
-    iof_info: serde_json::Value,
+    buyer_service_fee_info: Option<Value>,
+    iof_info: Option<Value>,
     add_to_cart_info: HashMap<String, serde_json::Value>,
     ignored_errors: Vec<i64>,
     ignore_warnings: bool,
     captcha_version: i64,
     captcha_signature: String,
     extra_data: ExtraData,
-    device_info: serde_json::Value,
+    device_info: DeviceInfo,
     device_type: String,
     _cft: Vec<i64>,
 }
+
+impl PlaceOrderBody {
+    fn new(device_info: DeviceInfo) -> Self {
+        let current_time = Utc::now();
+        PlaceOrderBody {
+            client_id: 5,
+            cart_type: 1,
+            timestamp: current_time.timestamp(),
+            checkout_price_data: None,
+            order_update_info: None,
+            dropshipping_info: None,
+            promotion_data: None,
+            selected_payment_channel_data: None,
+            shoporders: None,
+            shipping_orders: None,
+            display_meta_data: None,
+            fsv_selection_infos: None,
+            buyer_info: None,
+            client_event_info: None,
+            buyer_txn_fee_info: None,
+            disabled_checkout_info: None,
+            buyer_service_fee_info: None,
+            iof_info: None,
+            add_to_cart_info: HashMap::new(), // Empty HashMap for now
+            ignored_errors: vec![0],
+            can_checkout: true,
+            ignore_warnings: false,
+            captcha_id: "".to_string(),
+            captcha_version: 1,
+            captcha_signature: "".to_string(),
+            extra_data: ExtraData {
+                snack_click_id: None,
+            },
+            device_info,
+            device_type: "mobile".to_string(),
+            _cft: vec![4227792767, 24191],
+        }
+    }
+
+    fn insert(&mut self, key: &str, value: Option<Value>) {
+        match key {
+            "checkout_price_data" => self.checkout_price_data = value,
+            "order_update_info" => self.order_update_info = value,
+            "dropshipping_info" => self.dropshipping_info = value,
+            "promotion_data" => self.promotion_data = value,
+            "selected_payment_channel_data" => self.selected_payment_channel_data = value,
+            "shoporders" => self.shoporders = value,
+            "shipping_orders" => self.shipping_orders = value,
+            "display_meta_data" => self.display_meta_data = value,
+            "fsv_selection_infos" => self.fsv_selection_infos = value,
+            "buyer_info" => self.buyer_info = value,
+            "client_event_info" => self.client_event_info = value,
+            "buyer_txn_fee_info" => self.buyer_txn_fee_info = value,
+            "disabled_checkout_info" => self.disabled_checkout_info = value,
+            "buyer_service_fee_info" => self.buyer_service_fee_info = value,
+            "iof_info" => self.iof_info = value,
+            _ => {}
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 struct ExtraData {
     snack_click_id: Option<String>,
@@ -59,8 +118,8 @@ struct BodyJson {
     shoporders: Vec<ShopOrder>,
     selected_payment_channel_data: serde_json::Value,
     promotion_data: PromotionData,
-    fsv_selection_infos: serde_json::Value,
-    device_info: serde_json::Value,
+    fsv_selection_infos: Vec<Option<FsvSelectionInfo>>,
+    device_info: DeviceInfo,
     buyer_info: BuyerInfo,
     cart_type: i32,
     client_id: i32,
@@ -109,9 +168,9 @@ struct ChannelExclusiveInfo {
 #[derive(Serialize, Deserialize)]
 struct PromotionData {
     use_coins: bool,
-    free_shipping_voucher_info: serde_json::Value,
-    platform_vouchers: serde_json::Value,
-    shop_vouchers: serde_json::Value,
+    free_shipping_voucher_info: FreeShippingVoucherInfo,
+    platform_vouchers: Vec<Option<PlatformVoucher>>,
+    shop_vouchers: Vec<Option<ShopVoucher>>,
     check_shop_voucher_entrances: bool,
     auto_apply_shop_voucher: bool,
 }
@@ -176,7 +235,7 @@ struct FulfillmentInfo {
 #[derive(Serialize, Deserialize)]
 struct OrderUpdateInfo {}
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct ShopVoucher {
     shopid: i64,
     promotionid: i64,
@@ -187,13 +246,13 @@ struct ShopVoucher {
     shipping_order_distributions: Vec<()>, // Jika tipe ini kosong, bisa gunakan Vec<()>, atau tipe lain jika ada data
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct PlatformVoucher {
     voucher_code: String,
     promotionid: i64,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct FreeShippingVoucherInfo {
     free_shipping_voucher_id: i64,
     free_shipping_voucher_code: Option<String>,
@@ -204,14 +263,14 @@ struct FreeShippingVoucherInfo {
     required_spm_channels: Option<Vec<String>>,  // Optional, will be included only if Some
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct BannerInfo {
     banner_type: i64,
     learn_more_msg: String,
     msg: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct FsvSelectionInfo {
     fsv_id: i64,
     selected_shipping_ids: Vec<i64>,
@@ -219,19 +278,25 @@ struct FsvSelectionInfo {
 }
 
 #[derive(Serialize, Clone)]
-struct ChannelItemOptionInfo {
-    option_info: String,
+pub struct ChannelItemOptionInfo {
+    pub option_info: String,
 }
 
 #[derive(Serialize, Clone)]
-struct SelectedPaymentChannelData {
-    page: String,
-    removed_vouchers: Vec<String>,
-    channel_id: u64,
-    version: u64,
-    group_id: u64,
-    channel_item_option_info: ChannelItemOptionInfo,
-    additional_info: serde_json::Value,
+pub struct SelectedGet {
+    pub page: String,
+    pub removed_vouchers: Vec<String>,
+    pub channel_id: i64,
+    pub version: i64,
+    pub group_id: u64,
+    pub channel_item_option_info: ChannelItemOptionInfo,
+    pub additional_info: serde_json::Value,
+}
+#[derive(Serialize, Clone)]
+pub struct SelectedPlaceOrder {
+    pub channel_id: i64,
+    pub channel_item_option_info: ChannelItemOptionInfo,
+    pub version: i64,
 }
 
 pub async fn place_order_ng(cookie_content: &str, place_body: &PlaceOrderBody) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -275,138 +340,98 @@ pub async fn place_order_ng(cookie_content: &str, place_body: &PlaceOrderBody) -
 }
 
 pub async fn get_builder(cookie_content: &str, 
-    device_info: serde_json::Value, 
-    shop_id_str: &str, item_id_str: &str, 
+    device_info: DeviceInfo, 
+    product_info: &ProductInfo, 
     addressid_str: &str, quantity_str: &str, 
     chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, 
     platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
-	let shop_id = shop_id_str.parse::<i64>().expect("Failed to parse shop_id");
 	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
-	let item_id = item_id_str.parse::<i64>().expect("Failed to parse item_id");
 	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
-	let channel_id: u64 = chosen_payment.channel_id.parse().expect("Failed to parse channel_id");
-	let version: u64 = chosen_payment.version.parse().expect("Failed to parse version");
-	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
+    let freeshipping_voucher_clone = freeshipping_voucher.clone();
+    let shop_id = product_info.shop_id;
 
-    let mut selected_payment_channel_data = None;
-    let mut shop_vouchers = None;
-    let mut platform_vouchers = None;
-    let mut free_shipping_voucher_info = None;
-    let mut fsv_selection_infos = None;
-    
-    rayon::scope(|s| {
-        // Task 1
-        s.spawn(|_| {
-            selected_payment_channel_data = Some(if chosen_payment.selected_get.is_null() {
-                serde_json::to_value(SelectedPaymentChannelData {
-                    page: "OPC_PAYMENT_SELECTION".to_string(),
-                    removed_vouchers: vec![],
-                    channel_id,
-                    version,
-                    group_id: 0,
-                    channel_item_option_info: ChannelItemOptionInfo {
-                        option_info: optioninfo.clone(),
-                    },
-                    additional_info: json!({}),
-                })
-            } else {
-                Ok(chosen_payment.selected_get.clone())
-            });
-        });
-    
-        // Task 2
-        s.spawn(|_| {
-            let shop_vouchers_data = if let Some(shop) = shop_vouchers_target {
-                vec![ShopVoucher {
-                    shopid: shop_id,
-                    promotionid: shop.promotionid,
-                    voucher_code: shop.voucher_code.clone(),
-                    applied_voucher_code: shop.voucher_code.clone(),
-                    invalid_message_code: 0,
-                    reward_type: 0,
-                    shipping_order_distributions: vec![],
-                }]
-            } else {
-                vec![]
-            };
-            shop_vouchers = Some(serde_json::to_value(shop_vouchers_data));
-        });
-    
-        // Task 3
-        s.spawn(|_| {
-            let platform_vouchers_data = if let Some(platform) = platform_vouchers_target {
-                vec![PlatformVoucher {
-                    voucher_code: platform.voucher_code.clone(),
-                    promotionid: platform.promotionid,
-                }]
-            } else {
-                Vec::new()
-            };
-            platform_vouchers = Some(serde_json::to_value(&platform_vouchers_data));
-        });
-    
-        // Task 4
-        s.spawn(|_| {
-            let free_shipping_voucher_info_data = if let Some(ref shipping_vc) = freeshipping_voucher {
-                FreeShippingVoucherInfo {
-                    free_shipping_voucher_id: shipping_vc.promotionid,
-                    free_shipping_voucher_code: Some(shipping_vc.voucher_code.clone()),
-                    disabled_reason: None,
-                    disabled_reason_code: 0,
-                    banner_info: Some(BannerInfo {
-                        banner_type: 5,
-                        learn_more_msg: "".to_string(),
-                        msg: "Berhasil mendapatkan Gratis Ongkir".to_string(),
-                    }),
-                    required_be_channel_ids: Some(vec![]),
-                    required_spm_channels: Some(vec![]),
-                }
-            } else {
-                FreeShippingVoucherInfo {
-                    free_shipping_voucher_id: 0,
-                    free_shipping_voucher_code: None,
-                    disabled_reason: Some("".to_string()),
-                    disabled_reason_code: 0,
-                    banner_info: None,
-                    required_be_channel_ids: None,
-                    required_spm_channels: None,
-                }
-            };
-            free_shipping_voucher_info = Some(serde_json::to_value(&free_shipping_voucher_info_data));
-        });
-    
-        // Task 5
-        s.spawn(|_| {
-            let fsv_selection_infos_data = if let Some(shipping_vca) = freeshipping_voucher.clone() {
-                vec![FsvSelectionInfo {
-                    fsv_id: shipping_vca.promotionid,
-                    selected_shipping_ids: vec![1],
-                    potentially_applied_shipping_ids: vec![1],
-                }]
-            } else {
-                vec![]
-            };
-            fsv_selection_infos = Some(serde_json::to_value(&fsv_selection_infos_data));
-        });
+    let free_shipping_thread = thread::spawn(move || {
+        if let Some(ref shipping_vc) = freeshipping_voucher {
+            FreeShippingVoucherInfo {
+                free_shipping_voucher_id: shipping_vc.promotionid,
+                free_shipping_voucher_code: Some(shipping_vc.voucher_code.clone()),
+                disabled_reason: None,
+                disabled_reason_code: 0,
+                banner_info: Some(BannerInfo {
+                    banner_type: 5,
+                    learn_more_msg: "".to_string(),
+                    msg: "Berhasil mendapatkan Gratis Ongkir".to_string(),
+                }),
+                required_be_channel_ids: Some(vec![]),
+                required_spm_channels: Some(vec![]),
+            }
+        } else {
+            FreeShippingVoucherInfo {
+                free_shipping_voucher_id: 0,
+                free_shipping_voucher_code: None,
+                disabled_reason: Some("".to_string()),
+                disabled_reason_code: 0,
+                banner_info: None,
+                required_be_channel_ids: None,
+                required_spm_channels: None,
+            }
+        }
     });
-    
-    // Unwrap semua hasil setelah paralel selesai
-    let selected_payment_channel_data = selected_payment_channel_data.unwrap()?;
-    let shop_vouchers = shop_vouchers.unwrap()?;
-    let platform_vouchers = platform_vouchers.unwrap()?;
-    let free_shipping_voucher_info = free_shipping_voucher_info.unwrap()?;
-    let fsv_selection_infos = fsv_selection_infos.unwrap()?;
+
+    let shop_vouchers_thread = thread::spawn(move || {
+        if let Some(shop) = shop_vouchers_target {
+            vec![Some(ShopVoucher {
+                shopid: shop_id,
+                promotionid: shop.promotionid,
+                voucher_code: shop.voucher_code.clone(),
+                applied_voucher_code: shop.voucher_code.clone(),
+                invalid_message_code: 0,
+                reward_type: 0,
+                shipping_order_distributions: vec![],
+            })]
+        } else {
+            vec![]
+        }
+    });
+
+    let platform_vouchers_thread = thread::spawn(move || {
+        if let Some(platform) = platform_vouchers_target {
+            vec![Some(PlatformVoucher {
+                voucher_code: platform.voucher_code.clone(),
+                promotionid: platform.promotionid,
+            })]
+        } else {
+            vec![]
+        }
+    });
+
+    let fsv_selection_thread = thread::spawn(move || {
+        if let Some(shipping_vca) = freeshipping_voucher_clone {
+            vec![Some(FsvSelectionInfo {
+                fsv_id: shipping_vca.promotionid,
+                selected_shipping_ids: vec![1],
+                potentially_applied_shipping_ids: vec![1],
+            })]
+        } else {
+            vec![]
+        }
+    });
+
+    let free_shipping_voucher_info = free_shipping_thread.join().unwrap();
+    let shop_vouchers = shop_vouchers_thread.join().unwrap();
+    let platform_vouchers = platform_vouchers_thread.join().unwrap();
+    let fsv_selection_infos = fsv_selection_thread.join().unwrap();
 
     let body_json = BodyJson {
         timestamp: current_time.timestamp(),
         shoporders: vec![ShopOrder {
             shop: Shop {
-                shopid: shop_id,
+                shopid: product_info.shop_id,
             },
             items: vec![Item {
-                itemid: item_id,
+                itemid: product_info.item_id,
                 modelid: chosen_model.modelid,
                 quantity: quantity,
                 add_on_deal_id: 0,
@@ -423,7 +448,7 @@ pub async fn get_builder(cookie_content: &str,
             }],
             shipping_id: 1,
         }],
-        selected_payment_channel_data,
+        selected_payment_channel_data: chosen_payment.selected_get.clone(),
         promotion_data: PromotionData {
             use_coins: true,
             free_shipping_voucher_info,
@@ -472,7 +497,6 @@ pub async fn get_builder(cookie_content: &str,
     };
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
-	let current_time = Utc::now();
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
     // Convert struct to JSON
     let body_str = serde_json::to_string(&body_json)?;
@@ -509,74 +533,46 @@ pub async fn get_builder(cookie_content: &str,
 	let body_resp = response.text().await?;
 	//println!("Body: {}", body_resp);
     let v: serde_json::Value = serde_json::from_str(&body_resp).unwrap();
-	let keys = vec![
+    let keys = vec![
         "checkout_price_data",
         "order_update_info",
-		"dropshipping_info",
+        "dropshipping_info",
         "promotion_data",
-		"selected_payment_channel_data",
-		"shoporders",
+        "shoporders",
         "shipping_orders",
-		"display_meta_data",
-		"fsv_selection_infos",
-		"buyer_info",
+        "display_meta_data",
+        "fsv_selection_infos",
+        "buyer_info",
         "client_event_info",
-		"buyer_txn_fee_info",
-		"disabled_checkout_info",
-		"buyer_service_fee_info",
-		"iof_info",
+        "buyer_txn_fee_info",
+        "disabled_checkout_info",
+        "buyer_service_fee_info",
+        "iof_info",
     ];
-	let results: HashMap<String, Option<Value>> = keys.par_iter()
-		.map(|&key| {
-			// Mengambil nilai untuk setiap kunci, jika tidak ditemukan return None
-			(key.to_string(), v.get(key).cloned())
-		})
-		.collect();
 
-    let selected_payment_channel_data_place_order = if chosen_payment.place_order.is_null(){
-        json!({
-            "channel_id": channel_id,
-            "channel_item_option_info": {
-                "option_info": optioninfo
-            },
-            "version": version
-        })
-    }else{
-        chosen_payment.place_order.clone()
-    };
-	let place_order = PlaceOrderBody {
-		client_id: 5,
-		cart_type: 1,
-		timestamp: current_time.timestamp(),
-		checkout_price_data: results.get("checkout_price_data").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		order_update_info: results.get("order_update_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		dropshipping_info: results.get("dropshipping_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		promotion_data: results.get("promotion_data").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		selected_payment_channel_data: selected_payment_channel_data_place_order,
-		shoporders: results.get("shoporders").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		shipping_orders: results.get("shipping_orders").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		display_meta_data: results.get("display_meta_data").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		fsv_selection_infos: results.get("fsv_selection_infos").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		buyer_info: results.get("buyer_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		client_event_info: results.get("client_event_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		buyer_txn_fee_info: results.get("buyer_txn_fee_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		disabled_checkout_info: results.get("disabled_checkout_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		buyer_service_fee_info: results.get("buyer_service_fee_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		iof_info: results.get("iof_info").cloned().unwrap_or(None).unwrap_or(Value::Null),
-		add_to_cart_info: HashMap::new(), // Empty HashMap for now
-		ignored_errors: vec![0],
-		can_checkout: true,
-		ignore_warnings: false,
-		captcha_id: "".to_string(),
-		captcha_version: 1,
-		captcha_signature: "".to_string(),
-		extra_data: ExtraData {
-			snack_click_id: None,
-		},
-		device_info,
-		device_type: "mobile".to_string(),
-		_cft: vec![4227792767, 24191],
-	};
+    // Menyimpan hasil dalam struct PlaceOrderBody
+    let mut place_order_body = PlaceOrderBody::new(device_info);
 
-	Ok(place_order)
+    // Menggunakan thread::spawn untuk setiap key
+    let mut handles = vec![];
+
+    for key in keys {
+        let v_clone = v.clone(); // Clone untuk memastikan data dapat diakses di thread
+        let handle = thread::spawn(move || {
+            // Ambil nilai untuk setiap key di dalam thread
+            let value = v_clone.get(key).cloned();
+            (key.to_string(), value)
+        });
+        handles.push(handle);
+    }
+
+    // Mengumpulkan hasil dari setiap thread dan memasukkan ke dalam struct
+    for handle in handles {
+        let (key, value) = handle.join().unwrap();
+        place_order_body.insert(&key, value);
+    }
+
+    place_order_body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
+
+	Ok(place_order_body)
 }

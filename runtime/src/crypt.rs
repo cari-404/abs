@@ -2,7 +2,25 @@ use std::io::Cursor;
 use base64::encode;
 use byteorder::{BigEndian, WriteBytesExt};
 use rand::Rng;
-use serde_json::json;
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BuyerPaymentInfo {
+    pub is_jko_app_installed: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GpsLocationInfo {}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DeviceInfo {
+    pub device_id: String,
+    pub device_fingerprint: String,
+    pub device_sz_fingerprint: String,
+    pub tongdun_blackbox: String,
+    pub buyer_payment_info: BuyerPaymentInfo,
+    pub gps_location_info: GpsLocationInfo,
+}
 
 #[derive(Debug)]
 pub struct W {
@@ -61,19 +79,21 @@ pub fn random_hex_string(len: usize) -> String {
     result
 }
 
-pub fn create_devices(fp: &str) -> serde_json::Value {
+pub fn create_devices(fp: &str) -> DeviceInfo {
     let device_id = generate_device_id();
     let device_fingerprint = generate_device_fingerprint();
-    let body_json = json!({
-        "device_id": device_id,
-        "device_fingerprint": device_fingerprint,
-        "device_sz_fingerprint": fp,
-        "tongdun_blackbox": "td_disable_for_ID",
-        "buyer_payment_info": {
-            "is_jko_app_installed": false
+    
+    let device_info = DeviceInfo {
+        device_id,
+        device_fingerprint,
+        device_sz_fingerprint: fp.to_string(),
+        tongdun_blackbox: "td_disable_for_ID".to_string(),
+        buyer_payment_info: BuyerPaymentInfo {
+            is_jko_app_installed: false,
         },
-        "gps_location_info": {}
-    });
-    println!("{body_json}");
-    body_json
+        gps_location_info: GpsLocationInfo {},
+    };
+
+    println!("{:?}", device_info); // Debug print untuk output struct
+    device_info
 }

@@ -2,7 +2,7 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-use ::runtime::prepare::{self, ModelInfo};
+use ::runtime::prepare::{self, ModelInfo, ProductInfo};
 use native_windows_gui as nwg;
 use native_windows_derive::NwgUi;
 use native_windows_gui::NativeUi;
@@ -574,12 +574,9 @@ impl App {
             let cookie_content = prepare::read_cookie_file(&file);
             let url_1 = start.trim();
             println!("{}", url_1);
-            let (shop_id_str, item_id_str) = prepare::process_url(url_1);
-            // Parsing dari String ke i64
-            let shop_id: i64 = shop_id_str.parse::<i64>().unwrap_or(0);
-            let item_id: i64 = item_id_str.parse::<i64>().unwrap_or(0);
-            println!("{}, {}", shop_id, item_id);
-            if shop_id != 0 && item_id != 0 {
+            let product_info = prepare::process_url(url_1);
+            println!("{}, {}", product_info.shop_id, product_info.item_id);
+            if product_info.shop_id != 0 && product_info.item_id != 0 {
                 // Clone the notice sender and runtime to move into the new thread
                 let notice_sender = self.notice_1.sender();
                 let shared_data = self.shared_data.clone();
@@ -587,7 +584,7 @@ impl App {
                 thread::spawn(move || {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
-                        App::cek_async(&shop_id_str, &item_id_str, &cookie_content, shared_data).await;
+                        App::cek_async(&product_info, &cookie_content, shared_data).await;
                         // Send a notice to update the UI
                         notice_sender.notice();
                     });
@@ -597,9 +594,9 @@ impl App {
             }
         }
     }
-    async fn cek_async(shop_id: &str, item_id: &str, cookie_content: &str, shared_data: Arc<RwLock<SharedData>>) {
+    async fn cek_async(product_info: &ProductInfo, cookie_content: &str, shared_data: Arc<RwLock<SharedData>>) {
         // Memanggil get_product dengan timeout
-        match timeout(Duration::from_secs(10), prepare::get_product(shop_id, item_id, cookie_content)).await {
+        match timeout(Duration::from_secs(10), prepare::get_product(&product_info, cookie_content)).await {
             Ok(Ok((name, model_info, is_official_shop, rcode))) => {
                 let mut data = shared_data.write().unwrap();
                 data.name_model = model_info.iter().map(|model| model.name.clone()).collect();
@@ -625,7 +622,7 @@ impl App {
                 return; // Early return or handle the error as needed
             }
         };
-        match timeout(Duration::from_secs(10), prepare::kurir(&cookie_content, &shop_id, &item_id, &state, &city, &district)).await {
+        match timeout(Duration::from_secs(10), prepare::kurir(&cookie_content, &product_info, &state, &city, &district)).await {
             Ok(Ok(kurirs)) => {
                 let mut data = shared_data.write().unwrap();
                 data.kurirs = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
@@ -735,8 +732,8 @@ impl App {
         let collectionid = self.cid_text.text();
         let url_1 = url.trim();
         println!("{}", url_1);
-        let (shop_id, item_id) = prepare::process_url(url_1);
-        let refe = format!("https://shopee.co.id/product/{}/{}", shop_id, item_id);
+        let product_info = prepare::process_url(url_1);
+        let refe = format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id);
         // Menjalankan program abs.exe dengan argumen yang dibuat
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
             let mut command = vec![

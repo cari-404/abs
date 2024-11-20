@@ -1,13 +1,15 @@
 /*This Is a first version (beta) Auto Buy Shopee
+Whats new In 0.9.9 :
+    More optimalize code
+    Add more Structured data
 Whats new In 0.9.8 :
     initial struct function task_ng
 Whats new In 0.9.7 :
     Fix mismatch fsv
     More adjustment
-Whats new In 0.9.6 :
-    Fix payment error
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
+use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
 use runtime::task::{self};
 use runtime::task_ng::{self};
 use runtime::voucher::{self};
@@ -24,6 +26,7 @@ use std::io::Read;
 use structopt::StructOpt;
 use tokio::join;
 use num_cpus;
+use serde_json::json;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Auto Buy Shopee", about = "Make fast buy from shopee.co.id")]
@@ -144,9 +147,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	};
     let mut chosen_payment = PaymentInfo {
 		name: String::from("NOT SET"),
-		channel_id: String::from("NOT SET"),
+		channel_id: 0,
 		option_info: String::from("NOT SET"),
-		version: String::from("NOT SET"),
+		version: 0,
 		txn_fee: 0,
         selected_get: serde_json::Value::Null,
         place_order: serde_json::Value::Null,
@@ -238,10 +241,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 	let url_1 = target_url.trim();
-    let (shop_id, item_id) = prepare::process_url(url_1);
-	println!("shop_id: {}", shop_id);
-    println!("item_id: {}", item_id);
-	let (name, model_info, is_official_shop, status_code) = prepare::get_product(&shop_id, &item_id, &cookie_content).await?;
+    let product_info = prepare::process_url(url_1);
+	println!("shop_id: {}", product_info.shop_id);
+    println!("item_id: {}", product_info.item_id);
+	let (name, model_info, is_official_shop, status_code) = prepare::get_product(&product_info, &cookie_content).await?;
     if status_code != "200 OK"{
         println!("Status: {}", status_code);
         println!("Harap Ganti akun");
@@ -268,7 +271,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Anda memilih model: {}", chosen_model.name);
-	let shipping_info = prepare::kurir(&cookie_content, &shop_id, &item_id, &state, &city, &district).await?;
+	let shipping_info = prepare::kurir(&cookie_content, &product_info, &state, &city, &district).await?;
 	clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
 
@@ -301,6 +304,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		// Handle if the payment is not valid
 	}
 
+    if chosen_payment.selected_get.is_null() {
+        chosen_payment.selected_get = serde_json::to_value(SelectedGet {
+            page: "OPC_PAYMENT_SELECTION".to_string(),
+            removed_vouchers: vec![],
+            channel_id: chosen_payment.channel_id,
+            version: chosen_payment.version,
+            group_id: 0,
+            channel_item_option_info: ChannelItemOptionInfo {
+                option_info: chosen_payment.option_info.clone(),
+            },
+            additional_info: json!({}),
+        })
+        .unwrap();
+    };
+    if chosen_payment.place_order.is_null(){
+        chosen_payment.place_order = serde_json::to_value(SelectedPlaceOrder {
+            channel_id: chosen_payment.channel_id,
+            channel_item_option_info: ChannelItemOptionInfo {
+                option_info: chosen_payment.option_info.clone(),
+            },
+            version: chosen_payment.version,
+        })
+        .unwrap();
+    };
+
 	println!("{:?}", chosen_payment);
 	clear_screen();
 	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
@@ -321,7 +349,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let selected_shop_voucher = if !voucher_code_shop.is_empty() {
             let (result,) = join!(
-                voucher::save_shop_voucher_by_voucher_code(&voucher_code_shop, &cookie_content, &shop_id)
+                voucher::save_shop_voucher_by_voucher_code(&voucher_code_shop, &cookie_content, &product_info)
             );
             match result {
                 Ok(voucher) => voucher,
@@ -352,7 +380,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         
         let (freeshipping_voucher, platform_vouchers_target) = join!(
             voucher::get_recommend_platform_vouchers(
-                &cookie_content, &shop_id, &item_id, &quantity, 
+                &cookie_content, &product_info, &quantity, 
                 &chosen_model, &chosen_payment, &chosen_shipping
             )
         ).0?;
@@ -368,7 +396,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
     
         loop{
-            let place_order_body = task_ng::get_builder(&cookie_content, device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
+            let place_order_body = task_ng::get_builder(&cookie_content, device_info.clone(), &product_info, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
             let mpp = task_ng::place_order_ng(&cookie_content, &place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
@@ -398,7 +426,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let buyer_service_fee_info;
             let iof_info;
             loop{
-                let get_body = task::get_wtoken_builder(&token, device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
+                let get_body = task::get_wtoken_builder(&token, &device_info, &product_info, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
                 let (
                     price_data, update_info, dropship_info, promo_data, payment_data, 
                     orders, shipping_orders_data, meta_data, fsv_infos, buyer_info_data, 
@@ -443,7 +471,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Harga merchandise_subtotal tidak sesuai, ulangi...");
                 // Loop akan berlanjut jika kondisi tidak terpenuhi
             }
-            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let place_order_body = task::place_order_builder(&device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
             let mpp = task::place_order(&cookie_content, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
@@ -456,9 +484,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } 
     }else {
         loop{
-            let get_body = task::get_builder(device_info.clone(), &shop_id, &item_id, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
+            let get_body = task::get_builder(&device_info, &product_info, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
             let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
-            let place_order_body = task::place_order_builder(device_info.clone(), checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
+            let place_order_body = task::place_order_builder(&device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
             let mpp = task::place_order(&cookie_content, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));

@@ -28,12 +28,17 @@ pub struct ShippingInfo {
 #[derive(Debug, Clone, Deserialize)]
 pub struct PaymentInfo {
     pub name: String,
-    pub channel_id: String,
+    pub channel_id: i64,
     pub option_info: String,
-    pub version: String,
+    pub version: i64,
     pub txn_fee: i64,
     pub selected_get: Value,
     pub place_order: Value,
+}
+
+pub struct ProductInfo {
+    pub shop_id: i64,
+    pub item_id: i64,
 }
 
 pub async fn open_payment_file() -> Result<String, Box<dyn std::error::Error>> {
@@ -53,18 +58,18 @@ pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn st
             .flat_map(|payment_infos| {
                 payment_infos.iter().map(|payment_info| {
                     let name = payment_info.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
-                    let channel_id = payment_info.get("channelId").and_then(|id| id.as_str()).unwrap_or("Unknown");
+                    let channel_id = payment_info.get("channelId").and_then(|id| id.as_str().and_then(|s| s.parse::<i64>().ok())).unwrap_or(0);
                     let option_info = payment_info.get("optionInfo").and_then(|info| info.as_str()).unwrap_or("Unknown");
-                    let version = payment_info.get("version").and_then(|v| v.as_str()).unwrap_or("Unknown");
+                    let version = payment_info.get("version").and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).unwrap_or(0);
                     let txn_fee = payment_info.get("txnFee").and_then(|fee| fee.as_i64()).unwrap_or(0);
                     let selected_get = payment_info.get("get").unwrap_or(&serde_json::Value::Null);
                     let place_order = payment_info.get("place_order").unwrap_or(&serde_json::Value::Null);
 
                     PaymentInfo {
                         name: name.to_string(),
-                        channel_id: channel_id.to_string(),
+                        channel_id,
                         option_info: option_info.to_string(),
-                        version: version.to_string(),
+                        version,
                         txn_fee,
                         selected_get: selected_get.clone(),
                         place_order: place_order.clone(),
@@ -79,14 +84,14 @@ pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn st
     // Handle the case where there is an error or no payment information is found
 	process::exit(1);
 }
-pub async fn kurir(cookie_content: &str, shop_id: &str, item_id: &str, state: &str, city: &str, district: &str) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
+pub async fn kurir(cookie_content: &str, product_info: &ProductInfo, state: &str, city: &str, district: &str) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
 	let headers = create_headers(&cookie_content);
 	let city_encoded = city.replace(" ", "%20");
     let district_encoded = district.replace(" ", "%20");
     let state_encoded = state.replace(" ", "%20");
 	println!("{}-{}-{}", state_encoded, city_encoded, district_encoded);
 
-	let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}", city_encoded, district_encoded, item_id, shop_id, state_encoded);
+	let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
 	println!("{}", url2);
     // Buat klien HTTP
 	let client = ClientBuilder::new()
@@ -144,10 +149,10 @@ pub async fn kurir(cookie_content: &str, shop_id: &str, item_id: &str, state: &s
     // Handle the case where there is an error or no shipping information is found
     process::exit(1);
 }
-pub async fn get_product(shop_id: &str, item_id: &str, cookie_content: &str) -> Result<(String, Vec<ModelInfo>, String, String), Box<dyn std::error::Error>> {
+pub async fn get_product(product_info: &ProductInfo, cookie_content: &str) -> Result<(String, Vec<ModelInfo>, String, String), Box<dyn std::error::Error>> {
     let csrftoken = extract_csrftoken(&cookie_content);
-    let refe = format!("https://shopee.co.id/product/{}/{}", shop_id, item_id);
-    let url2 = format!("https://shopee.co.id/api/v4/item/get?itemid={}&shopid={}", item_id, shop_id);
+    let refe = format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id);
+    let url2 = format!("https://shopee.co.id/api/v4/item/get?itemid={}&shopid={}", product_info.item_id, product_info.shop_id);
     println!("{}", url2);
     println!("sending Get Shopee request...");
 	
@@ -318,7 +323,7 @@ pub async fn info_akun(cookie_content: &str) -> Result<(String, String, String),
         process::exit(1);
     }
 }
-pub fn process_url(url: &str) -> (String, String) {
+pub fn process_url(url: &str) -> ProductInfo {
     let mut shop_id = String::new();
     let mut item_id = String::new();
     if !url.is_empty() {
@@ -336,11 +341,16 @@ pub fn process_url(url: &str) -> (String, String) {
             }
         }
     }
-    (shop_id, item_id)
+    // Konversi ke i64, gunakan 0 jika parsing gagal
+    let shop_id = shop_id.parse::<i64>().unwrap_or(0);
+    let item_id = item_id.parse::<i64>().unwrap_or(0);
+
+    ProductInfo { shop_id, item_id }
 }
 fn create_headers(cookie_content: &str) -> HeaderMap {
     let csrftoken = extract_csrftoken(&cookie_content);
     let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("sec-ch-ua", HeaderValue::from_static("\"Chromium\";v=\"127\", \"Not)A;Brand\";v=\"24\", \"Google Chrome\";v=\"127\""));
     headers.insert("x-shopee-language", HeaderValue::from_static("id"));
     headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));

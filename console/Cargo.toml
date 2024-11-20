@@ -1,6 +1,6 @@
 [package]
 name = "abs"
-version = "0.9.8"
+version = "0.9.9"
 edition = "2021"
 authors = ["Paijo"]
 description = "Auto Buy from Shopee.co.id"
@@ -24,3 +24,4 @@ structopt = "0.3"
 crossterm = "0.28.1"
 ctrlc = "3.4.5"
 num_cpus = "1.16"
+cpuprofiler = "0.0.4"
