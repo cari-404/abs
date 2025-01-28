@@ -10,6 +10,8 @@ use std::fs::File;
 use std::io::{self, Read, Write};
 use chrono::{Local, Duration, NaiveDateTime};
 use structopt::StructOpt;
+use tokio::sync::Notify;
+use std::sync::Arc;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Auto save voucher Shopee", about = "Make fast save from shopee.co.id")]
@@ -66,10 +68,10 @@ fn select_cookie_file() -> Result<String> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-	// Check if there are command line arguments
+	let version_info = env!("CARGO_PKG_VERSION");
 	
 	println!("-------------------------------------------");
-	println!("save_vouchers [Version 1.2.2]");
+	println!("save_vouchers [Version {}]", version_info);
 	println!("");
 	println!("Dapatkan Info terbaru di https://google.com");
 	println!("");
@@ -99,6 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 				4 
 			}; 
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
+			let notify = Arc::new(Notify::new());
 			// Process HTTP with common function
 			countdown_to_task(task_time_dt).await;
 			for _ in 0..max_threads {
@@ -106,6 +109,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let cookie_data = cookie_data.clone();
 				let promotion_id = promotion_id.clone();
 				let signature = signature.clone();
+				let notify = notify.clone();
 				tokio::spawn(async move {
 					let resp = match voucher::save_voucher(&promotion_id, &signature, &cookie_data).await {
 						Ok(Some(value)) => Some(value),
@@ -115,6 +119,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 							None // Pastikan `resp` selalu memiliki tipe `Option<Vouchers>`
 						}
 					};
+					if resp.is_some() {
+						notify.notify_one(); // Beri sinyal ke thread lain
+					}
 				
 					if let Some(value) = resp {
 						if let Err(e) = tx.send(Some(value)).await {
@@ -127,10 +134,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			while let Some(value) = rx.recv().await {
 				if let Some(vouchers) = value {
 					println!("Vouchers ditemukan: {:?}", vouchers);
+					break; 
 				} else {
 					println!("Tidak ada vouchers.");
 				}
 			}
+			notify.notify_waiters();
 		}
 		Mode::Collection => {
 			println!("Contoh input: collection_id: 12923214728");
