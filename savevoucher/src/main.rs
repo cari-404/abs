@@ -3,7 +3,8 @@ This version base of save_voucher 1.2.1
 Whats new In 1.2.2 :
 integarted tp ABS
 */
-use runtime::voucher::{self};
+use runtime::prepare;
+use runtime::voucher::{self, Vouchers};
 use anyhow::Result;
 use std::fs::File;
 use std::io::{self, Read, Write};
@@ -82,6 +83,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let file_path = format!("./akun/{}", selected_file);
 	let mut cookie_content = String::new();
 	File::open(&file_path)?.read_to_string(&mut cookie_content)?;
+	let cookie_data = prepare::create_cookie(&cookie_content);
 	match mode {
 		Mode::Normal => {
 			println!("Contoh input: \npromotion_id: 856793882394624, \nSignature: 8e8a4ced8d6905570114f163a08a15de55c3fed560f8a3a8a25e6e179783b480");
@@ -91,10 +93,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			
 			let task_time_str = opt.time.clone().unwrap_or_else(|| get_user_input("Enter task time (HH:MM:SS.NNNNNNNNN): "));
 			let task_time_dt = parse_task_time(&task_time_str)?;
-
+			let max_threads = if num_cpus::get() > 4 { 
+				num_cpus::get() 
+			} else {
+				4 
+			}; 
+			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			// Process HTTP with common function
 			countdown_to_task(task_time_dt).await;
-			voucher::save_voucher(&promotion_id, &signature, &cookie_content).await?;
+			for _ in 0..max_threads {
+				let tx = tx.clone();
+				let cookie_data = cookie_data.clone();
+				let promotion_id = promotion_id.clone();
+				let signature = signature.clone();
+				tokio::spawn(async move {
+					let resp = match voucher::save_voucher(&promotion_id, &signature, &cookie_data).await {
+						Ok(Some(value)) => Some(value),
+						Ok(None) => None,
+						Err(e) => {
+							eprintln!("Error: {:?}", e);
+							None // Pastikan `resp` selalu memiliki tipe `Option<Vouchers>`
+						}
+					};
+				
+					if let Some(value) = resp {
+						if let Err(e) = tx.send(Some(value)).await {
+							eprintln!("Gagal mengirim nilai: {:?}", e);
+						}
+					}
+				});
+			}
+			drop(tx); // Tutup pengirim setelah semua tugas selesai
+			while let Some(value) = rx.recv().await {
+				if let Some(vouchers) = value {
+					println!("Vouchers ditemukan: {:?}", vouchers);
+				} else {
+					println!("Tidak ada vouchers.");
+				}
+			}
 		}
 		Mode::Collection => {
 			println!("Contoh input: collection_id: 12923214728");
@@ -103,10 +139,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let task_time_dt = parse_task_time(&task_time_str)?;
 			// Process HTTP with common function
 			countdown_to_task(task_time_dt).await;
-			let (promotion_id, signature) = voucher::some_function(&voucher_collectionid, &cookie_content).await?;
+			let (promotion_id, signature) = voucher::some_function(&voucher_collectionid, &cookie_data).await?;
 			println!("promotion_id : {}", promotion_id);
 			println!("signature	: {}", signature);
-			voucher::save_voucher(&promotion_id, &signature, &cookie_content).await?;
+			voucher::save_voucher(&promotion_id, &signature, &cookie_data).await?;
 		}
 	}
 	println!("\nTask completed! Current time: {}", Local::now().format("%H:%M:%S.%3f"));

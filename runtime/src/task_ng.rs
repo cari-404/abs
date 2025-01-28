@@ -7,9 +7,8 @@ use anyhow::Result;
 use serde_json::{Value};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use std::thread;
 
-use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
+use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::voucher::Vouchers;
 use crate::task::headers_checkout;
 use crate::crypt::{self, DeviceInfo};
@@ -48,7 +47,7 @@ pub struct PlaceOrderBody {
 }
 
 impl PlaceOrderBody {
-    fn new(device_info: DeviceInfo) -> Self {
+    fn new(device_info: &DeviceInfo) -> Self {
         let current_time = Utc::now();
         PlaceOrderBody {
             client_id: 5,
@@ -79,7 +78,7 @@ impl PlaceOrderBody {
             extra_data: ExtraData {
                 snack_click_id: None,
             },
-            device_info,
+            device_info: device_info.clone(),
             device_type: "mobile".to_string(),
             _cft: vec![4227792767, 24191],
         }
@@ -148,7 +147,7 @@ struct Shop {
 struct Item {
     itemid: i64,
     modelid: i64,
-    quantity: i64,
+    quantity: i32,
     add_on_deal_id: i32,
     is_add_on_sub_item: bool,
     item_group_id: Option<i64>,
@@ -299,12 +298,12 @@ pub struct SelectedPlaceOrder {
     pub version: i64,
 }
 
-pub async fn place_order_ng(cookie_content: &str, place_body: &PlaceOrderBody) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn place_order_ng(cookie_content: &CookieData, place_body: &PlaceOrderBody) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
     // Convert struct to JSON
-	let body_str = serde_json::to_string(&place_body)?;
+	//let body_str = serde_json::to_string(&place_body)?;
 	println!("Status: Start Place_Order");
 	//println!("{:?}", body_str);
 	//println!("Request Headers:\n{:?}", headers);
@@ -313,6 +312,7 @@ pub async fn place_order_ng(cookie_content: &str, place_body: &PlaceOrderBody) -
 	println!("{}", url2);
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -324,37 +324,33 @@ pub async fn place_order_ng(cookie_content: &str, place_body: &PlaceOrderBody) -
     // Buat permintaan HTTP POST
     let response = client
         .post(&url2)
-        .header("Content-Type", "application/json")
         .headers(headers)
-		.body(body_str)
+		.json(&place_body)
         .version(Version::HTTP_2) 
         .send()
         .await?;
 	
 	println!("Status: Done Place_Order");
 	//println!("Status: {}", response.status());
-	let body_resp = response.text().await?;
-	let v: serde_json::Value = serde_json::from_str(&body_resp).unwrap();
-	println!("Body: {}", body_resp);
+    let v: Value = response.json().await?;
+	println!("Body: {}", v);
 	Ok(v)
 }
 
-pub async fn get_builder(cookie_content: &str, 
-    device_info: DeviceInfo, 
+pub async fn get_builder(cookie_content: &CookieData, 
+    device_info: &DeviceInfo, 
     product_info: &ProductInfo, 
-    addressid_str: &str, quantity_str: &str, 
+    address_info: &AddressInfo, quantity: i32, 
     chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, 
     platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
-	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
-	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
 	let current_time = Utc::now();
     let freeshipping_voucher_clone = freeshipping_voucher.clone();
     let shop_id = product_info.shop_id;
 
-    let free_shipping_thread = thread::spawn(move || {
-        if let Some(ref shipping_vc) = freeshipping_voucher {
-            FreeShippingVoucherInfo {
+    let free_shipping_thread = tokio::spawn(async move{
+        match freeshipping_voucher {
+            Some(shipping_vc) => FreeShippingVoucherInfo {
                 free_shipping_voucher_id: shipping_vc.promotionid,
                 free_shipping_voucher_code: Some(shipping_vc.voucher_code.clone()),
                 disabled_reason: None,
@@ -366,9 +362,8 @@ pub async fn get_builder(cookie_content: &str,
                 }),
                 required_be_channel_ids: Some(vec![]),
                 required_spm_channels: Some(vec![]),
-            }
-        } else {
-            FreeShippingVoucherInfo {
+            },
+            None => FreeShippingVoucherInfo {
                 free_shipping_voucher_id: 0,
                 free_shipping_voucher_code: None,
                 disabled_reason: Some("".to_string()),
@@ -376,13 +371,13 @@ pub async fn get_builder(cookie_content: &str,
                 banner_info: None,
                 required_be_channel_ids: None,
                 required_spm_channels: None,
-            }
+            },
         }
     });
 
-    let shop_vouchers_thread = thread::spawn(move || {
-        if let Some(shop) = shop_vouchers_target {
-            vec![Some(ShopVoucher {
+    let shop_vouchers_thread = tokio::spawn(async move{
+        match shop_vouchers_target {
+            Some(shop) => vec![Some(ShopVoucher {
                 shopid: shop_id,
                 promotionid: shop.promotionid,
                 voucher_code: shop.voucher_code.clone(),
@@ -390,39 +385,36 @@ pub async fn get_builder(cookie_content: &str,
                 invalid_message_code: 0,
                 reward_type: 0,
                 shipping_order_distributions: vec![],
-            })]
-        } else {
-            vec![]
+            })],
+            None => vec![],
         }
     });
 
-    let platform_vouchers_thread = thread::spawn(move || {
-        if let Some(platform) = platform_vouchers_target {
-            vec![Some(PlatformVoucher {
+    let platform_vouchers_thread = tokio::spawn(async move{
+        match platform_vouchers_target {
+            Some(platform) => vec![Some(PlatformVoucher {
                 voucher_code: platform.voucher_code.clone(),
                 promotionid: platform.promotionid,
-            })]
-        } else {
-            vec![]
+            })],
+            None => vec![],
         }
     });
 
-    let fsv_selection_thread = thread::spawn(move || {
-        if let Some(shipping_vca) = freeshipping_voucher_clone {
-            vec![Some(FsvSelectionInfo {
+    let fsv_selection_thread = tokio::spawn(async move{
+        match freeshipping_voucher_clone {
+            Some(shipping_vca) => vec![Some(FsvSelectionInfo {
                 fsv_id: shipping_vca.promotionid,
                 selected_shipping_ids: vec![1],
                 potentially_applied_shipping_ids: vec![1],
-            })]
-        } else {
-            vec![]
+            })],
+            None => vec![],
         }
     });
 
-    let free_shipping_voucher_info = free_shipping_thread.join().unwrap();
-    let shop_vouchers = shop_vouchers_thread.join().unwrap();
-    let platform_vouchers = platform_vouchers_thread.join().unwrap();
-    let fsv_selection_infos = fsv_selection_thread.join().unwrap();
+    let free_shipping_voucher_info = free_shipping_thread.await?;
+    let shop_vouchers = shop_vouchers_thread.await?;
+    let platform_vouchers = platform_vouchers_thread.await?;
+    let fsv_selection_infos = fsv_selection_thread.await?;
 
     let body_json = BodyJson {
         timestamp: current_time.timestamp(),
@@ -473,7 +465,7 @@ pub async fn get_builder(cookie_content: &str,
         shipping_orders: vec![ShippingOrder {
             sync: true,
             buyer_address_data: BuyerAddressData {
-                addressid: addressid,
+                addressid: address_info.id,
                 address_type: 0,
                 tax_address: "".to_string(),
             },
@@ -499,7 +491,7 @@ pub async fn get_builder(cookie_content: &str,
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
     // Convert struct to JSON
-    let body_str = serde_json::to_string(&body_json)?;
+    //let body_str = serde_json::to_string(&body_json)?;
 	println!("Status: Start Checkout");
 	//println!("{:?}", body_str);
 	//println!("Request Headers:\n{:?}", headers);
@@ -508,6 +500,7 @@ pub async fn get_builder(cookie_content: &str,
 	println!("{}", url2);
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -519,9 +512,8 @@ pub async fn get_builder(cookie_content: &str,
     // Buat permintaan HTTP POST
     let response = client
         .post(&url2)
-        .header("Content-Type", "application/json")
         .headers(headers)
-		.body(body_str)
+		.json(&body_json)
         .version(Version::HTTP_2) 
         .send()
         .await?;
@@ -530,9 +522,8 @@ pub async fn get_builder(cookie_content: &str,
     // Handle response as needed
 	//println!("Request Headers:\n{:?}", headers);
 	println!("Status: {}", response.status());
-	let body_resp = response.text().await?;
+	let v: Value = response.json().await?;
 	//println!("Body: {}", body_resp);
-    let v: serde_json::Value = serde_json::from_str(&body_resp).unwrap();
     let keys = vec![
         "checkout_price_data",
         "order_update_info",
@@ -551,14 +542,14 @@ pub async fn get_builder(cookie_content: &str,
     ];
 
     // Menyimpan hasil dalam struct PlaceOrderBody
-    let mut place_order_body = PlaceOrderBody::new(device_info);
+    let mut place_order_body = PlaceOrderBody::new(&device_info);
 
     // Menggunakan thread::spawn untuk setiap key
     let mut handles = vec![];
 
     for key in keys {
         let v_clone = v.clone(); // Clone untuk memastikan data dapat diakses di thread
-        let handle = thread::spawn(move || {
+        let handle = tokio::spawn(async move{
             // Ambil nilai untuk setiap key di dalam thread
             let value = v_clone.get(key).cloned();
             (key.to_string(), value)
@@ -568,8 +559,14 @@ pub async fn get_builder(cookie_content: &str,
 
     // Mengumpulkan hasil dari setiap thread dan memasukkan ke dalam struct
     for handle in handles {
-        let (key, value) = handle.join().unwrap();
-        place_order_body.insert(&key, value);
+        match handle.await {
+            Ok((key, value)) => {
+                place_order_body.insert(&key, value);
+            }
+            Err(e) => {
+                eprintln!("Error joining thread: {:?}", e);
+            }
+        }
     }
 
     place_order_body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));

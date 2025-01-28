@@ -128,6 +128,7 @@ async fn claim_reward(cookie_content: &str, device_id: &str, device_fingerprint:
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie)?);
 
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -216,6 +217,7 @@ async fn report_reward(cookie_content: &str, device_id: &str, device_fingerprint
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie)?);
 
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -235,9 +237,8 @@ async fn report_reward(cookie_content: &str, device_id: &str, device_fingerprint
 
     if response.status() == StatusCode::OK {
         //println!("Headers: {:#?}", response.headers());
-        let body_resp = response.text().await?;
-        println!("Body: {}", body_resp);
-        let v: Value = serde_json::from_str(&body_resp)?;
+        let v: Value = response.json().await?;
+        println!("Body: {}", v);
         // Extract the task_id
         // Extract task_id, event_code, and period_num
         let rep_task_id = v["data"]["refresh_config"]["task_pendant_config"]["task_id"]
@@ -310,6 +311,7 @@ async fn cek_reward(cookie_content: &str, device_id: &str, device_fingerprint: &
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie)?);
 
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -328,9 +330,8 @@ async fn cek_reward(cookie_content: &str, device_id: &str, device_fingerprint: &
 
     if response.status() == StatusCode::OK {
         //println!("Headers: {:#?}", response.headers());
-        let body_resp = response.text().await?;
-        println!("Body: {}", body_resp);
-        let v: Value = serde_json::from_str(&body_resp)?;
+        let v: Value = response.json().await?;
+        println!("Body: {}", v);
         // Extract the task_id
         // Extract task_id, event_code, and period_num
         let task_id = v["data"]["task_pendant_config"]["task_id"]

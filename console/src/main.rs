@@ -1,4 +1,7 @@
 /*This Is a first version (beta) Auto Buy Shopee
+Whats new in 0.10.0 :
+    Add multi thread for task_ng
+    Introduced launchng
 Whats new In 0.9.9 :
     More optimalize code
     Add more Structured data
@@ -14,6 +17,7 @@ use runtime::task::{self};
 use runtime::task_ng::{self};
 use runtime::voucher::{self};
 use runtime::crypt::{self};
+use runtime::telegram::{self};
 use chrono::{Local, Duration, NaiveDateTime};
 use std::io::{self, Write};
 use std::thread;
@@ -24,9 +28,12 @@ use anyhow::Result;
 use std::fs::File;
 use std::io::Read;
 use structopt::StructOpt;
-use tokio::join;
 use num_cpus;
 use serde_json::json;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+mod kurir_ng;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Auto Buy Shopee", about = "Make fast buy from shopee.co.id")]
@@ -46,14 +53,16 @@ struct Opt {
 	#[structopt(short, long, help = "Set Harga MAX")]
     harga: Option<String>,	
 	#[structopt(short, long, help = "Set quantity")]
-    quantity: Option<String>,
+    quantity: Option<i32>,
 	#[structopt(short, long, help = "Set token media")]
     token: Option<String>,
 	
-	#[structopt(short, long, help = "Apply token media")]
-    media: bool,
+	/*#[structopt(short, long, help = "Apply token media")]
+    media: bool,*/ // Confused?
 	#[structopt(short, long, help = "Apply freeshipping voucher only")]
     fsv_only: bool,
+    #[structopt(short, long, help = "No freeshipping voucher")]
+    no_fsv: bool,
 	#[structopt(short, long, help = "Apply platform Voucher")]
     platform_vouchers: bool,
 	#[structopt(short, long, help = "Apply shop Voucher(test)")]
@@ -100,7 +109,7 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     let padding = 15;
     let version_info = env!("CARGO_PKG_VERSION");
 	println!("---------------------------------------------------------------");
-    println!("              Auto Buy Shopee [Version {} ]              ", version_info);
+    println!("              Auto Buy Shopee [Version {}]              ", version_info);
     println!("{:<padding$}: {}", "Cookie file", selected_file, padding = padding);
     println!("{:<padding$}: {}", "Username", username, padding = padding);
     println!("{:<padding$}: {}", "URL", target_url, padding = padding);
@@ -155,11 +164,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         place_order: serde_json::Value::Null,
 	};
 	let version_info = env!("CARGO_PKG_VERSION");
+    let mut quantity = 1;
 	let opt = Opt::from_args();
+    let max_threads = if num_cpus::get() > 4 { 
+        num_cpus::get() 
+    } else {
+        4 
+    }; 
+    println!("Default Quantity: {}", quantity);
+    let config = match telegram::open_config_file().await {
+        Ok(config_content) => {
+            match telegram::get_config(&config_content).await {
+                Ok(tele_info) => tele_info,
+                Err(e) => {
+                    eprintln!("Failed to parse config file: {}. Using default data.", e);
+                    telegram::get_data("a", "a")
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to open config file: {}. Using default data.", e);
+            telegram::get_data("a", "a")
+        }
+    };
+    println!("Telegram Notification data: {:?}", config);
 	args_checking(&opt);
     clear_screen();
     // Welcome Header
-    println!("Auto Buy Shopee [Version {} ]", version_info);
+    println!("Auto Buy Shopee [Version {}]", version_info);
     println!("Logical CPUs: {}", num_cpus::get());
     println!("");
 
@@ -168,8 +200,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let cookie_content = prepare::read_cookie_file(&selected_file);
 	
-    let csrftoken = prepare::extract_csrftoken(&cookie_content);
-    println!("csrftoken: {}", csrftoken);
+    let cookie_data = prepare::create_cookie(&cookie_content);
+    println!("csrftoken: {}", cookie_data.csrftoken);
 
     let fp_folder = format!("./header/{}/af-ac-enc-sz-token.txt", selected_file);
 	
@@ -229,14 +261,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 
     // Perform the main task
-    let (username, email, phone) = prepare::info_akun(&cookie_content).await?;
-	let (state, city, district, addressid) = prepare::address(&cookie_content).await?;
+    let (username, email, phone) = prepare::info_akun(&cookie_data).await?;
+	let address_info = prepare::address(&cookie_data).await?;
 	println!("Username  : {}", username);
 	println!("Email     : {}", email);
 	println!("Phone     : {}", phone);
-	println!("State     : {}", state);
-	println!("City      : {}", city);
-	println!("District  : {}", district);
+	println!("State     : {}", address_info.state);
+	println!("City      : {}", address_info.city);
+	println!("District  : {}", address_info.district);
 	//std::thread::sleep(std::time::Duration::from_secs(2));
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
@@ -244,7 +276,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let product_info = prepare::process_url(url_1);
 	println!("shop_id: {}", product_info.shop_id);
     println!("item_id: {}", product_info.item_id);
-	let (name, model_info, is_official_shop, status_code) = prepare::get_product(&product_info, &cookie_content).await?;
+	let (name, model_info, is_official_shop, status_code) = prepare::get_product(&product_info, &cookie_data).await?;
     if status_code != "200 OK"{
         println!("Status: {}", status_code);
         println!("Harap Ganti akun");
@@ -254,7 +286,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
-	println!("addressid  : {}", addressid);
+	println!("addressid  : {}", address_info.id);
 	println!("name             : {}", name);
     // println!("models           : \n{:#?}", model_info);
     println!("Official Shop ?  : {}", is_official_shop);
@@ -271,11 +303,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Anda memilih model: {}", chosen_model.name);
-	let shipping_info = prepare::kurir(&cookie_content, &product_info, &state, &city, &district).await?;
+	let shipping_info = prepare::kurir(&cookie_data, &product_info, &address_info).await?;
 	clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
+    
+    let get_body_ship = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
+    let (_, _, _, _, _, _, shipping_orders, _, _, _, _, _, _, _, _) = task::checkout_get(&cookie_data, get_body_ship).await?;
+    println!("{}", shipping_orders[0]["selected_logistic_channelid"]);
+    for integrated in shipping_orders[0]["logistics"]["integrated_channelids"].as_array().unwrap() {
+        chosen_shipping.channelid = integrated.as_i64().expect("0");
+        println!("integrated_special: {:?}", chosen_shipping);
+        let get_body_shipl = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
+        let (_, _, _, _, _, _, shipping_ordersl, _, _, _, _, _, _, _, _) = task::checkout_get(&cookie_data, get_body_shipl).await?;
+        if let Some(specific_channel_ids) = shipping_ordersl[0]["logistics"]["specific_channel_mappings"][integrated.to_string()]["specific_channel_ids"].as_array() {
+            for specific in specific_channel_ids {
+                println!("specific_channelid: {}", specific);
+            }
+        } else {
+            eprintln!("specific_channel_ids not found or is not an array for integrated_channelid: {}", integrated);
+        }
+    }
 
-	if let Some(shipping) = choose_shipping(&shipping_info, &opt) {
+	if let Some(shipping) = kurir_ng::choose_shipping(&shipping_info, &opt) {
 		chosen_shipping = shipping;
 		println!("Anda memilih shipping: {:#?}", chosen_shipping);
 		// Continue with the next logic
@@ -288,7 +337,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	clear_screen();
 	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 	let max_price = opt.harga.clone().unwrap_or_else(|| get_user_input("Harga MAX:")).trim().to_string();
-	let quantity = opt.quantity.clone().unwrap_or_else(|| get_user_input("Kuantiti: "));
+    quantity = opt.quantity.clone().unwrap_or_else(|| {
+        loop {
+            let input = get_user_input("Kuantiti: ");
+            match input.parse::<i32>() {
+                Ok(value) => break value, // Kembalikan nilai yang valid
+                Err(_) => {
+                    println!("Input tidak valid, coba lagi.");
+                }
+            }
+        }
+    });
     let token = opt.token.clone().unwrap_or_else(|| get_user_input("Token Media: ")).trim().to_string();
 	
     let payment_json_data = prepare::open_payment_file().await?;
@@ -343,69 +402,118 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only || opt.shop_vouchers {
         if !voucher_collectionid.is_empty() {
-            let (promo_id, sig) = voucher::some_function(&voucher_collectionid, &cookie_content).await?;
+            let (promo_id, sig) = voucher::some_function(&voucher_collectionid, &cookie_data).await?;
             promotionid = promo_id;
             signature = sig;
         }
-        let selected_shop_voucher = if !voucher_code_shop.is_empty() {
-            let (result,) = join!(
-                voucher::save_shop_voucher_by_voucher_code(&voucher_code_shop, &cookie_content, &product_info)
-            );
-            match result {
-                Ok(voucher) => voucher,
-                Err(e) => return Err(e),
+        let cookie_data_clone = cookie_data.clone();
+        let product_info_clone = product_info.clone();
+        let shop_task = tokio::spawn(async move{
+            if !voucher_code_shop.is_empty() {
+                voucher::save_shop_voucher_by_voucher_code(&voucher_code_shop, &cookie_data_clone, &product_info_clone).await
+            } else {
+                Ok(None)
             }
-        }else{
-            None
-        };
-        let selected_platform_voucher = if !promotionid.is_empty() && !signature.is_empty() {
-            let (result,) = join!(
-                voucher::save_voucher(&promotionid, &signature, &cookie_content)
-            );
-            match result {
-                Ok(voucher) => Some(voucher),
-                Err(e) => return Err(e),
+        });
+        let cookie_data_clone = cookie_data.clone();
+        let platform_task = tokio::spawn(async move{
+            if !promotionid.is_empty() && !signature.is_empty() {
+                voucher::save_voucher(&promotionid, &signature, &cookie_data_clone).await
+            } else if !voucher_code_platform.is_empty() {
+                voucher::save_platform_voucher_by_voucher_code(&voucher_code_platform, &cookie_data_clone).await
+            } else {
+                Ok(None)
             }
-        } else if !voucher_code_platform.is_empty() {
-            let (result,) = join!(
-                voucher::save_platform_voucher_by_voucher_code(&voucher_code_platform, &cookie_content)
-            );
-            match result {
-                Ok(voucher) => Some(voucher),
-                Err(e) => return Err(e),
+        });
+        let chosen_model_clone = chosen_model.clone();
+        let chosen_payment_clone = chosen_payment.clone();
+        let chosen_shipping_clone = chosen_shipping.clone();
+        let cookie_data_clone = cookie_data.clone();
+        let product_info_clone = product_info.clone();
+        let recommend_task = tokio::spawn(async move{
+            if !opt.no_fsv {
+                voucher::get_recommend_platform_vouchers(
+                    &cookie_data_clone,
+                    &product_info_clone,
+                    quantity,
+                    &chosen_model_clone,
+                    &chosen_payment_clone,
+                    &chosen_shipping_clone,
+                )
+                .await
+            } else {
+                Ok((None, None))
             }
-        } else {
-            None
-        };
+        });        
+
+        let selected_shop_voucher = shop_task.await??;
+        let selected_platform_voucher = platform_task.await??;
+        let (freeshipping_voucher, platform_vouchers_target) = recommend_task.await??;
         
-        let (freeshipping_voucher, platform_vouchers_target) = join!(
-            voucher::get_recommend_platform_vouchers(
-                &cookie_content, &product_info, &quantity, 
-                &chosen_model, &chosen_payment, &chosen_shipping
-            )
-        ).0?;
-        
-        let final_voucher = if opt.fsv_only || opt.shop_vouchers {
+        let final_voucher = if opt.fsv_only || (opt.shop_vouchers && !opt.platform_vouchers && !opt.claim_platform_vouchers && !opt.collection_vouchers) {
             None
         } else {
-            selected_platform_voucher.unwrap_or(platform_vouchers_target)
+            selected_platform_voucher.or(platform_vouchers_target)
         };
     
         print_voucher_info("freeshipping_voucher", &freeshipping_voucher).await;
         print_voucher_info("platform_voucher", &final_voucher).await;
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
+        let stop_flag = Arc::new(AtomicBool::new(false));
+        for i in 0..max_threads {
+            println!("Running on thread: {}", i);
+            let tx = tx.clone();
+            let stop_flag = stop_flag.clone();
+            let chosen_model = chosen_model.clone();
+            let chosen_payment = chosen_payment.clone();
+            let chosen_shipping = chosen_shipping.clone();
+            let cookie_data = cookie_data.clone();
+            let device_info = device_info.clone();
+            let product_info = product_info.clone();
+            let address_info = address_info.clone();
+            let freeshipping_voucher = freeshipping_voucher.clone();
+            let final_voucher = final_voucher.clone();
+            let selected_shop_voucher = selected_shop_voucher.clone();
     
-        loop{
-            let place_order_body = task_ng::get_builder(&cookie_content, device_info.clone(), &product_info, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await?;
-            let mpp = task_ng::place_order_ng(&cookie_content, &place_order_body).await?;
-            // Mengecek apakah `mpp` memiliki field `checkoutid`
-            println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
-            if let Some(checkout_id) = mpp.get("checkoutid") {
-                let checkout_id = checkout_id.as_i64().unwrap();
-                let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
-                println!("{}", url);
-                break;
-            }
+            tokio::spawn(async move {
+                loop{
+                    if stop_flag.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let place_order_body = match task_ng::get_builder(&cookie_data, &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await
+                    {
+                        Ok(body) => body,
+                        Err(err) => {
+                            eprintln!("Error in get_builder: {:?}", err);
+                            continue;
+                        }
+                    };
+                    let mpp = match task_ng::place_order_ng(&cookie_data, &place_order_body).await
+                    {
+                        Ok(response) => response,
+                        Err(err) => {
+                            eprintln!("Error in place_order_ng: {:?}", err);
+                            continue;
+                        }
+                    };
+                    // Mengecek apakah `mpp` memiliki field `checkoutid`
+                    println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+                    if let Some(checkout_id) = mpp.get("checkoutid") {
+                        let checkout_id = checkout_id.as_i64().unwrap();
+                        let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
+                        println!("{}", url);
+                        let _ = tx.send(url).await;
+                        stop_flag.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                }
+            });
+        }
+        drop(tx); // Tutup pengirim setelah semua tugas selesai
+        while let Some(url) = rx.recv().await {
+            println!("{}", url);
         }
     } else if !token.is_empty(){
         loop{
@@ -426,12 +534,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let buyer_service_fee_info;
             let iof_info;
             loop{
-                let get_body = task::get_wtoken_builder(&token, &device_info, &product_info, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
+                let get_body = task::get_wtoken_builder(&token, &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
                 let (
                     price_data, update_info, dropship_info, promo_data, payment_data, 
                     orders, shipping_orders_data, meta_data, fsv_infos, buyer_info_data, 
                     event_info, txn_fee_info, disabled_info, service_fee_info, iof_data
-                ) = task::checkout_get(&cookie_content, get_body.clone()).await?;
+                ) = task::checkout_get(&cookie_data, get_body.clone()).await?;
                 // Cek apakah `merchandise_subtotal` sesuai dengan `max_price * 100000`
                 if let Some(merchandise_subtotal) = price_data["merchandise_subtotal"].as_i64() {
                     println!("merchandise_subtotal: {}", merchandise_subtotal);
@@ -472,7 +580,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Loop akan berlanjut jika kondisi tidak terpenuhi
             }
             let place_order_body = task::place_order_builder(&device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-            let mpp = task::place_order(&cookie_content, place_order_body).await?;
+            let mpp = task::place_order(&cookie_data, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
             if let Some(checkout_id) = mpp.get("checkoutid") {
@@ -484,10 +592,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         } 
     }else {
         loop{
-            let get_body = task::get_builder(&device_info, &product_info, &addressid, &quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
-            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_content, get_body).await?;
+            let get_body = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
+            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_data, get_body).await?;
             let place_order_body = task::place_order_builder(&device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-            let mpp = task::place_order(&cookie_content, place_order_body).await?;
+            let mpp = task::place_order(&cookie_data, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
             if let Some(checkout_id) = mpp.get("checkoutid") {
@@ -542,36 +650,6 @@ fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {
         // Return the selected payment based on the index
         println!("{:?}", payments.get(choice_index - 1).cloned());
         return payments.get(choice_index - 1).cloned();
-    }
-
-    None
-}
-
-fn choose_shipping(shippings: &[ShippingInfo], opt: &Opt) -> Option<ShippingInfo> {
-    println!("shipping yang tersedia:");
-
-    for (index, shipping) in shippings.iter().enumerate() {
-        println!("{}. {} - Harga: {} - Id: {}", index + 1, shipping.channel_name, shipping.original_cost / 100000, shipping.channelid);
-    }
-
-    if let Some(kurir) = opt.kurir.clone() {
-        // If opt.kurir is present, find the shipping with a matching channel_name
-        if let Some(selected_shipping) = shippings.iter().find(|shipping| shipping.channel_name == kurir) {
-            println!("{:?}", selected_shipping);
-            return Some(selected_shipping.clone());
-        } else {
-            println!("Tidak ada shipping dengan nama '{}'", kurir);
-            return None;
-        }
-    }
-
-	let user_input = get_user_input("Pilih Shipping yang disediakan: ");
-
-    // Convert user input to a number
-    if let Ok(choice_index) = user_input.trim().parse::<usize>() {
-        // Return the selected shipping based on the index
-        println!("{:?}", shippings.get(choice_index - 1).cloned());
-        return shippings.get(choice_index - 1).cloned();
     }
 
     None
@@ -688,16 +766,16 @@ fn select_cookie_file() -> Result<String> {
 
 fn args_checking(opt: &Opt){
 	if opt.pro_id.is_some() && opt.sign.is_some() && !opt.claim_platform_vouchers {
-        eprintln!("Error: The --pro-id and --sign argument requires --claim_platform_vouchers to be enabled.");
+        eprintln!("Error: The --pro-id and --sign argument requires --claim-platform-vouchers to be enabled.");
         std::process::exit(1);	
     }else if opt.pro_id.is_some() && !opt.claim_platform_vouchers {
-        eprintln!("Error: The --pro-id argument requires --claim_platform_vouchers to be enabled.");
+        eprintln!("Error: The --pro-id argument requires --claim-platform-vouchers to be enabled.");
         std::process::exit(1);
 	}else if opt.pro_id.is_some() && opt.claim_platform_vouchers && !opt.sign.is_some() {
         eprintln!("Error: The --pro-id argument need --sign argument to be function.");
         std::process::exit(1);
     }else if opt.sign.is_some() && !opt.claim_platform_vouchers {
-		eprintln!("Error: The --sign argument requires --claim_platform_vouchers to be enabled.");
+		eprintln!("Error: The --sign argument requires --claim-platform-vouchers to be enabled.");
 		std::process::exit(1);
 	}else if opt.sign.is_some() && opt.claim_platform_vouchers  && !opt.pro_id.is_some() {
 		eprintln!("Error: The --sign argument need --pro-id argument to be function.");
@@ -708,5 +786,8 @@ fn args_checking(opt: &Opt){
 	}else if opt.code_shop.is_some() && !opt.shop_vouchers {
 		eprintln!("Error: The --code-shop argument requires --shop-vouchers to be enabled.");
         std::process::exit(1);
-	}
+    } else if opt.no_fsv && (!opt.claim_platform_vouchers && !opt.platform_vouchers && !opt.shop_vouchers) {
+        eprintln!("Error: The --no-fsv argument requires at least one of --claim-platform-vouchers, --platform-vouchers, or --shop-vouchers to be enabled.");
+        std::process::exit(1);
+    }
 }

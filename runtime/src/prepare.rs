@@ -2,16 +2,17 @@ use rquest as reqwest;
 use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, header::HeaderMap, Version, StatusCode};
 use reqwest::header::HeaderValue;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::process;
-use serde_json::Value;
+use serde_json::{Value};
 use anyhow::Result;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use std::io::Read;
+use urlencoding::encode as url_encode;
 
 // Struct to represent model information
-#[derive(Debug, Clone)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct ModelInfo {
     pub name: String,
     pub price: i64,
@@ -19,28 +20,137 @@ pub struct ModelInfo {
     pub modelid: i64,
     pub promotionid: i64,
 }
+#[derive(Deserialize, Debug, Clone)]
+pub struct CookieData {
+    pub cookie_content: String,
+    pub csrftoken: String,
+}
+#[derive(Deserialize, Debug)]
+struct ProductData {
+    name: Option<String>,
+    models: Option<Vec<ModelInfo>>,
+    is_official_shop: Option<bool>,
+}
+#[derive(Deserialize, Debug)]
+struct GetProduct {
+    data: Option<ProductData>,
+}
 #[derive(Debug, Clone)]
 pub struct ShippingInfo {
     pub original_cost: i64,
     pub channelid: i64,
     pub channel_name: String,
 }
-#[derive(Debug, Clone, Deserialize)]
-pub struct PaymentInfo {
-    pub name: String,
-    pub channel_id: i64,
-    pub option_info: String,
-    pub version: i64,
-    pub txn_fee: i64,
-    pub selected_get: Value,
-    pub place_order: Value,
+#[derive(Debug, Deserialize)]
+pub struct KurirResponse {
+    pub data: Option<ShippingData>,
+}
+#[derive(Debug, Deserialize)]
+pub struct ShippingData {
+    pub shipping_infos: Option<Vec<ShippingInfoRaw>>,
+}
+#[derive(Debug, Deserialize)]
+pub struct ShippingInfoRaw {
+    pub original_cost: Option<i64>,
+    pub channel: Option<ChannelInfo>,
+}
+#[derive(Debug, Deserialize)]
+pub struct ChannelInfo {
+    pub channelid: Option<i64>,
+    pub name: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct PaymentInfo {
+    #[serde(default = "default_unknown")]
+    pub name: String,
+    #[serde(deserialize_with = "custom_parse_i64", rename = "channelId", default)]
+    pub channel_id: i64,
+    #[serde(rename = "optionInfo", default = "default_unknown")]
+    pub option_info: String,
+    #[serde(deserialize_with = "custom_parse_i64", default)]
+    pub version: i64,
+    #[serde(deserialize_with = "deserialize_txn_fee", rename = "txnFee", default)]
+    pub txn_fee: i64,
+    #[serde(rename = "get", default)]
+    pub selected_get: serde_json::Value,
+    #[serde(default)]
+    pub place_order: serde_json::Value,
+}
+
+#[derive(Deserialize)]
+struct Entry {
+    payment: Vec<PaymentInfo>,
+}
+
+#[derive(Deserialize)]
+struct PaymentData {
+    data: Option<Vec<Entry>>,
+}
+#[derive(Clone)]
 pub struct ProductInfo {
     pub shop_id: i64,
     pub item_id: i64,
 }
 
+#[derive(Deserialize, Debug)]
+struct UserData {
+    username: String,
+    email: String,
+    phone: String,
+}
+#[derive(Deserialize, Debug)]
+struct InfoAkun {
+    data: Option<UserData>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DataOnAddress {
+    addresses: Option<Vec<AddressInfo>>,
+}
+#[derive(Deserialize, Debug)]
+struct AddressResp {
+    data: Option<DataOnAddress>,
+}
+#[derive(Deserialize, Debug, Clone)]
+pub struct AddressInfo  {
+    pub state: String,
+    pub city: String,
+    pub district: String,
+    pub id: i64,
+}
+impl Default for AddressInfo {
+    fn default() -> Self {
+        AddressInfo {
+            state: "LOGOUT (WARNING)".to_string(),
+            city: "LOGOUT (WARNING)".to_string(),
+            district: "LOGOUT (WARNING)".to_string(),
+            id: 0,
+        }
+    }
+}
+
+fn default_unknown() -> String {
+    "Unknown".to_string()
+}
+fn custom_parse_i64<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    s.parse::<i64>().map_err(serde::de::Error::custom)
+}
+fn deserialize_txn_fee<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value: Value = Deserialize::deserialize(deserializer)?;
+    match value {
+        Value::String(s) => Ok(s.parse::<i64>().unwrap_or(0)),  // Jika String, parse ke i64
+        Value::Number(n) => Ok(n.as_i64().unwrap_or(0)),        // Jika Number, ambil nilai i64
+        _ => Ok(0),                                         // Default 0 jika nilai tidak sesuai
+    }
+}
 pub async fn open_payment_file() -> Result<String, Box<dyn std::error::Error>> {
     let mut file = File::open("payment.txt").await?;
     let mut json_data = String::new();
@@ -49,52 +159,49 @@ pub async fn open_payment_file() -> Result<String, Box<dyn std::error::Error>> {
 }
 
 pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error>> {
-    let hasil: Value = serde_json::from_str(&json_data)?;
+    let response: PaymentData = serde_json::from_str(&json_data)?;
 
-    if let Some(data) = hasil.get("data").and_then(|data| data.as_array()) {
+    if let Some(data) = response.data {
         let payment_info_vec: Vec<PaymentInfo> = data
             .iter()
-            .flat_map(|entry| entry.get("payment").and_then(|payment| payment.as_array()))
-            .flat_map(|payment_infos| {
-                payment_infos.iter().map(|payment_info| {
-                    let name = payment_info.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
-                    let channel_id = payment_info.get("channelId").and_then(|id| id.as_str().and_then(|s| s.parse::<i64>().ok())).unwrap_or(0);
-                    let option_info = payment_info.get("optionInfo").and_then(|info| info.as_str()).unwrap_or("Unknown");
-                    let version = payment_info.get("version").and_then(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).unwrap_or(0);
-                    let txn_fee = payment_info.get("txnFee").and_then(|fee| fee.as_i64()).unwrap_or(0);
-                    let selected_get = payment_info.get("get").unwrap_or(&serde_json::Value::Null);
-                    let place_order = payment_info.get("place_order").unwrap_or(&serde_json::Value::Null);
-
-                    PaymentInfo {
-                        name: name.to_string(),
-                        channel_id,
-                        option_info: option_info.to_string(),
-                        version,
-                        txn_fee,
-                        selected_get: selected_get.clone(),
-                        place_order: place_order.clone(),
-                    }
-                })
+            .flat_map(|entry| entry.payment.iter())
+            .map(|payment_info| {
+                let name = payment_info.name.clone();
+                let channel_id = payment_info.channel_id;
+                let option_info = payment_info.option_info.clone();
+                let version = payment_info.version;
+                let txn_fee = payment_info.txn_fee;
+                let selected_get = payment_info.selected_get.clone();
+                let place_order = payment_info.place_order.clone();
+    
+                PaymentInfo {
+                    name,
+                    channel_id,
+                    option_info,
+                    version,
+                    txn_fee,
+                    selected_get,
+                    place_order,
+                }
             })
             .collect();
-
         return Ok(payment_info_vec);
     }
-
     // Handle the case where there is an error or no payment information is found
 	process::exit(1);
 }
-pub async fn kurir(cookie_content: &str, product_info: &ProductInfo, state: &str, city: &str, district: &str) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
+pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, address_info: &AddressInfo) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
 	let headers = create_headers(&cookie_content);
-	let city_encoded = city.replace(" ", "%20");
-    let district_encoded = district.replace(" ", "%20");
-    let state_encoded = state.replace(" ", "%20");
+	let city_encoded = url_encode(&address_info.city);
+    let district_encoded = url_encode(&address_info.district);
+    let state_encoded = url_encode(&address_info.state);
 	println!("{}-{}-{}", state_encoded, city_encoded, district_encoded);
 
 	let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
 	println!("{}", url2);
     // Buat klien HTTP
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
         .enable_ech_grease(true)
@@ -113,44 +220,31 @@ pub async fn kurir(cookie_content: &str, product_info: &ProductInfo, state: &str
 
 	println!("Status: get_courier");
     //println!("Headers: {:#?}", response.headers());
-    let body = response.text().await?;
+    let hasil: KurirResponse = response.json().await?;
     //println!("Body: {}", String::from_utf8_lossy(&body));
-    
-    let hasil: Value = serde_json::from_str(&body)?;
-    if let Some(data) = hasil.get("data") {
-        if let Some(shipping_infos) = data.get("shipping_infos").and_then(|infos| infos.as_array()) {
-            let shipping_info_vec: Vec<ShippingInfo> = shipping_infos
-                .iter()
-                .map(|shipping_info| {
-                    let original_cost = shipping_info.get("original_cost").and_then(|c| c.as_i64()).unwrap_or(0);
-                    // Access channel information
-                    if let Some(channel_info) = shipping_info.get("channel") {
-                        let channelid = channel_info.get("channelid").and_then(|id| id.as_i64()).unwrap_or(0);
-                        let channel_name = channel_info.get("name").and_then(|name| name.as_str()).unwrap_or("Unknown");
-                        ShippingInfo {
-                            original_cost: original_cost,
-                            channelid: channelid,
-                            channel_name: channel_name.to_string(),
-                        }
-                    } else {
-                        // If channel information is not available, return a default value
-                        ShippingInfo {
-                            original_cost: 0,
-                            channelid: 0,
-                            channel_name: "Unknown".to_string(),
-                        }
+    let shipping_info_vec = hasil.data.and_then(|data| data.shipping_infos).map(|infos| {
+            infos.into_iter().map(|shipping_info| {
+                    let original_cost = shipping_info.original_cost.unwrap_or(0);
+                    let (channelid, channel_name) = shipping_info.channel.map(|channel| {
+                            let channelid = channel.channelid.unwrap_or(0);
+                            let channel_name = channel.name.unwrap_or_else(|| "Unknown".to_string());
+                            (channelid, channel_name)
+                        }).unwrap_or((0, "Unknown".to_string()));
+                    ShippingInfo {
+                        original_cost,
+                        channelid,
+                        channel_name,
                     }
-                })
-                .collect::<Vec<_>>();  // Remove the semicolon here
+                }).collect::<Vec<_>>()
+        }).unwrap_or_default();
 
-            return Ok(shipping_info_vec);
-        }
+    if shipping_info_vec.is_empty() {
+        eprintln!("No shipping information found.");
+        process::exit(1);
     }
-    // Handle the case where there is an error or no shipping information is found
-    process::exit(1);
+    Ok(shipping_info_vec)
 }
-pub async fn get_product(product_info: &ProductInfo, cookie_content: &str) -> Result<(String, Vec<ModelInfo>, String, String), Box<dyn std::error::Error>> {
-    let csrftoken = extract_csrftoken(&cookie_content);
+pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, String), Box<dyn std::error::Error>> {
     let refe = format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id);
     let url2 = format!("https://shopee.co.id/api/v4/item/get?itemid={}&shopid={}", product_info.item_id, product_info.shop_id);
     println!("{}", url2);
@@ -165,11 +259,12 @@ pub async fn get_product(product_info: &ProductInfo, cookie_content: &str) -> Re
     headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
     headers.insert("referer", reqwest::header::HeaderValue::from_str(&refe)?);
     headers.insert("accept-language", HeaderValue::from_static("id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6,es;q=0.5"));
-    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(csrftoken)?);
-    headers.insert("cookie", reqwest::header::HeaderValue::from_str(cookie_content)?);
+    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
+    headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
 
     // Buat klien HTTP
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -181,7 +276,6 @@ pub async fn get_product(product_info: &ProductInfo, cookie_content: &str) -> Re
     // Buat permintaan HTTP POST
     let response = client
         .get(&url2)
-        .header("Content-Type", "application/json")
         .headers(headers)
         .version(Version::HTTP_2) 
         .send()
@@ -194,52 +288,30 @@ pub async fn get_product(product_info: &ProductInfo, cookie_content: &str) -> Re
     //println!("Status: {}", response.status());
     //println!("Headers: {:#?}", response.headers());
     let status_code = response.status().to_string();
-    let body = response.text().await?;
+    let hasil: GetProduct = response.json().await?;
     //println!("Body: {}", &body);
 
-    let hasil: Value = serde_json::from_str(&body)?;
-    if let Some(data) = hasil.get("data") {
-        name = data.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown").to_string();
-
-        models_info = if let Some(models_array) = data.get("models").and_then(|m| m.as_array()) {
-            models_array
-                .iter()
-                .map(|model| {
-                    let model_name = model.get("name").and_then(|n| n.as_str()).unwrap_or("Unknown");
-                    let model_price = model.get("price").and_then(|p| p.as_i64()).unwrap_or(0);
-                    let model_stock = model.get("stock").and_then(|s| s.as_i64()).unwrap_or(0);
-                    let model_modelid = model.get("modelid").and_then(|m| m.as_i64()).unwrap_or(0);
-                    let model_promotionid = model.get("promotionid").and_then(|p| p.as_i64()).unwrap_or(0);
-
-                    ModelInfo {
-                        name: model_name.to_string(),
-                        price: model_price,
-                        stock: model_stock,
-                        modelid: model_modelid,
-                        promotionid: model_promotionid,
-                    }
-                })
-                .collect::<Vec<_>>()
-        } else {
-            vec![ModelInfo {
-                name: "Unknown".to_string(),
-                price: 0,
-                stock: 0,
-                modelid: 0,
-                promotionid: 0,
-            }]
-        };
-        is_official_shop = data.get("is_official_shop").and_then(|i| i.as_bool()).unwrap_or(false);
+    if let Some(data) = hasil.data {
+        name = data.name.unwrap_or_else(|| "Unknown".to_string());
+        models_info = data.models.unwrap_or_else(|| vec![ModelInfo {
+            name: "Unknown".to_string(),
+            price: 0,
+            stock: 0,
+            modelid: 0,
+            promotionid: 0,
+        }]);
+        is_official_shop = data.is_official_shop.unwrap_or(false);
     } else {
         println!("Status: {}", status_code);
     }
-	Ok((name.to_string(), models_info, is_official_shop.to_string(), status_code))
+	Ok((name.to_string(), models_info, is_official_shop, status_code))
 }
-pub async fn address(cookie_content: &str) -> Result<(String, String, String, String), Box<dyn std::error::Error>> {
+pub async fn address(cookie_content: &CookieData) -> Result<AddressInfo, Box<dyn std::error::Error>> {
 	let headers = create_headers(&cookie_content);
 	let url2 = format!("https://shopee.co.id/api/v4/account/address/get_user_address_list");
 	println!("{}", url2);
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
         .enable_ech_grease(true)
@@ -257,35 +329,28 @@ pub async fn address(cookie_content: &str) -> Result<(String, String, String, St
         .await?;
 
     //println!("Headers: {:#?}", response.headers());
-    let status = response.status();
-    let body = response.text().await?;
-    //println!("Body: {}", String::from_utf8_lossy(&body));
-    
-    let hasil: Value = serde_json::from_str(&body)?;
-    // Access specific values using serde_json::Value methods
-    if let Some(data) = hasil.get("data") {
-        if let Some(addresses) = data.get("addresses").and_then(|addr| addr.as_array()) {
-            for address in addresses {
-                let id = address.get("id").and_then(|i| i.as_i64()).unwrap_or(0);
-                let state = address.get("state").and_then(|s| s.as_str()).unwrap_or("Unknown");
-                let city = address.get("city").and_then(|c| c.as_str()).unwrap_or("Unknown");
-                let district = address.get("district").and_then(|d| d.as_str()).unwrap_or("Unknown");
-                return Ok((state.to_string(), city.to_string(), district.to_string(), id.to_string()));
+    if response.status() == StatusCode::OK {
+        let hasil: AddressResp = response.json().await?;
+        if let Some(data) = hasil.data {
+            if let Some(addresses) = data.addresses {
+                for address in addresses {
+                    return Ok(address);
+                }
             }
         }
-    // If the loop doesn't execute (zero elements in addresses), return a default value
-    Ok(("LOGOUT (WARNING)".to_string(), "LOGOUT (WARNING)".to_string(), "LOGOUT (WARNING)".to_string(), "LOGOUT (WARNING)".to_string()))
+        Ok(AddressInfo::default())
     } else {
-        println!("Status: {}", status);
+        println!("Status: {}", response.status());
         println!("Harap Ganti akun");
         process::exit(1);
     }
 }
-pub async fn info_akun(cookie_content: &str) -> Result<(String, String, String), Box<dyn std::error::Error>> {
+pub async fn info_akun(cookie_content: &CookieData) -> Result<(String, String, String), Box<dyn std::error::Error>> {
 	let headers = create_headers(&cookie_content);
 	let url2 = format!("https://shopee.co.id/api/v4/account/basic/get_account_info");
 	println!("{}", url2);
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
         .enable_ech_grease(true)
@@ -304,16 +369,9 @@ pub async fn info_akun(cookie_content: &str) -> Result<(String, String, String),
 
     if response.status() == StatusCode::OK {
         //println!("Headers: {:#?}", response.headers());
-        let body = response.text().await?;
-        //println!("Body: {}", String::from_utf8_lossy(&body));
-        
-        let hasil: Value = serde_json::from_str(&body)?;
-        // Access specific values using serde_json::Value methods
-        if let Some(data) = hasil.get("data") {
-            let username = data.get("username").and_then(|u| u.as_str()).unwrap_or("LOGOUT (WARNING)");
-            let email = data.get("email").and_then(|e| e.as_str()).unwrap_or("LOGOUT (WARNING)");
-            let phone = data.get("phone").and_then(|p| p.as_str()).unwrap_or("LOGOUT (WARNING)");
-            return Ok((username.to_string(), email.to_string(), phone.to_string()));
+        let hasil: InfoAkun = response.json().await?;
+        if let Some(data) = hasil.data {
+            Ok((data.username, data.email, data.phone))
         } else {
             Ok(("LOGOUT (WARNING)".to_string(), "LOGOUT (WARNING)".to_string(), "LOGOUT (WARNING)".to_string()))
         }
@@ -347,14 +405,13 @@ pub fn process_url(url: &str) -> ProductInfo {
 
     ProductInfo { shop_id, item_id }
 }
-fn create_headers(cookie_content: &str) -> HeaderMap {
-    let csrftoken = extract_csrftoken(&cookie_content);
+fn create_headers(cookie_content: &CookieData) -> HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("sec-ch-ua", HeaderValue::from_static("\"Chromium\";v=\"127\", \"Not)A;Brand\";v=\"24\", \"Google Chrome\";v=\"127\""));
     headers.insert("x-shopee-language", HeaderValue::from_static("id"));
     headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));
-    headers.insert("x-csrftoken", HeaderValue::from_str(&csrftoken).unwrap());
+    headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
     headers.insert("sec-ch-ua-platform", HeaderValue::from_static("\"Windows\""));
     headers.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
 	headers.insert("user-agent", HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"));
@@ -365,9 +422,18 @@ fn create_headers(cookie_content: &str) -> HeaderMap {
     headers.insert("sec-fetch-mode", HeaderValue::from_static("cors"));
     headers.insert("sec-fetch-dest", HeaderValue::from_static("empty"));
     headers.insert("accept-language", HeaderValue::from_static("id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6,es;q=0.5"));
-    headers.insert("cookie", HeaderValue::from_str(cookie_content).unwrap());
+    headers.insert("cookie", HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
     // Return the created headers
     headers
+}
+pub fn create_cookie(cookie_content: &str) -> CookieData {
+    let csrftoken = extract_csrftoken(&cookie_content);
+    
+    let datas = CookieData {
+        cookie_content: cookie_content.to_string(),
+        csrftoken: csrftoken.to_string(),
+    };
+    datas
 }
 pub fn extract_csrftoken(cookie_string: &str) -> &str {
     let mut csrftoken = " ";

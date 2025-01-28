@@ -2,7 +2,7 @@
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
-use ::runtime::prepare::{self, ModelInfo, ProductInfo};
+use ::runtime::prepare::{self, CookieData, ModelInfo, ProductInfo};
 use native_windows_gui as nwg;
 use native_windows_derive::NwgUi;
 use native_windows_gui::NativeUi;
@@ -24,6 +24,8 @@ pub struct SharedData {
     model_infos: Vec<ModelInfo>,
     kurirs: Vec<String>,
     rcode: String,
+    name_product: String,
+    is_official_shop: bool,
     logs: Vec<String>,
     ctrl_pressed: bool,
 }
@@ -31,7 +33,7 @@ pub struct SharedData {
 #[derive(Default, NwgUi)]
 pub struct App {
     #[nwg_control(
-        size: (500, 330),
+        size: (500, 360),
         position: (300, 300),
         title: "Launcher for ABS",
         //flags: "WINDOW|VISIBLE|MINIMIZE_BOX|SYS_MENU",
@@ -56,6 +58,11 @@ pub struct App {
     #[nwg_layout_item(layout: grid, col: 5, row: 0)]
     #[nwg_events( OnButtonClick: [App::cek], OnMouseMove: [App::on_hover])]
     cek_button: nwg::Button,
+
+    #[nwg_control(text: "Official", flags:"VISIBLE|DISABLED|TRISTATE")]
+    #[nwg_layout_item(layout: grid, col: 5, row: 8)]
+    #[nwg_events(OnMouseMove: [App::on_hover])]
+    cek_checkbox: nwg::CheckBox,
 
     #[nwg_control(text: "Payment")]
     #[nwg_layout_item(layout: grid, col: 0, row: 1)]
@@ -239,6 +246,13 @@ pub struct App {
     #[nwg_layout_item(layout: grid, col: 1, row: 8, col_span: 4)]
     token_text: nwg::TextInput,
 
+    #[nwg_control(text: "")]
+    #[nwg_layout_item(layout: grid, col: 1, row: 9, col_span: 4)]
+    status_label: nwg::Label,
+
+    #[nwg_control(parent: window)]
+    status: nwg::StatusBar,
+
     #[nwg_resource(family: "Segoe UI", size: 18)]
     font_combo: nwg::Font,	
 
@@ -395,6 +409,15 @@ impl App {
         let version_info = env!("CARGO_PKG_VERSION");
         let log_message1 = format!("Launcher Auto Buy Shopee Version : {} (PREVIEW)", version_info);
         let lcpu = format!("Logical CPUs: {}", num_cpus::get());
+        // Check the target environment
+        let compiler = if cfg!(target_env = "msvc") {
+            "msvc"
+        } else if cfg!(target_env = "gnu") {
+            "gnu"
+        } else {
+            "unknown"
+        };
+        let lcomp = format!("Compiler: {}", compiler);
         self.append_log(&log_message1);
         self.append_log(&lcpu);
         let version_message = match (is_server(), OsVersion::current()) {
@@ -415,6 +438,7 @@ impl App {
         };
         let log_message2 = format!("Operating System : {:?}", version_message);		
         self.append_log(&log_message2);
+        self.append_log(&lcomp);
     }
     fn close_logs_info(&self){
         self.logs_window.set_visible(false);
@@ -541,6 +565,7 @@ impl App {
         self.tooltip.set_enabled(true);
         self.tooltip.register(&self.run_button.handle, "Tekan tombol untuk menjalankan aplikasi!");
         self.tooltip.register(&self.cek_button.handle, "Cek Variasi dan Kurir");
+        self.tooltip.register(&self.cek_checkbox.handle, "Official Shop?");
         self.tooltip.register(&self.refresh_button.handle, "Regenerate account files\n(DEBUG)");
     }
     fn exit(&self) {
@@ -572,6 +597,7 @@ impl App {
         }else{
             let start = self.url_text.text();
             let cookie_content = prepare::read_cookie_file(&file);
+            let cookie_data = prepare::create_cookie(&cookie_content);
             let url_1 = start.trim();
             println!("{}", url_1);
             let product_info = prepare::process_url(url_1);
@@ -584,7 +610,7 @@ impl App {
                 thread::spawn(move || {
                     let rt = tokio::runtime::Runtime::new().unwrap();
                     rt.block_on(async {
-                        App::cek_async(&product_info, &cookie_content, shared_data).await;
+                        App::cek_async(&product_info, &cookie_data, shared_data).await;
                         // Send a notice to update the UI
                         notice_sender.notice();
                     });
@@ -594,14 +620,16 @@ impl App {
             }
         }
     }
-    async fn cek_async(product_info: &ProductInfo, cookie_content: &str, shared_data: Arc<RwLock<SharedData>>) {
+    async fn cek_async(product_info: &ProductInfo, cookie_data: &CookieData, shared_data: Arc<RwLock<SharedData>>) {
         // Memanggil get_product dengan timeout
-        match timeout(Duration::from_secs(10), prepare::get_product(&product_info, cookie_content)).await {
+        match timeout(Duration::from_secs(10), prepare::get_product(&product_info, cookie_data)).await {
             Ok(Ok((name, model_info, is_official_shop, rcode))) => {
                 let mut data = shared_data.write().unwrap();
                 data.name_model = model_info.iter().map(|model| model.name.clone()).collect();
                 data.model_infos = model_info;
                 data.rcode = rcode;
+                data.name_product = name;
+                data.is_official_shop = is_official_shop;
             },
             Ok(Err(e)) => {
                 let mut data = shared_data.write().unwrap();
@@ -614,7 +642,7 @@ impl App {
         };
 
         // Memanggil get_kurir dengan timeout
-        let (state, city, district, addressid) = match prepare::address(&cookie_content).await {
+        let address_info = match prepare::address(&cookie_data).await {
             Ok(address) => address,
             Err(e) => {
                 // Handle the error case
@@ -622,7 +650,7 @@ impl App {
                 return; // Early return or handle the error as needed
             }
         };
-        match timeout(Duration::from_secs(10), prepare::kurir(&cookie_content, &product_info, &state, &city, &district)).await {
+        match timeout(Duration::from_secs(10), prepare::kurir(&cookie_data, &product_info, &address_info)).await {
             Ok(Ok(kurirs)) => {
                 let mut data = shared_data.write().unwrap();
                 data.kurirs = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
@@ -646,6 +674,8 @@ impl App {
             self.variasi_combo.set_selection(Some(0));
             for (index, model) in data.model_infos.iter().enumerate() {
                 self.append_log(&format!("{}. {} - Harga: {} - Stok: {}", index + 1, model.name, model.price / 100000, model.stock));
+                self.status.set_text(0, &format!("Name: {}; Official: {}", data.name_product, data.is_official_shop));
+                self.status.set_text(1, &format!("Official: {}", data.is_official_shop));
             }
         } else if data.rcode.contains("CronetError"){
             let isi = format!("OH SNAP!!!\nSolution:\nCHECK INTERNET CONNECTION\n\nError : {}", data.rcode);
@@ -957,6 +987,7 @@ impl App {
         self.jam_text.set_text(&hour);
         self.menit_text.set_text(&minute);
         self.refresh_button.set_visible(false);
+        self.status_label.set_visible(false);
         self.promotionid_label.set_visible(false);
         self.promotionid_text.set_visible(false);
         self.signature_label.set_visible(false);

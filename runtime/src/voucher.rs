@@ -6,8 +6,7 @@ use serde_json::{json, to_string, Value};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 
-use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
-use crate::prepare::extract_csrftoken;
+use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
 use crate::crypt::random_hex_string;
 
 #[derive(Debug, Clone)]
@@ -15,6 +14,23 @@ pub struct Vouchers {
     pub promotionid: i64,
     pub voucher_code: String,
     pub signature: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RecomendPlatformResponse {
+    data: Option<DataOnRecomendPlatform>,
+}
+#[derive(Debug, Deserialize)]
+struct DataOnRecomendPlatform {
+    freeshipping_vouchers: Option<Vec<VoucherOnRecomendPlatform>>,
+    vouchers: Option<Vec<VoucherOnRecomendPlatform>>,
+}
+#[derive(Debug, Deserialize, Clone)]
+struct VoucherOnRecomendPlatform {
+    promotionid: i64,
+    voucher_code: String,
+    signature: String,
+    fsv_error_message: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -57,7 +73,7 @@ struct ShopVoucher;
 struct ItemInfo {
     itemid: i64,
     modelid: i64,
-    quantity: i64,
+    quantity: i32,
     item_group_id: Option<i64>,
     insurances: Vec<Insurance>,
     shopid: i64,
@@ -125,7 +141,7 @@ struct RecommendPlatform {
     payment_manual_change: bool,
 }
 
-pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str, product_info: &ProductInfo) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
+pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &CookieData, product_info: &ProductInfo) -> Result<Option<Vouchers>>{
 	let shop_id = product_info.shop_id;
     let headers = headers_checkout(&cookie_content).await;
 
@@ -145,7 +161,8 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str,
         println!("{}", url2);
         // Buat klien HTTP
         let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
+            .http2_keep_alive_while_idle(true)
+        .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
@@ -168,11 +185,10 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str,
         //println!("Request Headers:\n{:?}", headers);
 		let status = response.status();
 		println!("{}", status);
-		let text = response.text().await?;	
+		let parsed: Value = response.json().await?;
         //println!("Body: {}", body);
         // Parse response body as JSON
         if status == reqwest::StatusCode::OK {
-            let parsed: serde_json::Value = serde_json::from_str(&text).expect("JSON parsing failed");
             if let Some(error) = parsed.get("error").and_then(|e| e.as_i64()) {
                 if error == 5 || error == 0 {
                     println!("Berhasil: {} - {}", error, parsed.get("error_msg").unwrap_or(&serde_json::Value::Null));
@@ -197,7 +213,7 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str,
             break;
         } else if status == reqwest::StatusCode::IM_A_TEAPOT {
             println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
-            println!("{}", text);
+            println!("{}", parsed);
             continue;
         }else {
             println!("Status: {}", status);
@@ -207,7 +223,7 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &str,
     Ok(vouchers)
 }
 
-pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
+pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &CookieData) -> Result<Option<Vouchers>>{
     let headers = headers_checkout(&cookie_content).await;
 
     let body_json = json!({
@@ -226,7 +242,8 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
         println!("{}", url2);
         // Buat klien HTTP
         let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
+            .http2_keep_alive_while_idle(true)
+        .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
@@ -249,11 +266,10 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
         //println!("Request Headers:\n{:?}", headers);
 		let status = response.status();
 		println!("{}", status);
-		let text = response.text().await?;	
+		let parsed: Value = response.json().await?;
         //println!("Body: {}", body);
         // Parse response body as JSON
         if status == reqwest::StatusCode::OK {
-            let parsed: serde_json::Value = serde_json::from_str(&text).expect("JSON parsing failed");
             if let Some(error) = parsed.get("error").and_then(|e| e.as_i64()) {
                 if error == 5 || error == 0 {
                     println!("Berhasil: {} - {}", error, parsed.get("error_msg").unwrap_or(&serde_json::Value::Null));
@@ -278,7 +294,7 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
             break;
         } else if status == reqwest::StatusCode::IM_A_TEAPOT {
             println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
-            println!("{}", text);
+            println!("{}", parsed);
             continue;
         }else {
             println!("Status: {}", status);
@@ -288,7 +304,7 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
     Ok(vouchers)
 }
 
-pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>>{
+pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -> Result<Option<Vouchers>>{
     let headers = headers_checkout(&cookie_content).await;
 	let start: i64 = start.trim().parse().expect("Input tidak valid");
 
@@ -308,7 +324,8 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
     let mut vouchers: Option<Vouchers> = None;
 	loop {
         let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
+            .http2_keep_alive_while_idle(true)
+        .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
@@ -319,9 +336,8 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
         // Buat permintaan HTTP POST
         let response = client
             .post("https://mall.shopee.co.id/api/v2/voucher_wallet/save_voucher")
-            .header("Content-Type", "application/json")
 			.headers(headers.clone())
-			.body(body_str.clone())
+			.json(&body_json)
             .version(Version::HTTP_2) 
             .send()
             .await?;
@@ -330,9 +346,8 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 		//println!("HTTP Version: {:?}", http_version); // disable output features
 		let status = response.status();
 		println!("{}", status);
-		let text = response.text().await?;	
+		let parsed: Value = response.json().await?;
 		if status == reqwest::StatusCode::OK {
-            let parsed: serde_json::Value = serde_json::from_str(&text).expect("JSON parsing failed");
             if let Some(error) = parsed.get("error").and_then(|e| e.as_i64()) {
                 if error == 5 || error == 0 {
                     println!("Berhasil: {} - {}", error, parsed.get("error_msg").unwrap_or(&serde_json::Value::Null));
@@ -357,7 +372,7 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
             break;
 		} else if status == reqwest::StatusCode::IM_A_TEAPOT {
 			println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
-			println!("{}", text);
+			println!("{}", parsed);
 			continue;
 		}else {
 			println!("Status: {}", status);
@@ -367,9 +382,8 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &str) -> Resul
 	Ok(vouchers)
 }
 
-pub async fn get_recommend_platform_vouchers(cookie_content: &str, product_info: &ProductInfo, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>), Box<dyn std::error::Error>>{
+pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let headers = headers_checkout(&cookie_content).await;
-	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
 	let optioninfo: String = chosen_payment.option_info.clone();
     let orders_json = vec![Orders {
         shopid: product_info.shop_id,
@@ -429,7 +443,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, product_info:
     };
 
     // Convert struct to JSON
-    let body_str = serde_json::to_string(&body_json)?;
+    //let body_str = serde_json::to_string(&body_json)?;
     //println!("{:?}", body_str);
     //println!("{:?}", body);
     //println!("Request Headers:\n{:?}", headers);
@@ -438,6 +452,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, product_info:
     println!("{}", url2);
     // Buat klien HTTP
     let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -450,9 +465,8 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, product_info:
     // Buat permintaan HTTP POST
     let response = client
         .post(&url2)
-        .header("Content-Type", "application/json")
         .headers(headers)
-        .body(body_str)
+        .json(&body_json)
         .version(Version::HTTP_2) 
         .send()
         .await?;
@@ -461,51 +475,41 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &str, product_info:
     // Handle response as needed
     //println!("Request Headers:\n{:?}", headers);
     println!("Status: {}", response.status());
-    let body_resp = response.text().await?;
+    let json_resp: RecomendPlatformResponse = response.json().await?;
     //println!("Body: {}", body_resp);
     // Parse response body as JSON
-    let json_resp: Value = serde_json::from_str(&body_resp)?;
     let mut freeshipping_voucher: Option<Vouchers> = None;
     let mut vouchers: Option<Vouchers> = None;
     // Extract freeshipping_vouchers
-    if let Some(freeshipping_vouchers_array) = json_resp["data"]["freeshipping_vouchers"].as_array() {
+    if let Some(freeshipping_vouchers_array) = json_resp.data.as_ref().and_then(|data| data.freeshipping_vouchers.as_ref()) {
         for voucher in freeshipping_vouchers_array {
-            if voucher["fsv_error_message"].is_null() {
-                let promotionid = voucher["promotionid"].as_i64().unwrap_or_default();
-                let voucher_code = voucher["voucher_code"].as_str().unwrap_or_default().to_string();
-                let signature = voucher["signature"].as_str().unwrap_or_default().to_string();
+            if voucher.fsv_error_message.is_none() {
                 freeshipping_voucher = Some(Vouchers {
-                    promotionid,
-                    voucher_code,
-                    signature,
+                    promotionid : voucher.promotionid.clone(),
+                    voucher_code : voucher.voucher_code.clone(),
+                    signature : voucher.signature.clone(),
                 });
-                //println!("Freeshipping Voucher: {}, {}, {}", promotionid, voucher_code, signature);
                 break; // Found one valid voucher, so break
             }
         }
     }
 
     // Extract vouchers
-    if let Some(vouchers_array) = json_resp["data"]["vouchers"].as_array() {
+    if let Some(vouchers_array) = json_resp.data.as_ref().and_then(|data| data.vouchers.as_ref()) {
         for voucher in vouchers_array {
-            if voucher["fsv_error_message"].is_null() {
-                let promotionid = voucher["promotionid"].as_i64().unwrap_or_default();
-                let voucher_code = voucher["voucher_code"].as_str().unwrap_or_default().to_string();
-                let signature = voucher["signature"].as_str().unwrap_or_default().to_string();
+            if voucher.fsv_error_message.is_none() {
                 vouchers = Some(Vouchers {
-                    promotionid,
-                    voucher_code,
-                    signature,
+                    promotionid : voucher.promotionid.clone(),
+                    voucher_code : voucher.voucher_code.clone(),
+                    signature : voucher.signature.clone(),
                 });
-                //println!("Voucher: {}, {}, {}", promotionid, voucher_code, signature);
                 break; // Found one valid voucher, so break
             }
         }
     }
     Ok((freeshipping_voucher, vouchers))
 }
-async fn headers_checkout(cookie_content: &str) -> HeaderMap {
-    let csrftoken = extract_csrftoken(&cookie_content);
+async fn headers_checkout(cookie_content: &CookieData) -> HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
@@ -518,21 +522,17 @@ async fn headers_checkout(cookie_content: &str) -> HeaderMap {
 	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
 	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
 	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
-	headers.insert("x-csrftoken", HeaderValue::from_str(csrftoken).unwrap());
+	headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
 	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
 	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id"));
 	headers.insert("accept", HeaderValue::from_static("application/json"));
 	headers.insert("content-type", HeaderValue::from_static("application/json; charset=utf-8"));
-	headers.insert("cookie", HeaderValue::from_str(cookie_content).unwrap());
+	headers.insert("cookie", HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
     // Return the created headers
     headers
 }
 
-pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String, String)> {
-    let cookie_content_owned = cookie_content.to_string();
-    let csrftoken = extract_csrftoken(&cookie_content_owned);
-    println!("csrftoken: {}", csrftoken);
-	let csrftoken_string = csrftoken.to_string();
+pub async fn some_function(start: &str, cookie_content: &CookieData) -> Result<(String, String)> {
 	let voucher_request = VoucherCollectionRequest {
 		collection_id: start.to_string(),
 		component_type: 2,
@@ -560,8 +560,8 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
     headers.insert("x-sap-access-f", HeaderValue::from_static(""));
     headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
     headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/"));
-    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&csrftoken_string)?);
-    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content)?);
+    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
+    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
 
 	// Bentuk struct JsonRequest
 	let json_request = JsonRequest {
@@ -569,12 +569,13 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
 	};
 
 	// Convert struct to JSON
-	let json_body = serde_json::to_string(&json_request)?;
+	//let json_body = serde_json::to_string(&json_request)?;
 	//println!("{}", json_body);
 	
 	loop {
         let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
+            .http2_keep_alive_while_idle(true)
+        .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
@@ -585,9 +586,8 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
         // Buat permintaan HTTP POST
         let response = client
             .post("https://mall.shopee.co.id/api/v1/microsite/get_vouchers_by_collections")
-            .header("Content-Type", "application/json")
             .headers(headers.clone())
-            .body(json_body.clone())
+            .json(&json_request)
             .version(Version::HTTP_2) 
             .send()
             .await?;
@@ -596,10 +596,9 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
 		//let http_version = response.version(); 		// disable output features
 		//println!("HTTP Version: {:?}", http_version); // disable output features
 		let status = response.status();
-		let text = response.text().await?;
+		let hasil: Value = response.json().await?;
 		//println!("{}", text);
 		if status == reqwest::StatusCode::OK {
-			let hasil: Value = serde_json::from_str(&text)?;
 			/*let error_res = hasil.get("error").and_then(|er| er.as_i64()).unwrap_or(0);
 			let error_res_str = error_res.to_string();*/
 			// Access specific values using serde_json::Value methods
@@ -635,7 +634,7 @@ pub async fn some_function(start: &str, cookie_content: &str) -> Result<(String,
 		}else if status == reqwest::StatusCode::IM_A_TEAPOT {
 			println!("POST request gagal untuk collection_id:: {}", start.to_string());
 			println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
-			println!("{}", text);
+			println!("{}", hasil);
 			continue;
 		}else {
 			println!("POST request gagal untuk collection_id:: {}", start.to_string());
@@ -663,11 +662,12 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 	};
 
 	// Convert struct to JSON
-	let json_body = serde_json::to_string(&json_request)?;
+	//let json_body = serde_json::to_string(&json_request)?;
 	
 	loop {
         let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
+            .http2_keep_alive_while_idle(true)
+        .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
@@ -678,9 +678,8 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
         // Buat permintaan HTTP POST
         let response = client
             .post("https://mall.shopee.co.id/api/v1/microsite/get_vouchers_by_collections")
-            .header("Content-Type", "application/json")
             .headers(cloned_headers.clone())
-            .body(json_body.clone())
+            .json(&json_request)
             .version(Version::HTTP_2) 
             .send()
             .await?;
@@ -688,9 +687,8 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 		//let http_version = response.version(); 		// disable output features
 		//println!("HTTP Version: {:?}", http_version); // disable output features
 		let status = response.status();
-		let text = response.text().await?;
+		let hasil: Value = response.json().await?;
 		if status == reqwest::StatusCode::OK {
-			let hasil: Value = serde_json::from_str(&text)?;
 			/*let error_res = hasil.get("error").and_then(|er| er.as_i64()).unwrap_or(0);
 			let error_res_str = error_res.to_string();*/
 			// Access specific values using serde_json::Value methods
@@ -724,7 +722,7 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 		}else if status == reqwest::StatusCode::IM_A_TEAPOT {
 			println!("POST request gagal untuk collection_id:: {}", cid_1);
 			println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
-			println!("{}", text);
+			println!("{}", hasil);
 			continue;
 		}else {
 			println!("POST request gagal untuk collection_id:: {}", cid_1);

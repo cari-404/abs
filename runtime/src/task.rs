@@ -4,14 +4,13 @@ use reqwest::{ClientBuilder, header::HeaderMap, Version, Body};
 use reqwest::header::HeaderValue;
 use chrono::{Utc};
 use anyhow::Result;
-use serde_json::{json};
+use serde_json::{Value, json};
 
-use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
-use crate::prepare::extract_csrftoken;
+use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::voucher::Vouchers;
 use crate::crypt::{self, DeviceInfo};
 
-pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn place_order(cookie_content: &CookieData, body_json: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
@@ -26,6 +25,7 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	println!("{}", url2);
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -46,10 +46,9 @@ pub async fn place_order(cookie_content: &str, body_json: serde_json::Value) -> 
 	
 	println!("Status: Done Place_Order");
 	//println!("Status: {}", response.status());
-	let body_resp = response.text().await?;
-	let v: serde_json::Value = serde_json::from_str(&body_resp).unwrap();
-	println!("Body: {}", body_resp);
-	Ok(v)
+	let hasil: Value = response.json().await?;
+	println!("Body: {}", hasil);
+	Ok(hasil)
 }
 
 pub async fn place_order_builder(device_info: &DeviceInfo, checkout_price_data: serde_json::Value, order_update_info: serde_json::Value, dropshipping_info: serde_json::Value, promotion_data: serde_json::Value, chosen_payment: &PaymentInfo, shoporders: serde_json::Value, shipping_orders: serde_json::Value, display_meta_data: serde_json::Value, fsv_selection_infos: serde_json::Value, buyer_info: serde_json::Value, client_event_info: serde_json::Value, buyer_txn_fee_info: serde_json::Value, disabled_checkout_info: serde_json::Value, buyer_service_fee_info: serde_json::Value, iof_info: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -107,9 +106,7 @@ pub async fn place_order_builder(device_info: &DeviceInfo, checkout_price_data: 
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_info: &ProductInfo, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
-	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
+pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let optioninfo: String = chosen_payment.option_info.clone();
 
 	let body_json = json!({
@@ -122,7 +119,7 @@ pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_i
 			{
 			  "itemid": product_info.item_id,
 			  "modelid": chosen_model.modelid as i64,
-			  "quantity": quantity as i64,
+			  "quantity": quantity as i32,
 			  "insurances": [],
 			  "channel_exclusive_info": {
 				"source_id": 1,
@@ -176,7 +173,7 @@ pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_i
 		{
 		  "sync": true,
 		  "buyer_address_data": {
-			"addressid": addressid as i64,
+			"addressid": address_info.id,
 			"address_type": 0,
 			"tax_address": ""
 		  },
@@ -204,9 +201,7 @@ pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_i
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, addressid_str: &str, quantity_str: &str, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let addressid = addressid_str.parse::<i64>().expect("Failed to parse addressid");
-	let quantity = quantity_str.parse::<i64>().expect("Failed to parse quantity");
+pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
 	let selected_payment_channel_data = if chosen_payment.selected_get.is_null(){
@@ -221,7 +216,9 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 			},
 			"additional_info": {}
 		  })
-	}else{
+	} else if chosen_payment.channel_id == 0{
+		json!({})
+	} else{
 		chosen_payment.selected_get.clone()
 	};
 
@@ -290,7 +287,7 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 			{
 			  "itemid": product_info.item_id,
 			  "modelid": chosen_model.modelid as i64,
-			  "quantity": quantity as i64,
+			  "quantity": quantity as i32,
 			  "add_on_deal_id": 0,
 			  "is_add_on_sub_item": false,
 			  "item_group_id": null,
@@ -332,13 +329,16 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 		"is_platform_voucher_changed": false
 	  },
 	  "add_to_cart_info": {},
-	  "_cft": [469696383],
+	  "_cft": [
+		4227792767 as i64,
+		54001407
+	  ],
 	  "dropshipping_info": {},
 	  "shipping_orders": [
 		{
 		  "sync": true,
 		  "buyer_address_data": {
-			"addressid": addressid as i64,
+			"addressid": address_info.id,
 			"address_type": 0,
 			"tax_address": ""
 		  },
@@ -366,7 +366,7 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
+pub async fn checkout_get(cookie_content: &CookieData, body_json: serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
@@ -381,6 +381,7 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 	println!("{}", url2);
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
+        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate_without_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -403,9 +404,8 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
     // Handle response as needed
 	//println!("Request Headers:\n{:?}", headers);
 	println!("Status: {}", response.status());
-	let body_resp = response.text().await?;
+	let v: Value = response.json().await?;
 	//println!("Body: {}", body_resp);
-    let v: serde_json::Value = serde_json::from_str(&body_resp).unwrap();
     // Mengambil data checkout_price_data
 	// Mengambil referensi langsung tanpa cloning
 	let checkout_price_data = v.get("checkout_price_data").unwrap_or(&serde_json::Value::Null);
@@ -443,8 +443,7 @@ pub async fn checkout_get(cookie_content: &str, body_json: serde_json::Value) ->
 	))
 }
 
-pub fn headers_checkout(cookie_content: &str) -> HeaderMap {
-    let csrftoken = extract_csrftoken(&cookie_content);
+pub fn headers_checkout(cookie_content: &CookieData) -> HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
 	headers.insert("Connection", HeaderValue::from_static("keep-alive"));
 	headers.insert("x-api-source", HeaderValue::from_static("rn"));
@@ -457,12 +456,12 @@ pub fn headers_checkout(cookie_content: &str) -> HeaderMap {
 	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
 	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
 	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
-	headers.insert("x-csrftoken", HeaderValue::from_str(csrftoken).unwrap());
+	headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
 	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
 	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Cannouncement%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Cearly_life_zone%25252Ccampaign_modules%25252Cflash_sales%25252Clive_streaming%25252Cvideo%25252Cdigital_products%25252Cdeals_nearby%25252Ccutline%25252Cdaily_discover%25252Cfood_order_status"));
 	headers.insert("accept", HeaderValue::from_static("application/json"));
 	headers.insert("content-type", HeaderValue::from_static("application/json"));
-	headers.insert("cookie", HeaderValue::from_str(cookie_content).unwrap());
+	headers.insert("cookie", HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
     // Return the created headers
     headers
 }

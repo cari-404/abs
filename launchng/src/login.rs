@@ -1,0 +1,222 @@
+use winsafe::{self as w,
+    gui, prelude::*, AnyResult,
+    HBITMAP,
+};
+use ::runtime::login::{get_qrcode, authentication_qrcode, get_cookie};
+use std::io::Cursor;
+use image::ImageReader;
+use image::{load_from_memory};
+use image::DynamicImage::ImageRgba8;
+use base64::decode;
+use tokio::time::{sleep, Duration};
+
+pub fn login_window(wnd: &gui::WindowModal) -> Result<(), ()> {
+    let dont_move = (gui::Horz::None, gui::Vert::None);
+    let loginwnd = gui::WindowModal::new_dlg(wnd, 3000);
+    let label = gui::Label::new_dlg(&loginwnd, 3001, dont_move);
+    let button = gui::Button::new_dlg(&loginwnd, 3002, dont_move);
+    let label_clone = label.clone();
+    button.on().bn_clicked(move || {
+        println!("Button clicked");
+        let _ = login_internals(&label_clone);
+        Ok(())
+    });
+    let label_clone = label.clone();
+    loginwnd.on().wm_init_dialog(move |_| {
+        let bitmap_result = w::HINSTANCE::GetModuleHandle(None)
+        .and_then(|hinstance| {
+            hinstance.LoadImageBitmap(
+                w::IdObmStr::Id(1),
+                w::SIZE::new(256, 256),
+                w::co::LR::DEFAULTCOLOR,
+            )
+        });
+        // Menangani kesalahan jika pemuatan bitmap gagal
+        let mut bitmap = match bitmap_result {
+            Ok(bitmap) => bitmap, // Jika berhasil, ambil nilai HBITMAP
+            Err(err) => {
+                eprintln!("Gagal memuat bitmap: {:?}", err);
+                return Ok(false); // Mengembalikan false untuk menghentikan inisialisasi dialog
+            }
+        };
+        let nbit_leak = bitmap.leak();
+        unsafe {
+            if let Err(err) = label_clone.hwnd().SendMessage(
+                w::msg::stm::SetImage {
+                    image: w::BmpIconCurMeta::Bmp(nbit_leak),
+                }
+            ) {
+                eprintln!("Gagal mengirim pesan ke label: {}", err);
+            };
+            //button.hwnd().SetWindowText("Login");
+        }
+        Ok(true)
+    });
+    let _ = loginwnd.show_modal();
+    Ok(())
+}
+
+fn login_internals(label: &gui::Label) -> AnyResult<()> {
+    println!("start login_internals");
+    let label_clone2 = label.clone();
+    tokio::spawn(async move {
+        println!("start login_internals async");
+        loop{
+            let qrcode = match get_qrcode().await{
+                Ok(qrcode) => qrcode,
+                Err(err) => {
+                    eprintln!("Error mendapatkan QR code: {}", err);
+                    return;
+                }
+            };
+            let qrcode_base64 = qrcode.qrcode_base64.clone();
+            let decode_qrcode = decode(qrcode_base64).unwrap();
+            let cursor = Cursor::new(decode_qrcode);
+            let png_image = load_from_memory(&cursor.get_ref())
+                .expect("Gagal memuat gambar dari data base64");
+            let bitmap = match png_image {
+                ImageRgba8(rgb_image) => rgb_image,
+                _ => png_image.to_rgba8(), // Konversi ke RGB8 jika format awal berbeda
+            };
+            println!("Bitmap berhasil dibuat. Ukuran: {:?}", bitmap.dimensions());
+            let mut pixels = bitmap.into_raw();
+            pixels.chunks_exact_mut(4).for_each(|chunk| chunk[0..3].reverse());
+            let mut hbitmap = match <HBITMAP as gdi_Hbitmap>::CreateBitmap(
+                w::SIZE::new(256, 256), // Ukuran bitmap
+                1,
+                32,
+                pixels.as_mut_ptr().cast(),
+            ) {
+                Ok(bitmap) => bitmap,
+                Err(err) => {
+                    eprintln!("Gagal membuat HBITMAP: {}", err);
+                    return;
+                }
+            };
+            let hbitmap_leak = hbitmap.leak();
+            let hbitmap2 = hbitmap.leak();
+            // Update GUI dengan gambar
+            unsafe {
+                if let Err(err) = label_clone2.hwnd().SendMessage(
+                    w::msg::stm::SetImage {
+                        image: w::BmpIconCurMeta::Bmp(hbitmap_leak),
+                    }
+                ) {
+                    let _ = label_clone2.hwnd().SendMessage(
+                        w::msg::stm::SetImage {
+                            image: w::BmpIconCurMeta::Bmp(hbitmap2),
+                        }
+                    );
+                    eprintln!("Gagal mengirim pesan ke label: {}", err);
+                };
+            }
+            let mut qrcode_token = String::new();
+            loop {
+                sleep(Duration::from_secs(5)).await;
+                // Menangani hasil dari authentication_qrcode
+                let (status, qrct) = match authentication_qrcode(&qrcode).await {
+                    Ok(result) => result,
+                    Err(err) => {
+                        eprintln!("Error mendapatkan status QR code: {}", err);
+                        break; // Menghentikan loop jika terjadi error
+                    }
+                };
+            
+                match status.as_str() {
+                    "CONFIRMED" => {
+                        println!("QR code berhasil di konfirmasi");
+                        qrcode_token = qrct;
+                        break; // Keluar dari loop jika QR code berhasil dikonfirmasi
+                    },
+                    "SCANNED" => {
+                        println!("QR code telah discan");
+                        println!("Klik konfirmasi pada perangkat Anda");
+                        continue;
+                    },
+                    "EXPIRED" => {
+                        println!("QR code telah kadaluarsa");
+                        println!("Mengulangi proses mendapatkan QR code");
+                        break;
+                    },
+                    _ => {
+                        println!("Status QR code: {}", status);
+                        println!("Mengulangi proses mendapatkan QR code");
+                        continue;
+                    },
+                }
+            }
+            if qrcode_token.is_empty() {
+                continue;
+            }else{
+                let cookie = match get_cookie(&qrcode_token).await{
+                    Ok(cookie) => cookie,
+                    Err(err) => {
+                        eprintln!("Error mendapatkan cookie: {}", err);
+                        return;
+                    }
+                };
+            }
+        }
+    });
+    Ok(())
+}
+//Archive
+/*loginwnd.on().wm_init_dialog(move |_| {
+    let mut file_in = w::FileMapped::open(
+        "G:\\BOT\\abs2\\target\\x86_64-pc-windows-gnu\\release\\nbit.bmp",
+        w::FileAccess::ExistingReadOnly,
+    )?;
+    let wstr = w::WString::parse(file_in.as_slice())?;
+    let raw_bytes = file_in.as_mut_slice();
+    let text = w::WString::parse(raw_bytes)?.to_string();
+    println!("wstr: {}", wstr);
+    println!("text: {}", text);
+    let img_src = ImageReader::open("G:\\BOT\\abs2\\target\\x86_64-pc-windows-gnu\\release\\nbit.bmp")
+        .unwrap()
+        .decode()
+        .unwrap();
+
+    println!("Gambar dimensi: {:?}", img_src.dimensions());
+    let img = img_src.to_rgba8();
+    let mut pixels = img.into_raw();
+    pixels.chunks_exact_mut(4).for_each(|chunk| chunk[0..3].reverse());
+    /*
+    let bitmap_result = w::HINSTANCE::GetModuleHandle(None)
+    .and_then(|hinstance| {
+        hinstance.LoadImageBitmap(
+            w::IdObmStr::Id(1),
+            w::SIZE::new(164, 164),
+            w::co::LR::DEFAULTCOLOR,
+        )
+    });
+    // Menangani kesalahan jika pemuatan bitmap gagal
+    let mut bitmap = match bitmap_result {
+        Ok(bitmap) => bitmap, // Jika berhasil, ambil nilai HBITMAP
+        Err(err) => {
+            eprintln!("Gagal memuat bitmap: {:?}", err);
+            return Ok(false); // Mengembalikan false untuk menghentikan inisialisasi dialog
+        }
+    };
+    */
+    println!("raw_bytes 1: {:?}", raw_bytes);
+    println!("raw_bytes 2: {:?}", raw_bytes.as_mut_ptr());
+    let nbit = <HBITMAP as gdi_Hbitmap>::CreateBitmap(
+        w::SIZE::new(164, 164),
+        1,
+        32,
+        pixels.as_mut_ptr().cast(),
+    );
+    //let bitmap_leak = bitmap.leak();
+    //println!("bitmap_leak: {:?}", bitmap_leak);
+    let nbit_leak = nbit?.leak();
+    println!("nbit: {:?}", nbit_leak);
+    unsafe {
+        label_clone.hwnd().SendMessage(
+            w::msg::stm::SetImage {
+                image: w::BmpIconCurMeta::Bmp(nbit_leak),
+            }
+        );
+        button.hwnd().SetWindowText("Login");
+    }
+    Ok(true)
+});*/

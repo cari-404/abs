@@ -10,6 +10,7 @@ build = "build.rs"
 winresource = "0.1"
 
 [package.metadata.winresource]
+FileDescription = "Launcher for ABS"
 LegalCopyright = "By Paijo"
 OriginalFilename = "launcher2.exe"
 CompanyName = "Paijo"

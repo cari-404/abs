@@ -14,6 +14,7 @@ fn main() {
 			</dependency>
 		</assembly>
 		"#);
+		res.set_version_info(winresource::VersionInfo::FILEVERSION, 0x0000000900090001);
         res.compile().unwrap();
     }
 }
