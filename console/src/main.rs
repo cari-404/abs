@@ -20,10 +20,8 @@ use runtime::crypt::{self};
 use runtime::telegram::{self};
 use chrono::{Local, Duration, NaiveDateTime};
 use std::io::{self, Write};
-use std::thread;
 use std::process;
 use std::process::Command;
-use std::time::Duration as StdDuration;
 use anyhow::Result;
 use std::fs::File;
 use std::io::Read;
@@ -259,10 +257,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
-
+	let url_1 = target_url.trim();
+    let product_info = prepare::process_url(url_1);
     // Perform the main task
-    let (username, email, phone) = prepare::info_akun(&cookie_data).await?;
-	let address_info = prepare::address(&cookie_data).await?;
+    let (info_result, address_result, product_result) = tokio::join!(
+        prepare::info_akun(&cookie_data),
+        prepare::address(&cookie_data),
+        prepare::get_product(&product_info, &cookie_data)
+    );
+    let (username, email, phone) = info_result?;
+    let address_info = address_result?;
+    let (name, model_info, is_official_shop, status_code) = product_result?;
 	println!("Username  : {}", username);
 	println!("Email     : {}", email);
 	println!("Phone     : {}", phone);
@@ -270,13 +275,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("City      : {}", address_info.city);
 	println!("District  : {}", address_info.district);
 	//std::thread::sleep(std::time::Duration::from_secs(2));
-    clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
-	let url_1 = target_url.trim();
-    let product_info = prepare::process_url(url_1);
 	println!("shop_id: {}", product_info.shop_id);
     println!("item_id: {}", product_info.item_id);
-	let (name, model_info, is_official_shop, status_code) = prepare::get_product(&product_info, &cookie_data).await?;
+
     if status_code != "200 OK"{
         println!("Status: {}", status_code);
         println!("Harap Ganti akun");
@@ -303,26 +304,79 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Anda memilih model: {}", chosen_model.name);
-	let shipping_info = prepare::kurir(&cookie_data, &product_info, &address_info).await?;
-	clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
-    
+
     let get_body_ship = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
-    let (_, _, _, _, _, _, shipping_orders, _, _, _, _, _, _, _, _) = task::checkout_get(&cookie_data, get_body_ship).await?;
+    let (shipping_info_result, shipping_orders_result) = tokio::join!(
+        prepare::kurir(&cookie_data, &product_info, &address_info),
+        task::checkout_get(&cookie_data, get_body_ship)
+
+    );
+    let mut shipping_info = shipping_info_result?;
+    let (_, _, _, _, _, _, shipping_orders, _, _, _, _, _, _, _, _) = shipping_orders_result?;
+
+    let mut tasks = Vec::new();
+
     println!("{}", shipping_orders[0]["selected_logistic_channelid"]);
     for integrated in shipping_orders[0]["logistics"]["integrated_channelids"].as_array().unwrap() {
-        chosen_shipping.channelid = integrated.as_i64().expect("0");
-        println!("integrated_special: {:?}", chosen_shipping);
-        let get_body_shipl = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
-        let (_, _, _, _, _, _, shipping_ordersl, _, _, _, _, _, _, _, _) = task::checkout_get(&cookie_data, get_body_shipl).await?;
-        if let Some(specific_channel_ids) = shipping_ordersl[0]["logistics"]["specific_channel_mappings"][integrated.to_string()]["specific_channel_ids"].as_array() {
-            for specific in specific_channel_ids {
-                println!("specific_channelid: {}", specific);
+        shipping_info.push(ShippingInfo {
+            original_cost: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
+            channelid: integrated.as_i64().unwrap_or(0),
+            channel_name: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["channel_data"]["name"].to_string(),
+        });
+        let integrated = integrated.clone();
+        let device_info = device_info.clone();
+        let product_info = product_info.clone();
+        let address_info = address_info.clone();
+        let cookie_data = cookie_data.clone();
+        let chosen_model = chosen_model.clone();
+        let chosen_payment = chosen_payment.clone();
+        let mut chosen_shipping = chosen_shipping.clone();
+        
+        let task = tokio::spawn(async move {
+            let mut shipping_info = Vec::new();
+            chosen_shipping.channelid = integrated.as_i64().unwrap_or(0);
+            println!("integrated_special: {:?}", chosen_shipping);  
+            let get_body_shipl = match task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await
+            {
+                Ok(body) => body,
+                Err(err) => {
+                    eprintln!("Error in get_builder: {:?}", err);
+                    return None;
+                }
+            };
+            let (_, _, _, _, _, _, shipping_ordersl, _, _, _, _, _, _, _, _) = match task::checkout_get(&cookie_data, get_body_shipl).await
+            {
+                Ok(body) => body,
+                Err(err) => {
+                    eprintln!("Error in get_builder: {:?}", err);
+                    return None;
+                }
+            };
+            if let Some(specific_channel_ids) = shipping_ordersl[0]["logistics"]["specific_channel_mappings"][integrated.to_string()]["specific_channel_ids"].as_array() {
+                for specific in specific_channel_ids {
+                    println!("specific_channelid: {}", specific);
+                    shipping_info.push(ShippingInfo {
+                        original_cost: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
+                        channelid: specific.as_i64().unwrap_or(0),
+                        channel_name: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["channel_data"]["name"].as_str().unwrap_or("").to_string(),
+                    });
+                }
+            } else {
+                eprintln!("specific_channel_ids not found or is not an array for integrated_channelid: {}", integrated);
             }
-        } else {
-            eprintln!("specific_channel_ids not found or is not an array for integrated_channelid: {}", integrated);
+            Some(shipping_info)
+        });
+        tasks.push(task);
+    }
+    let results = futures::future::join_all(tasks).await;
+    for result in results {
+        if let Ok(Some(mut info)) = result {
+            shipping_info.append(&mut info);
         }
     }
+    println!("{:?}", shipping_info);
+    clear_screen();
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
 
 	if let Some(shipping) = kurir_ng::choose_shipping(&shipping_info, &opt) {
 		chosen_shipping = shipping;
@@ -707,7 +761,7 @@ async fn countdown_to_task(task_time_dt: &NaiveDateTime) {
         print!("\r{}", formatted_time);
         io::stdout().flush().unwrap();
 
-        thread::sleep(StdDuration::from_secs_f64(0.001));
+        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
     }
 }
 

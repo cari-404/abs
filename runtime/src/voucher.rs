@@ -42,6 +42,15 @@ struct SaveVoucherRequest {
 }
 
 #[derive(Serialize)]
+struct GetVoucherRequest {
+    promotionid: i64,
+    voucher_code: String,
+    signature: String,
+    need_basic_info: bool,
+    need_user_voucher_status: bool,
+}
+
+#[derive(Serialize)]
 struct JsonRequest {
     voucher_collection_request_list: Vec<VoucherCollectionRequest>,
 }
@@ -325,7 +334,7 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -
 	loop {
         let client = ClientBuilder::new()
             .http2_keep_alive_while_idle(true)
-        .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_certs(true)
             .impersonate_without_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
@@ -358,6 +367,85 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -
             }
             if let Some(data) = parsed.get("data") {
                 if let Some(voucher) = data.get("voucher") {
+                    let promotionid = voucher.get("promotionid").and_then(|v| v.as_i64()).unwrap_or_default();
+                    let voucher_code = voucher.get("voucher_code").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    let signature = voucher.get("signature").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    println!("promotionid: {}, voucher_code: {}, signature: {}", promotionid, voucher_code, signature);
+                    vouchers = Some(Vouchers {
+                        promotionid,
+                        voucher_code,
+                        signature,
+                    });
+                }
+            }
+            break;
+		} else if status == reqwest::StatusCode::IM_A_TEAPOT {
+			println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
+			println!("{}", parsed);
+			continue;
+		}else {
+			println!("Status: {}", status);
+			break;
+		}
+	}
+	Ok(vouchers)
+}
+
+pub async fn get_voucher_data(start: &str, end: &str, cookie_content: &CookieData) -> Result<Option<Vouchers>>{
+    let headers = headers_checkout(&cookie_content).await;
+	let start: i64 = start.trim().parse().expect("Input tidak valid");
+
+	let body_json = GetVoucherRequest{
+        promotionid: start as i64,
+        voucher_code: "-".to_string(),
+        signature: end.to_string(),
+        need_basic_info: true,
+        need_user_voucher_status: true,
+    };
+	
+	let body_str = serde_json::to_string(&body_json)?;
+
+	println!("{}", body_str);
+
+	//println!("");
+	//println!("header:{:#?}", headers);
+    let mut vouchers: Option<Vouchers> = None;
+	loop {
+        let client = ClientBuilder::new()
+            .http2_keep_alive_while_idle(true)
+            .danger_accept_invalid_certs(true)
+            .impersonate_without_headers(Impersonate::Chrome130)
+            .enable_ech_grease(true)
+            .permute_extensions(true)
+            .gzip(true)
+            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
+            .build()?;
+    
+        // Buat permintaan HTTP POST
+        let response = client
+            .post("https://mall.shopee.co.id/api/v2/voucher_wallet/get_voucher_detail")
+			.headers(headers.clone())
+			.json(&body_json)
+            .version(Version::HTTP_2) 
+            .send()
+            .await?;
+		// Check for HTTP status code indicating an error
+		//let http_version = response.version(); 		// disable output features
+		//println!("HTTP Version: {:?}", http_version); // disable output features
+		let status = response.status();
+		println!("{}", status);
+		let parsed: Value = response.json().await?;
+		if status == reqwest::StatusCode::OK {
+            if let Some(error) = parsed.get("error").and_then(|e| e.as_i64()) {
+                if error == 5 || error == 0 {
+                    println!("Berhasil: {} - {}", error, parsed.get("error_msg").unwrap_or(&serde_json::Value::Null));
+                } else {
+                    println!("Error: {} - {}", error, parsed.get("error_msg").unwrap_or(&serde_json::Value::Null));
+                    continue;
+                }
+            }
+            if let Some(data) = parsed.get("data") {
+                if let Some(voucher) = data.get("voucher_basic_info") {
                     let promotionid = voucher.get("promotionid").and_then(|v| v.as_i64()).unwrap_or_default();
                     let voucher_code = voucher.get("voucher_code").and_then(|v| v.as_str()).unwrap_or_default().to_string();
                     let signature = voucher.get("signature").and_then(|v| v.as_str()).unwrap_or_default().to_string();

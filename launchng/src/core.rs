@@ -422,9 +422,11 @@ impl MyWindow {
                     let kurir_combo_clone = self2.kurir_combo.clone();
                     let btn_cek_cek = self2.btn_cek.clone();
                     let wnd_clone_cek = self2.wnd.clone();
+                    let cookie_data_clone = cookie_data.clone();
+                    let product_info_clone = product_info.clone();
                     tokio::spawn(async move {
                         // Memanggil get_product dengan timeout
-                        match timeout(Duration::from_secs(10), prepare::get_product(&product_info, &cookie_data)).await {
+                        match timeout(Duration::from_secs(10), prepare::get_product(&product_info_clone, &cookie_data_clone)).await {
                             Ok(Ok((name, model_info, is_official_shop, rcode))) => {
                                 if rcode == "200 OK" {
                                     let name_model_vec: Vec<String> = model_info.iter().map(|model| model.name.clone()).collect();
@@ -450,7 +452,17 @@ impl MyWindow {
                                 let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
                             }
                         };
-    
+                        btn_cek_cek.clone().hwnd().EnableWindow(true);
+                        btn_cek_cek.set_text("Cek");
+                        Ok::<(), ()>(())
+                    });
+                    let variasi_combo_clone = self2.variasi_combo.clone();
+                    let kurir_combo_clone = self2.kurir_combo.clone();
+                    let btn_cek_cek = self2.btn_cek.clone();
+                    let wnd_clone_cek = self2.wnd.clone();
+                    let cookie_data = cookie_data.clone();
+                    let product_info = product_info.clone();
+                    tokio::spawn(async move {
                         // Memanggil get_kurir dengan timeout
                         let address_info = match prepare::address(&cookie_data).await {
                             Ok(address) => address,

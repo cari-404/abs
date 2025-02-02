@@ -544,22 +544,17 @@ pub async fn get_builder(cookie_content: &CookieData,
     // Menyimpan hasil dalam struct PlaceOrderBody
     let mut place_order_body = PlaceOrderBody::new(&device_info);
 
-    // Menggunakan thread::spawn untuk setiap key
-    let mut handles = vec![];
-
-    for key in keys {
-        let v_clone = v.clone(); // Clone untuk memastikan data dapat diakses di thread
-        let handle = tokio::spawn(async move{
-            // Ambil nilai untuk setiap key di dalam thread
-            let value = v_clone.get(key).cloned();
-            (key.to_string(), value)
-        });
-        handles.push(handle);
-    }
-
-    // Mengumpulkan hasil dari setiap thread dan memasukkan ke dalam struct
-    for handle in handles {
-        match handle.await {
+    let handles = keys.iter().map(|key| {
+        let v_clone = v.clone();
+        let key = key.to_string();
+        tokio::spawn(async move {
+            let value = v_clone.get(&key).cloned();
+            (key, value)
+        })
+    }).collect::<Vec<_>>();
+    let results = futures::future::join_all(handles).await;
+    for result in results {
+        match result {
             Ok((key, value)) => {
                 place_order_body.insert(&key, value);
             }
