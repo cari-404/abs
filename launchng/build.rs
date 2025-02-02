@@ -18,5 +18,5 @@ fn main() {
 }
 #[cfg(target_env = "msvc")]
 fn main() {
-	println!("cargo:rustc-link-lib=dylib:+verbatim=resources/resources.res");
+    println!("cargo:rustc-link-arg=resources/resources.res");
 }
