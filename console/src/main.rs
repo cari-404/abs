@@ -1,15 +1,12 @@
 /*This Is a first version (beta) Auto Buy Shopee
+Whats new in 0.10.1 :
+    More enchance code
 Whats new in 0.10.0 :
     Add multi thread for task_ng
     Introduced launchng
 Whats new In 0.9.9 :
     More optimalize code
     Add more Structured data
-Whats new In 0.9.8 :
-    initial struct function task_ng
-Whats new In 0.9.7 :
-    Fix mismatch fsv
-    More adjustment
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};

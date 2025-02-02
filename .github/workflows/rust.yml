@@ -46,30 +46,35 @@ jobs:
             bin: abs-amd64.exe
             savevoucher: savevoucher-amd64.exe
             gui: launcabs-amd64.exe
+            guing: LauncherNG-amd64.exe
           - os_name: Windows-aarch64
             os: windows-latest
             target: aarch64-pc-windows-msvc
             bin: abs-arm64.exe
             savevoucher: savevoucher-arm64.exe
             gui: launcabs-arm64.exe
+            guing: LauncherNG-arm64.exe
           - os_name: Windows7-x86_64
             os: windows-latest
             target: x86_64-win7-windows-msvc
             bin: abs7-amd64.exe
             savevoucher: savevoucher7-amd64.exe
-            gui: launcabs7-amd64.exe
+            gui: launcabs_7-amd64.exe
+            guing: LauncherNG_7-amd64.exe
           - os_name: Windows-i686
             os: windows-latest
             target: i686-pc-windows-msvc
             bin: abs-i686.exe
             savevoucher: savevoucher-i686.exe
             gui: launcabs-i686.exe
+            guing: LauncherNG-i686.exe
           - os_name: Windows7-i686
             os: windows-latest
             target: i686-win7-windows-msvc
             bin: abs7-i686.exe
             savevoucher: savevoucher7-i686.exe
-            gui: launcabs7-i686.exe
+            gui: launcabs_7-i686.exe
+            guing: LauncherNG_7-i686.exe
           - os_name: Windows-i586
             os: windows-latest
             target: i586-pc-windows-msvc
@@ -127,6 +132,17 @@ jobs:
         toolchain: ${{ matrix.toolchain }}
         args: "--release -p launcabs"
         strip: true
+
+    - name: Build binary (LauncherNG)
+      uses: houseabsolute/actions-rust-cross@v0
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' 
+      with:
+        command: "build"
+        target: ${{ matrix.platform.target }}
+        toolchain: ${{ matrix.toolchain }}
+        args: "--release -p launchng"
+        strip: true
+
     - name: Build binary
       if: matrix.platform.os_name == 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
       uses: actions-rs/toolchain@v1
@@ -151,6 +167,7 @@ jobs:
         rustup target add x86_64-win7-windows-msvc --toolchain nightly-x86_64-pc-windows-msvc
         rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launcabs
+        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launchng
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
 
@@ -165,6 +182,7 @@ jobs:
         rustup target add i686-win7-windows-msvc --toolchain nightly-i686-pc-windows-msvc
         rustup component add rust-src --toolchain nightly-i686-pc-windows-msvc
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launcabs
+        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launchng
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
 
@@ -173,8 +191,8 @@ jobs:
       run: |
         rustup target add i586-pc-windows-msvc
         cargo add windows
-        cargo build --release --target i586-pc-windows-msvc -p launcabs
         cargo build --release --target i586-pc-windows-msvc -p abs
+        cargo build --release --target i586-pc-windows-msvc -p launcabs
         cargo build --release --target i586-pc-windows-msvc -p savevoucher
 
     - name: Run tests
@@ -192,14 +210,16 @@ jobs:
         mv target/${{ matrix.platform.target }}/release/savevoucher.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
         mv target/${{ matrix.platform.target }}/release/abs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
         mv target/${{ matrix.platform.target }}/release/launcabs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}
+        mv target/${{ matrix.platform.target }}/release/launchng.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.guing }}
 
     - name: Generate SHA-256
       run: shasum -a 256 target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} | cut -d ' ' -f 1 > target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}.sha256
     - name: Release binary and SHA-256 checksum to GitHub
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v0.10.0
+        tag_name: v0.10.1
         files: |
           target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
           target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
           target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}
+          target/${{ matrix.platform.target }}/release/${{ matrix.platform.guing }}
