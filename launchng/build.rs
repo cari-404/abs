@@ -12,7 +12,7 @@ fn main() {
         println!("cargo:rerun-if-changed={}", res_path.display());
         println!("cargo:rustc-link-arg={}", res_path.display());
         let mut res = winresource::WindowsResource::new();
-        res.set_version_info(winresource::VersionInfo::FILEVERSION, 0x0000000A000A0000);
+        res.set_version_info(winresource::VersionInfo::FILEVERSION, 0x0000000A000A0001);
         res.compile().unwrap();
     }
 }
@@ -25,4 +25,6 @@ fn main() {
 
     println!("cargo:rerun-if-changed={}", res_path.display());
     println!("cargo:rustc-link-arg={}", res_path.display());
+    let mut res = winresource::WindowsResource::new();
+    res.compile().unwrap();
 }
