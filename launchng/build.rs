@@ -18,5 +18,11 @@ fn main() {
 }
 #[cfg(target_env = "msvc")]
 fn main() {
-    println!("cargo:rustc-link-arg=resources/resources.res");
+    let res_path = env::current_dir()
+        .unwrap()
+        .join("resources")
+        .join("resources.res");
+
+    println!("cargo:rerun-if-changed={}", res_path.display());
+    println!("cargo:rustc-link-arg={}", res_path.display());
 }
