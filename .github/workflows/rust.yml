@@ -188,9 +188,9 @@ jobs:
 
     - name: Set up Visual Studio 2019 (MSVC 14.27)
       if: matrix.platform.os_name == 'Windows-i586'
-      uses: ilammy/msvc-dev-cmd@v1
+      uses: microsoft/setup-msbuild@v1
       with:
-        toolset: 14.27  # MSVC 14.27 (Visual Studio 2019)
+        vs-version: '16.7'  # Visual Studio 2019 versi 16.7 (MSVC 14.27)
 
     - name: install
       if: matrix.platform.os_name == 'Windows-i586'
