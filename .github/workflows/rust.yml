@@ -186,6 +186,12 @@ jobs:
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
 
+    - name: Set up Visual Studio 2019 (MSVC 14.27)
+      if: matrix.platform.os_name == 'Windows-i586'
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        toolset: 14.27  # MSVC 14.27 (Visual Studio 2019)
+
     - name: install
       if: matrix.platform.os_name == 'Windows-i586'
       run: |
