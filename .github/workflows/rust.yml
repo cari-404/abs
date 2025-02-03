@@ -195,6 +195,8 @@ jobs:
     - name: install
       if: matrix.platform.os_name == 'Windows-i586'
       run: |
+        choco install llvm --x86 --force
+        $env:LIBCLANG_PATH="C:\Program Files (x86)\LLVM\bin"
         rustup target add i586-pc-windows-msvc
         cargo add windows
         cargo build --release --target i586-pc-windows-msvc -p abs
