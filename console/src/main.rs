@@ -1,5 +1,5 @@
 /*This Is a Auto Buy Shopee
-Whats new in 0.10.1 :
+Whats new in 0.10.2 :
     Update Dependency
     test thunk backport for windows
 Whats new in 0.10.1 :
