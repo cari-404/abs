@@ -312,9 +312,8 @@ pub async fn place_order_ng(cookie_content: &CookieData, place_body: &PlaceOrder
 	println!("{}", url2);
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
-        .impersonate_without_headers(Impersonate::Chrome130)
+        .impersonate_skip_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
         .permute_extensions(true)
         .gzip(true)
@@ -500,9 +499,8 @@ pub async fn get_builder(cookie_content: &CookieData,
 	println!("{}", url2);
 	// Buat klien HTTP
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
-        .impersonate_without_headers(Impersonate::Chrome130)
+        .impersonate_skip_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
         .permute_extensions(true)
         .gzip(true)

@@ -17,7 +17,6 @@ pub async fn get_qrcode() -> Result<DataQRCode, Box<dyn std::error::Error>> {
 	let url2 = format!("https://shopee.co.id/api/v2/authentication/gen_qrcode");
 	println!("{}", url2);
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -47,7 +46,6 @@ pub async fn authentication_qrcode(qrcode_data: &DataQRCode) -> Result<(String, 
 	let url2 = format!("https://shopee.co.id/api/v2/authentication/qrcode_status?qrcode_id={}", qrcode_data.qrcode_id_encoded);
 	println!("{}", url2);
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome130)
         .enable_ech_grease(true)
@@ -75,7 +73,6 @@ pub async fn get_cookie(qrcode_token: &str) -> Result<String, Box<dyn std::error
     let url2 = format!("https://shopee.co.id/api/v2/authentication/qrcode_login");
     println!("{}", url2);
     let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome130)
         .enable_ech_grease(true)

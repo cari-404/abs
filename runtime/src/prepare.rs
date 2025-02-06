@@ -201,7 +201,6 @@ pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, addr
 	println!("{}", url2);
     // Buat klien HTTP
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
         .enable_ech_grease(true)
@@ -264,9 +263,8 @@ pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData
 
     // Buat klien HTTP
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
-        .impersonate_without_headers(Impersonate::Chrome130)
+        .impersonate_skip_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
         .permute_extensions(true)
         .gzip(true)
@@ -311,7 +309,6 @@ pub async fn address(cookie_content: &CookieData) -> Result<AddressInfo, Box<dyn
 	let url2 = format!("https://shopee.co.id/api/v4/account/address/get_user_address_list");
 	println!("{}", url2);
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
         .enable_ech_grease(true)
@@ -350,7 +347,6 @@ pub async fn info_akun(cookie_content: &CookieData) -> Result<(String, String, S
 	let url2 = format!("https://shopee.co.id/api/v4/account/basic/get_account_info");
 	println!("{}", url2);
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome127)
         .enable_ech_grease(true)

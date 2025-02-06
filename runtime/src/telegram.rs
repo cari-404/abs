@@ -41,7 +41,6 @@ pub async fn send_msg(data: &TeleInfo, msg: &str) -> Result<(), reqwest::Error> 
     let msg_encoded = url_encode(msg);
     let url2 = format!("https://api.telegram.org/bot{}/sendMessage?chat_id={}&text={}", data.telegram_token, data.telegram_chat_id, msg_encoded);
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
         .impersonate(Impersonate::Chrome130)
         .enable_ech_grease(true)

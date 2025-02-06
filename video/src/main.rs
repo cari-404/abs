@@ -128,9 +128,8 @@ async fn claim_reward(cookie_content: &str, device_id: &str, device_fingerprint:
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie)?);
 
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
-        .impersonate_without_headers(Impersonate::Chrome130)
+        .impersonate_skip_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
         .permute_extensions(true)
         .gzip(true)
@@ -217,9 +216,8 @@ async fn report_reward(cookie_content: &str, device_id: &str, device_fingerprint
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie)?);
 
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
-        .impersonate_without_headers(Impersonate::Chrome130)
+        .impersonate_skip_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
         .permute_extensions(true)
         .gzip(true)
@@ -311,9 +309,8 @@ async fn cek_reward(cookie_content: &str, device_id: &str, device_fingerprint: &
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie)?);
 
 	let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
-        .impersonate_without_headers(Impersonate::Chrome130)
+        .impersonate_skip_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
         .permute_extensions(true)
         .gzip(true)

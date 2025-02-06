@@ -170,9 +170,8 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &Cook
         println!("{}", url2);
         // Buat klien HTTP
         let client = ClientBuilder::new()
-            .http2_keep_alive_while_idle(true)
-        .danger_accept_invalid_certs(true)
-            .impersonate_without_headers(Impersonate::Chrome130)
+            .danger_accept_invalid_certs(true)
+            .impersonate_skip_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
             .gzip(true)
@@ -251,9 +250,8 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
         println!("{}", url2);
         // Buat klien HTTP
         let client = ClientBuilder::new()
-            .http2_keep_alive_while_idle(true)
-        .danger_accept_invalid_certs(true)
-            .impersonate_without_headers(Impersonate::Chrome130)
+            .danger_accept_invalid_certs(true)
+            .impersonate_skip_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
             .gzip(true)
@@ -333,9 +331,8 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -
     let mut vouchers: Option<Vouchers> = None;
 	loop {
         let client = ClientBuilder::new()
-            .http2_keep_alive_while_idle(true)
             .danger_accept_invalid_certs(true)
-            .impersonate_without_headers(Impersonate::Chrome130)
+            .impersonate_skip_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
             .gzip(true)
@@ -412,9 +409,8 @@ pub async fn get_voucher_data(start: &str, end: &str, cookie_content: &CookieDat
     let mut vouchers: Option<Vouchers> = None;
 	loop {
         let client = ClientBuilder::new()
-            .http2_keep_alive_while_idle(true)
             .danger_accept_invalid_certs(true)
-            .impersonate_without_headers(Impersonate::Chrome130)
+            .impersonate_skip_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
             .gzip(true)
@@ -540,13 +536,11 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, produc
     println!("{}", url2);
     // Buat klien HTTP
     let client = ClientBuilder::new()
-        .http2_keep_alive_while_idle(true)
         .danger_accept_invalid_certs(true)
-        .impersonate_without_headers(Impersonate::Chrome130)
+        .impersonate_skip_headers(Impersonate::Chrome130)
         .enable_ech_grease(true)
         .permute_extensions(true)
-        .gzip(true)
-        .http2_max_concurrent_streams(1000)
+        .gzip(true)        
         //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
         .build()?;
 
@@ -662,9 +656,8 @@ pub async fn some_function(start: &str, cookie_content: &CookieData) -> Result<(
 	
 	loop {
         let client = ClientBuilder::new()
-            .http2_keep_alive_while_idle(true)
-        .danger_accept_invalid_certs(true)
-            .impersonate_without_headers(Impersonate::Chrome130)
+            .danger_accept_invalid_certs(true)
+            .impersonate_skip_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
             .gzip(true)
@@ -754,9 +747,8 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 	
 	loop {
         let client = ClientBuilder::new()
-            .http2_keep_alive_while_idle(true)
-        .danger_accept_invalid_certs(true)
-            .impersonate_without_headers(Impersonate::Chrome130)
+            .danger_accept_invalid_certs(true)
+            .impersonate_skip_headers(Impersonate::Chrome130)
             .enable_ech_grease(true)
             .permute_extensions(true)
             .gzip(true)

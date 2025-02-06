@@ -1,12 +1,12 @@
-/*This Is a first version (beta) Auto Buy Shopee
+/*This Is a Auto Buy Shopee
+Whats new in 0.10.1 :
+    Update Dependency
+    test thunk backport for windows
 Whats new in 0.10.1 :
     More enchance code
 Whats new in 0.10.0 :
     Add multi thread for task_ng
     Introduced launchng
-Whats new In 0.9.9 :
-    More optimalize code
-    Add more Structured data
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -66,6 +66,8 @@ struct Opt {
     collection_vouchers: bool,
 	#[structopt(short, long, help = "Apply Platform Voucher klaim(claim_platform_voucher) enable pro_id&sign ")]
     claim_platform_vouchers: bool,
+	#[structopt(short, long, help = "Alternative Platform Voucher without claim Required pro_id&sign")]
+    no_claim_platform_vouchers: bool,
 	#[structopt(short, long, help = "Set Platform kode voucher")]
     code_platform: Option<String>,
 	#[structopt(short, long, help = "Set shop kode Voucher")]
@@ -469,12 +471,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let cookie_data_clone = cookie_data.clone();
         let platform_task = tokio::spawn(async move{
             if !promotionid.is_empty() && !signature.is_empty() {
-                voucher::save_voucher(&promotionid, &signature, &cookie_data_clone).await
+                if opt.no_claim_platform_vouchers {
+                    return voucher::get_voucher_data(&promotionid, &signature, &cookie_data_clone).await;
+                } else {
+                    return voucher::save_voucher(&promotionid, &signature, &cookie_data_clone).await;
+                }
             } else if !voucher_code_platform.is_empty() {
-                voucher::save_platform_voucher_by_voucher_code(&voucher_code_platform, &cookie_data_clone).await
-            } else {
-                Ok(None)
-            }
+                return voucher::save_platform_voucher_by_voucher_code(&voucher_code_platform, &cookie_data_clone).await;
+            }    
+            Ok(None)            
         });
         let chosen_model_clone = chosen_model.clone();
         let chosen_payment_clone = chosen_payment.clone();
