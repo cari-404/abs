@@ -101,7 +101,7 @@ jobs:
         sudo apt install make gcc-mingw-w64 libc6-dev-i386 libssl-dev:i386 libgcc-9-dev-i386-cross -y
 
     - name: Convert
-      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686'  && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Linux-x86_64'
+      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'Linux-x86_64' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
       run: |
         sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross
         sudo apt install gcc-i686-linux-gnu g++-i686-linux-gnu libc6-dev-i386-cross
@@ -109,13 +109,13 @@ jobs:
         clang --version
 
     - name: Convert2
-      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'Windows-i586'
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
       run: |
         choco install nasm
 
     - name: Build binary(abs)
       uses: houseabsolute/actions-rust-cross@v0
-      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
+      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
       with:
         command: "build"
         target: ${{ matrix.platform.target }}
@@ -125,7 +125,7 @@ jobs:
 
     - name: Build binary(savevoucher)
       uses: houseabsolute/actions-rust-cross@v0
-      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
+      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
       with:
         command: "build"
         target: ${{ matrix.platform.target }}
@@ -154,7 +154,7 @@ jobs:
         strip: true
 
     - name: Build binary
-      if: matrix.platform.os_name == 'Android-aarch64' && matrix.platform.os_name != 'Windows-i586' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686'
+      if: matrix.platform.os_name == 'Android-aarch64' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
       uses: actions-rs/toolchain@v1
       with:
           toolchain: stable
@@ -220,13 +220,13 @@ jobs:
       run: ls -R
 
     - name: Rename binary (linux and macos)
-      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'Windows-i586'
+      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
       run: |
         mv target/${{ matrix.platform.target }}/release/abs target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
         mv target/${{ matrix.platform.target }}/release/savevoucher target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
 
     - name: Rename binary (windows)
-      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'Windows-i586'
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
       run: |
         mv target/${{ matrix.platform.target }}/release/savevoucher.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
         mv target/${{ matrix.platform.target }}/release/abs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
