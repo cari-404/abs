@@ -1,28 +1,28 @@
 [package]
-name = "abs"
-version = "0.10.2"
+name = "savevoucher"
+version = "1.2.3"
 edition = "2021"
 authors = ["Paijo"]
-description = "Auto Buy from Shopee.co.id"
+description = "Save Voucher"
 build = "build.rs"
 
 [build-dependencies]
+thunk = { git = "https://github.com/cari-404/thunk.git", package = "thunk-rs" }
 winresource = "0.1"
 
 [package.metadata.winresource]
-FileDescription = "Auto Buy from Shopee.co.id"
+FileDescription = "Save Voucher"
 LegalCopyright = "By Paijo"
-OriginalFilename = "abs.exe"
+OriginalFilename = "claimshopee.exe"
 CompanyName = "Paijo"
 
 [dependencies]
 runtime = { path = "../runtime" }
 tokio = { version = "1", features = ["full"] }
-serde_json = "1"
-chrono = "0.4"
 anyhow = "1.0"
+chrono = "0.4"
+indicatif = "0.17"
+atty = "0.2.14"
+windows-version = "0.1.0"
 structopt = "0.3"
-crossterm = "0.28.1"
-ctrlc = "3.4.5"
 num_cpus = "1.16"
-futures = "0.3"

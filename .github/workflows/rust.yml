@@ -75,10 +75,20 @@ jobs:
             savevoucher: savevoucher7-i686.exe
             gui: launcabs_7-i686.exe
             guing: LauncherNG_7-i686.exe
-          - os_name: Windows-i586
+          - os_name: WindowsXP-x86_64
             os: windows-latest
-            target: i586-pc-windows-msvc
-            bin: abs-i586.exe
+            target: x86_64-win7-windows-msvc
+            bin: absXP-amd64.exe
+            savevoucher: savevoucherXP-amd64.exe
+            gui: launcabs_XP-amd64.exe
+            guing: LauncherNG_XP-amd64.exe
+          - os_name: WindowsXP-i686
+            os: windows-latest
+            target: i686-win7-windows-msvc
+            bin: absXP-i686.exe
+            savevoucher: savevoucherXP-i686.exe
+            gui: launcabs_XP-i686.exe
+            guing: LauncherNG_XP-i686.exe
         toolchain:
           - stable
     steps:
@@ -160,8 +170,28 @@ jobs:
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p abs
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p savevoucher
 
-    - name: Install nightly toolchain for Windows 7 64-bit
-      if: matrix.platform.os_name == 'Windows7-x86_64'
+    - name: Configure for Windows XP Build
+      if: matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
+      run: |
+        rm console/Cargo.toml
+        mv console/CargoXP.toml console/Cargo.toml
+        rm console/build.rs
+        mv console/buildXP.rs console/build.rs
+        rm launcabs/Cargo.toml
+        mv launcabs/CargoXP.toml launcabs/Cargo.toml
+        rm launcabs/build.rs
+        mv launcabs/buildXP.rs launcabs/build.rs
+        rm launchng/Cargo.toml
+        mv launchng/CargoXP.toml launchng/Cargo.toml
+        rm launchng/build.rs
+        mv launchng/buildXP.rs launchng/build.rs
+        rm savevoucher/Cargo.toml
+        mv savevoucher/CargoXP.toml savevoucher/Cargo.toml
+        rm savevoucher/build.rs
+        mv savevoucher/buildXP.rs savevoucher/build.rs
+
+    - name: Install nightly toolchain for Windows 7 64-bit or Windows XP 64-bit
+      if: matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'WindowsXP-x86_64'
       run: |
         rustup toolchain install nightly-x86_64-pc-windows-msvc
         rustup target add x86_64-win7-windows-msvc --toolchain nightly-x86_64-pc-windows-msvc
@@ -171,8 +201,8 @@ jobs:
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
 
-    - name: Install nightly toolchain for Windows 7 32-bit
-      if: matrix.platform.os_name == 'Windows7-i686'
+    - name: Install nightly toolchain for Windows 7 32-bit or Windows XP 32-bit
+      if: matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-i686'
       run: |
         choco install llvm --x86 --force
         ls -R "C:\Program Files (x86)\LLVM\bin"
@@ -185,23 +215,6 @@ jobs:
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launchng
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
-
-    - name: Set up Visual Studio 2019 (MSVC 14.27)
-      if: matrix.platform.os_name == 'Windows-i586'
-      uses: microsoft/setup-msbuild@v1
-      with:
-        vs-version: '16.7'  # Visual Studio 2019 versi 16.7 (MSVC 14.27)
-
-    - name: install
-      if: matrix.platform.os_name == 'Windows-i586'
-      run: |
-        choco install llvm --x86 --force
-        $env:LIBCLANG_PATH="C:\Program Files (x86)\LLVM\bin"
-        rustup target add i586-pc-windows-msvc
-        cargo add windows
-        cargo build --release --target i586-pc-windows-msvc -p abs
-        cargo build --release --target i586-pc-windows-msvc -p launcabs
-        cargo build --release --target i586-pc-windows-msvc -p savevoucher
 
     - name: Run tests
       run: ls -R
