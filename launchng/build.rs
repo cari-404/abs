@@ -18,6 +18,9 @@ fn main() {
 }
 #[cfg(target_env = "msvc")]
 fn main() {
+    if target_arch == "x86" || target_arch == "x86_64" {
+        thunk::thunk();
+    }
     let res_path = env::current_dir()
         .unwrap()
         .join("resources")
