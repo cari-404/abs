@@ -224,12 +224,55 @@ fn tugas_utama() {
 	println!("Performing the task...");
 	println!("\nTask completed! Current time: {}", Local::now().format("%H:%M:%S.%3f"));
 }
+#[cfg(not(windows))]
 fn get_user_input(prompt: &str) -> String {
-	print!("{}", prompt);
-	io::stdout().flush().unwrap();
-	let mut input = String::new();
-	io::stdin().read_line(&mut input).unwrap();
-	input.trim().to_string()
+    print!("{}", prompt);
+    io::stdout().flush().unwrap();
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
+    input.trim().to_string()
+}
+#[cfg(windows)]
+fn get_user_input(prompt: &str) -> String {
+    use std::io::{self, Write};
+    use std::ptr;
+    use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+    use windows_sys::Win32::System::Console::{GetStdHandle, ReadConsoleW, STD_INPUT_HANDLE};
+
+    // Tampilkan prompt dan flush agar output langsung muncul
+    print!("{}", prompt);
+    io::stdout().flush().unwrap();
+
+    unsafe {
+        // Dapatkan handle ke standard input
+        let h_stdin = GetStdHandle(STD_INPUT_HANDLE);
+        if h_stdin == INVALID_HANDLE_VALUE {
+            println!("{}", io::Error::last_os_error());
+        }
+
+        // Siapkan buffer untuk membaca input (misal 512 karakter UTF-16)
+        let mut buffer: [u16; 512] = [0; 512];
+        let mut chars_read: u32 = 0;
+
+        // Panggil ReadConsoleW untuk membaca input dari console
+        let success = ReadConsoleW(
+            h_stdin,
+            buffer.as_mut_ptr() as *mut _,
+            buffer.len() as u32,
+            &mut chars_read as *mut u32,
+            ptr::null_mut(),
+        );
+
+        if success == 0 {
+            println!("{}", io::Error::last_os_error());
+        }
+
+        // Konversi data UTF-16 yang terbaca menjadi String
+        let input = String::from_utf16_lossy(&buffer[..chars_read as usize]);
+
+        // Kembalikan input yang telah di-trim (menghilangkan newline atau spasi berlebih)
+        input.trim_end().to_string()
+    }
 }
 fn format_duration(duration: Duration) -> String {
 	let hours = duration.num_hours();
