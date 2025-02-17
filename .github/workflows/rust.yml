@@ -193,13 +193,13 @@ jobs:
     - name: Install nightly toolchain for Windows 7 64-bit or Windows XP 64-bit
       if: matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'WindowsXP-x86_64'
       run: |
-        rustup toolchain install nightly-x86_64-pc-windows-msvc
-        rustup target add x86_64-win7-windows-msvc --toolchain nightly-x86_64-pc-windows-msvc
-        rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launcabs
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launchng
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
+        rustup toolchain install stable-x86_64-pc-windows-msvc
+        rustup target add x86_64-win7-windows-msvc --toolchain stable-x86_64-pc-windows-msvc
+        rustup component add rust-src --toolchain stable-x86_64-pc-windows-msvc
+        cargo +stable-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launcabs
+        cargo +stable-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launchng
+        cargo +stable-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
+        cargo +stable-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
 
     - name: Install nightly toolchain for Windows 7 32-bit or Windows XP 32-bit
       if: matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-i686'
@@ -208,13 +208,13 @@ jobs:
         ls -R "C:\Program Files (x86)\LLVM\bin"
         ls -R "C:\Program Files\LLVM\bin"
         $env:LIBCLANG_PATH="C:\Program Files (x86)\LLVM\bin"
-        rustup toolchain install nightly-i686-pc-windows-msvc
-        rustup target add i686-win7-windows-msvc --toolchain nightly-i686-pc-windows-msvc
-        rustup component add rust-src --toolchain nightly-i686-pc-windows-msvc
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launcabs
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launchng
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
+        rustup toolchain install stable-i686-pc-windows-msvc
+        rustup target add i686-win7-windows-msvc --toolchain stable-i686-pc-windows-msvc
+        rustup component add rust-src --toolchain stable-i686-pc-windows-msvc
+        cargo +stable-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launcabs
+        cargo +stable-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launchng
+        cargo +stable-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
+        cargo +stable-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
 
     - name: Run tests
       run: ls -R
