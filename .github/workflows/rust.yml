@@ -99,14 +99,18 @@ jobs:
         sudo dpkg --add-architecture i386
         sudo apt update
         sudo apt install build-essential gcc-multilib gcc-mingw-w64 libc6-dev-i386 libssl-dev:i386 libgcc-9-dev-i386-cross -y
-
-    - name: Convert
-      if: matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64'
-      run: |
         sudo apt install build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross libstdc++6-arm64-cross
         sudo apt install gcc-i686-linux-gnu g++-i686-linux-gnu libc6-dev-i386-cross libstdc++6-i386-cross
         sudo apt install llvm-dev libclang-dev clang libgcc-9-dev-arm64-cross
         sudo apt install cmake g++-multilib gcc-multilib
+
+    - name: Convert
+      if: matrix.platform.os_name == 'Linux-aarch64'
+      run: |
+        sudo apt install build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross libstdc++6-arm64-cross
+        sudo apt install gcc-i686-linux-gnu g++-i686-linux-gnu libc6-dev-i386-cross libstdc++6-i386-cross
+        sudo apt install llvm-dev libclang-dev clang libgcc-9-dev-arm64-cross
+        sudo apt install cmake g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
         clang --version
 
     - name: Convert2
