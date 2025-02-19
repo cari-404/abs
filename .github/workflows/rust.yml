@@ -101,7 +101,7 @@ jobs:
         sudo apt install build-essential gcc-multilib gcc-mingw-w64 libc6-dev-i386 libssl-dev:i386 libgcc-9-dev-i386-cross -y
 
     - name: Convert
-      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'Linux-x86_64' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
+      if: matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64'
       run: |
         sudo apt install build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross libstdc++6-arm64-cross
         sudo apt install gcc-i686-linux-gnu g++-i686-linux-gnu libc6-dev-i386-cross libstdc++6-i386-cross
@@ -114,9 +114,16 @@ jobs:
       run: |
         choco install nasm
 
+    - name: Build binary Linux
+      if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64'
+      run: |
+        rustup target add ${{ matrix.platform.bin }}
+        cargo +stable build --release --target ${{ matrix.platform.bin }} -p abs
+        cargo +stable build --release --target ${{ matrix.platform.bin }} -p savevoucher
+
     - name: Build binary(abs)
       uses: houseabsolute/actions-rust-cross@v0
-      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64'
       with:
         command: "build"
         target: ${{ matrix.platform.target }}
@@ -126,7 +133,7 @@ jobs:
 
     - name: Build binary(savevoucher)
       uses: houseabsolute/actions-rust-cross@v0
-      if: matrix.platform.os_name != 'Android-aarch64' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64'
       with:
         command: "build"
         target: ${{ matrix.platform.target }}
