@@ -98,8 +98,7 @@ jobs:
       run: |
         sudo dpkg --add-architecture i386
         sudo apt update
-        sudo apt remove binutils make
-        sudo apt install build-essential gcc-multilib:i386 binutils:i386 make:i386 llvm:i386 clang:i386 gcc-mingw-w64 libc6-dev-i386 libssl-dev:i386 libgcc-9-dev-i386-cross -y
+        sudo apt install build-essential libclang-dev:i386 gcc-multilib gcc-mingw-w64 libc6-dev-i386 libssl-dev:i386 libgcc-9-dev-i386-cross -y
 
     - name: Convert
       if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'Linux-x86_64' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
