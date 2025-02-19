@@ -117,9 +117,9 @@ jobs:
     - name: Build binary Linux
       if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64'
       run: |
-        rustup target add ${{ matrix.platform.bin }}
-        cargo +stable build --release --target ${{ matrix.platform.bin }} -p abs
-        cargo +stable build --release --target ${{ matrix.platform.bin }} -p savevoucher
+        rustup target add ${{ matrix.platform.target }}
+        cargo +stable build --release --target ${{ matrix.platform.target }} -p abs
+        cargo +stable build --release --target ${{ matrix.platform.target }} -p savevoucher
 
     - name: Build binary(abs)
       uses: houseabsolute/actions-rust-cross@v0
