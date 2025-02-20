@@ -1,11 +1,11 @@
 /*This Is a Auto Buy Shopee
+Whats new in 0.10.4 :
+    test algorithm
 Whats new in 0.10.3 :
     Enchance Interactive Interface
 Whats new in 0.10.2 :
     Update Dependency
     test thunk backport for windows
-Whats new in 0.10.1 :
-    More enchance code
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -448,6 +448,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	clear_screen();
 	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
     println!("{:?}", chosen_payment);
+    let cookie_data = Arc::new(cookie_data);
+    let device_info = Arc::new(device_info);
+    let product_info = Arc::new(product_info);
+    let address_info = Arc::new(address_info);
+    let chosen_model = Arc::new(chosen_model);
+    let chosen_payment = Arc::new(chosen_payment);
+    let chosen_shipping = Arc::new(chosen_shipping);
     countdown_to_task(&task_time_dt).await;
 	
 	/* Code 0.9.0
@@ -462,8 +469,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             promotionid = promo_id;
             signature = sig;
         }
-        let cookie_data_clone = cookie_data.clone();
-        let product_info_clone = product_info.clone();
+        let cookie_data_clone = Arc::clone(&cookie_data);
+        let product_info_clone = Arc::clone(&product_info);
         let shop_task = tokio::spawn(async move{
             if !voucher_code_shop.is_empty() {
                 voucher::save_shop_voucher_by_voucher_code(&voucher_code_shop, &cookie_data_clone, &product_info_clone).await
@@ -471,7 +478,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(None)
             }
         });
-        let cookie_data_clone = cookie_data.clone();
+        let cookie_data_clone = Arc::clone(&cookie_data);
         let platform_task = tokio::spawn(async move{
             if !promotionid.is_empty() && !signature.is_empty() {
                 if opt.no_claim_platform_vouchers {
@@ -484,11 +491,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }    
             Ok(None)            
         });
-        let chosen_model_clone = chosen_model.clone();
-        let chosen_payment_clone = chosen_payment.clone();
-        let chosen_shipping_clone = chosen_shipping.clone();
-        let cookie_data_clone = cookie_data.clone();
-        let product_info_clone = product_info.clone();
+        let cookie_data_clone = Arc::clone(&cookie_data);
+        let product_info_clone = Arc::clone(&product_info);
+        let chosen_model_clone = Arc::clone(&chosen_model);
+        let chosen_payment_clone = Arc::clone(&chosen_payment);
+        let chosen_shipping_clone = Arc::clone(&chosen_shipping);
         let recommend_task = tokio::spawn(async move{
             if !opt.no_fsv {
                 voucher::get_recommend_platform_vouchers(
@@ -519,29 +526,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("platform_voucher", &final_voucher).await;
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
 
+        let get_body = task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, &freeshipping_voucher, &final_voucher, &selected_shop_voucher).await?;
+        let get_body = Arc::new(get_body);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
         let stop_flag = Arc::new(AtomicBool::new(false));
         for i in 0..max_threads {
             println!("Running on thread: {}", i);
             let tx = tx.clone();
-            let stop_flag = stop_flag.clone();
-            let chosen_model = chosen_model.clone();
-            let chosen_payment = chosen_payment.clone();
-            let chosen_shipping = chosen_shipping.clone();
-            let cookie_data = cookie_data.clone();
-            let device_info = device_info.clone();
-            let product_info = product_info.clone();
-            let address_info = address_info.clone();
-            let freeshipping_voucher = freeshipping_voucher.clone();
-            let final_voucher = final_voucher.clone();
-            let selected_shop_voucher = selected_shop_voucher.clone();
+            let stop_flag = Arc::clone(&stop_flag);
+            let cookie_data = Arc::clone(&cookie_data);
+            let device_info = Arc::clone(&device_info);
+            let chosen_payment = Arc::clone(&chosen_payment);
+            let get_body = Arc::clone(&get_body);
     
             tokio::spawn(async move {
                 loop{
                     if stop_flag.load(Ordering::Relaxed) {
                         break;
                     }
-                    let place_order_body = match task_ng::get_builder(&cookie_data, &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, freeshipping_voucher.clone(), final_voucher.clone(), selected_shop_voucher.clone()).await
+                    let place_order_body = match task_ng::get_ng(&cookie_data, &get_body, &device_info, &chosen_payment).await
                     {
                         Ok(body) => body,
                         Err(err) => {

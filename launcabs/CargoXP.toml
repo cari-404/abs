@@ -1,6 +1,6 @@
 [package]
 name = "launcabs"
-version = "0.10.3"
+version = "0.10.4"
 edition = "2021"
 authors = ["Paijo"]
 description = "Launcher for ABS"

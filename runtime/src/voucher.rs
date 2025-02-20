@@ -51,7 +51,7 @@ struct GetVoucherRequest {
 }
 
 #[derive(Serialize)]
-struct JsonCollectionRequest {
+pub struct JsonCollectionRequest {
     voucher_collection_request_list: Vec<VoucherCollectionRequest>,
 }
 #[derive(Serialize)]
