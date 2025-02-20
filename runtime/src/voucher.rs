@@ -51,7 +51,7 @@ struct GetVoucherRequest {
 }
 
 #[derive(Serialize)]
-struct JsonRequest {
+struct JsonCollectionRequest {
     voucher_collection_request_list: Vec<VoucherCollectionRequest>,
 }
 #[derive(Serialize)]
@@ -645,8 +645,8 @@ pub async fn some_function(start: &str, cookie_content: &CookieData) -> Result<(
     headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
     headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
 
-	// Bentuk struct JsonRequest
-	let json_request = JsonRequest {
+	// Bentuk struct JsonCollectionRequest
+	let json_request = JsonCollectionRequest {
 		voucher_collection_request_list: vec![voucher_request],
 	};
 
@@ -737,8 +737,8 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 		offset: 0,
 		number_of_vouchers_per_row: 1,
 	};
-	// Bentuk struct JsonRequest
-	let json_request = JsonRequest {
+	// Bentuk struct JsonCollectionRequest
+	let json_request = JsonCollectionRequest {
 		voucher_collection_request_list: vec![voucher_request],
 	};
 
@@ -763,15 +763,10 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
             .version(Version::HTTP_2) 
             .send()
             .await?;
-		// Check for HTTP status code indicating an error
-		//let http_version = response.version(); 		// disable output features
-		//println!("HTTP Version: {:?}", http_version); // disable output features
+
 		let status = response.status();
 		let hasil: Value = response.json().await?;
 		if status == reqwest::StatusCode::OK {
-			/*let error_res = hasil.get("error").and_then(|er| er.as_i64()).unwrap_or(0);
-			let error_res_str = error_res.to_string();*/
-			// Access specific values using serde_json::Value methods
 			if let Some(data_array) = hasil.get("data").and_then(|data| data.as_array()) {
 				for data_value in data_array {
 					if let Some(vouchers_array) = data_value.get("vouchers").and_then(|vouchers| vouchers.as_array()) {
@@ -782,8 +777,6 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 									let signature_temp = voucher_identifier_obj.get("signature").and_then(|s| s.as_str()).unwrap_or("");
 									let promotion_id = promotion_id_temp.to_string();
                                     let signature = signature_temp.to_string();
-									/*println!("{}", promotion_id);
-									println!("{}", signature);*/
                                     return Ok((promotion_id, signature));
 								}
 							}
@@ -793,17 +786,10 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 						println!("Tidak ada Info vouchers ditemukan untuk collection_id:{}", cid_1);
 					}
 				}
-			/*} else if !error_res_str.is_empty() {
-				interactive_print(&pb, &println!("error: {}", error_res_str));*/
 			}else {
 				println!("Tidak ada data ditemukan untuk collection_id: {}", cid_1);
 			}
 			break;
-		}else if status == reqwest::StatusCode::IM_A_TEAPOT {
-			println!("POST request gagal untuk collection_id:: {}", cid_1);
-			println!("Gagal, status code: 418 - I'm a teapot. Mencoba kembali...");
-			println!("{}", hasil);
-			continue;
 		}else {
 			println!("POST request gagal untuk collection_id:: {}", cid_1);
 			println!("Status: {}", status);
@@ -811,4 +797,49 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 		}
 	}
 	Ok((String::new(), String::new()))	
+}
+
+pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest, cookie_content: &CookieData) -> Result<(String, String)> {
+    let mut promotionid = String::new();
+	let mut signature = String::new();
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29335 app_type=1"));
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    headers.insert("Accept", HeaderValue::from_static("application/json"));
+    headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
+    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+    headers.insert("x-api-source", HeaderValue::from_static("rn"));
+    headers.insert("if-none-match-", HeaderValue::from_static("55b03-1e991df3597baecb4f87bfbe85b99329"));
+    headers.insert("af-ac-enc-dat", HeaderValue::from_static(""));
+    headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(""));
+    headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
+    headers.insert("af-ac-enc-id", HeaderValue::from_static(""));
+    headers.insert("x-sap-access-t", HeaderValue::from_static(""));
+    headers.insert("x-sap-access-s", HeaderValue::from_static(""));
+    headers.insert("x-sap-access-f", HeaderValue::from_static(""));
+    headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
+    headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/"));
+    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
+    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
+
+    let client = ClientBuilder::new()
+        .danger_accept_invalid_certs(true)
+        .impersonate_skip_headers(Impersonate::Chrome130)
+        .enable_ech_grease(true)
+        .permute_extensions(true)
+        .gzip(true)
+        .build()?;
+
+    // Buat permintaan HTTP POST
+    let response = client
+        .post("https://mall.shopee.co.id/api/v1/microsite/get_vouchers_by_collections")
+        .headers(headers.clone())
+        .json(&collection_id)
+        .version(Version::HTTP_2) 
+        .send()
+        .await?;
+
+    let status = response.status();
+    let hasil: Value = response.json().await?;
+    Ok((promotionid, signature))
 }

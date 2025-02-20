@@ -809,14 +809,17 @@ impl MyWindow {
                     Ok(())
                 });
                 let file_combo_clone = file_combo.clone();
+                let wnd2_clone = wnd2.clone();
                 save_button.on().bn_clicked(move || {
                     let file = file_combo_clone.text();
                     let cookie = cookie_edit.text();
                     let sz = sz_edit.text();
                     if file.is_empty() {
-                        println!("Please select a file before saving the cookie");
+                        let isi = format!("Please select a file before saving the cookie");
+                        let _ = func_main::error_modal(&wnd2_clone, "Error save data", &isi);
                     } else if cookie.is_empty() {
-                        println!("Please input the cookie before saving");
+                        let isi = format!("Please input the cookie before saving");
+                        let _ = func_main::error_modal(&wnd2_clone, "Error save data", &isi);
                     } else {
                         if file.contains(".txt") {
                             println!("File contains .txt");
@@ -826,7 +829,9 @@ impl MyWindow {
                             let file_fix = format!("{}.txt", file);
                             let _ = func_main::save_cookie_fp_file(&file_fix, &cookie, &sz);
                         }
-                        println!("Cookie saved successfully");
+                        let isi = format!("Cookie saved successfully");
+                        let _ = func_main::info_modal(&wnd2_clone, "Success saving data", &isi);
+                        wnd2_clone.close();
                     }
                     Ok(())
                 });
@@ -929,17 +934,16 @@ impl MyWindow {
                         }
                         match telegram::save_config_file(serde_json::to_string_pretty(&config).unwrap()).await {
                             Ok(_) => {
-                                println!("saved success");
-                                //let isi = format!("Token and chat ID saved successfully");
-                                //let _ = func_main::info_modal(&wnd2_clone, "Success", &isi);
+                                let isi = format!("Token and chat ID saved successfully");
+                                let _ = func_main::info_modal(&wnd2_clone, "Success saving data", &isi);
+                                wnd2_clone.close();
                             }
                             Err(e) => {
                                 let isi = format!("Failed to save config file: {}", e);
                                 let _ = func_main::error_modal(&wnd2_clone, "Error", &isi);
                             }
-                        };                        
+                        };
                     });
-
                 }
                 Ok(())
             });

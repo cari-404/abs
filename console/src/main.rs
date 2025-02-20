@@ -1,12 +1,11 @@
 /*This Is a Auto Buy Shopee
+Whats new in 0.10.3 :
+    Enchance Interactive Interface
 Whats new in 0.10.2 :
     Update Dependency
     test thunk backport for windows
 Whats new in 0.10.1 :
     More enchance code
-Whats new in 0.10.0 :
-    Add multi thread for task_ng
-    Introduced launchng
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -126,12 +125,13 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     } else if opt.platform_vouchers {
         println!("{:<padding$}: {}", "Mode", "Code Platform Voucher", padding = padding);
         println!("{:<padding$}: {}", "Code", opt.code_platform.clone().unwrap_or_else(|| voucher_code_platform.to_string()), padding = padding);
-    } else if opt.shop_vouchers {
-        println!("{:<padding$}: {}", "Mode", "Code Shop Voucher", padding = padding);
-        println!("{:<padding$}: {}", "Code", opt.code_shop.clone().unwrap_or_else(|| voucher_code_shop.to_string()), padding = padding);
     } else if opt.collection_vouchers {
         println!("{:<padding$}: {}", "Mode", "Voucher Collection", padding = padding);
         println!("{:<padding$}: {}", "Collection", opt.collectionid.clone().unwrap_or_else(|| voucher_collectionid.to_string()), padding = padding);
+    } 
+    if opt.shop_vouchers {
+        println!("{:<padding$}: {}", "Mode", "Code Shop Voucher", padding = padding);
+        println!("{:<padding$}: {}", "Code", opt.code_shop.clone().unwrap_or_else(|| voucher_code_shop.to_string()), padding = padding);
     }
     println!("---------------------------------------------------------------");
     println!("");
@@ -190,6 +190,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Welcome Header
     println!("Auto Buy Shopee [Version {}]", version_info);
     println!("Logical CPUs: {}", num_cpus::get());
+    if config.telegram_notif {
+        println!("Telegram Notification: Enabled");
+    }
     println!("");
 
     // Get account details
@@ -570,6 +573,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         drop(tx); // Tutup pengirim setelah semua tugas selesai
         while let Some(url) = rx.recv().await {
             println!("{}", url);
+            if config.telegram_notif {
+                telegram::send_msg(&config, &url).await?;
+            }
         }
     } else if !token.is_empty(){
         loop{
@@ -790,22 +796,15 @@ fn get_user_input(prompt: &str) -> String {
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Console::{GetStdHandle, ReadConsoleW, STD_INPUT_HANDLE};
 
-    // Tampilkan prompt dan flush agar output langsung muncul
     print!("{}", prompt);
     io::stdout().flush().unwrap();
-
     unsafe {
-        // Dapatkan handle ke standard input
         let h_stdin = GetStdHandle(STD_INPUT_HANDLE);
         if h_stdin == INVALID_HANDLE_VALUE {
             println!("{}", io::Error::last_os_error());
         }
-
-        // Siapkan buffer untuk membaca input (misal 512 karakter UTF-16)
         let mut buffer: [u16; 512] = [0; 512];
         let mut chars_read: u32 = 0;
-
-        // Panggil ReadConsoleW untuk membaca input dari console
         let success = ReadConsoleW(
             h_stdin,
             buffer.as_mut_ptr() as *mut _,
@@ -813,16 +812,11 @@ fn get_user_input(prompt: &str) -> String {
             &mut chars_read as *mut u32,
             ptr::null_mut(),
         );
-
         if success == 0 {
             println!("{}", io::Error::last_os_error());
         }
-
-        // Konversi data UTF-16 yang terbaca menjadi String
         let input = String::from_utf16_lossy(&buffer[..chars_read as usize]);
-
-        // Kembalikan input yang telah di-trim (menghilangkan newline atau spasi berlebih)
-        input.trim_end().to_string()
+        input.trim().to_string()
     }
 }
 

@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use base64::encode;
 use byteorder::{BigEndian, WriteBytesExt};
-use rand::Rng;
+use rand::{distributions::Alphanumeric, Rng};
 use serde::{Serialize, Deserialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -96,4 +96,12 @@ pub fn create_devices(fp: &str) -> DeviceInfo {
 
     println!("{:?}", device_info); // Debug print untuk output struct
     device_info
+}
+
+pub fn generate_csrftoken(length: usize) -> String {
+    rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(length)
+        .map(char::from)
+        .collect()
 }

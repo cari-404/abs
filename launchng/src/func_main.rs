@@ -9,6 +9,10 @@ pub fn error_modal(wnd: &gui::WindowModal, title: &str, message: &str) -> Result
     wnd.hwnd().MessageBox(message, title, co::MB::OK | co::MB::ICONSTOP).ok();
     Ok(())
 }
+pub fn info_modal(wnd: &gui::WindowModal, title: &str, message: &str) -> Result<(), ()> {
+    wnd.hwnd().MessageBox(message, title, co::MB::OK | co::MB::ICONINFORMATION).ok();
+    Ok(())
+}
 
 pub fn error_cek(wnd: &gui::WindowMain, title: &str, message: &str) -> Result<(), ()> {
     wnd.hwnd().MessageBox(message, title, co::MB::OK | co::MB::ICONSTOP).ok();
