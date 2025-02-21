@@ -1,11 +1,11 @@
 /*This Is a Auto Buy Shopee
+Whats new in 0.10.5 :
+    Add telegram notification
+    Add job option
 Whats new in 0.10.4 :
     test algorithm
 Whats new in 0.10.3 :
     Enchance Interactive Interface
-Whats new in 0.10.2 :
-    Update Dependency
-    test thunk backport for windows
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -77,6 +77,8 @@ struct Opt {
     sign: Option<String>,
 	#[structopt(short, long, help = "Set Voucher from collection_id")]
     collectionid: Option<String>,
+    #[structopt(short, long, help = "Set Custom Threads")]
+    job: Option<String>,
 }
 
 #[cfg(windows)]
@@ -163,11 +165,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let version_info = env!("CARGO_PKG_VERSION");
     let mut quantity = 1;
 	let opt = Opt::from_args();
-    let max_threads = if num_cpus::get() > 4 { 
-        num_cpus::get() 
-    } else {
-        4 
-    }; 
+    let max_threads = {
+        if let Some(job_str) = &opt.job {
+            match job_str.parse::<usize>() { 
+                Ok(value) => value,
+                Err(_) => {
+                    eprintln!("Invalid thread count '{}'. Using default.", job_str);
+                    if num_cpus::get() > 4 {
+                        num_cpus::get()
+                    } else {
+                        4
+                    }
+                }
+            }
+        } else {
+            if num_cpus::get() > 4 {
+                num_cpus::get()
+            } else {
+                4
+            }
+        }
+    };
     println!("Default Quantity: {}", quantity);
     let config = match telegram::open_config_file().await {
         Ok(config_content) => {

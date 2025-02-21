@@ -32,27 +32,20 @@ impl W {
         let random_uuid = uuid::Uuid::new_v4();
         let most_significant_bits = random_uuid.as_u128() >> 64;
         let least_significant_bits = random_uuid.as_u128() & 0xFFFFFFFFFFFFFFFF;
-
         let combined = (most_significant_bits ^ least_significant_bits) as i64;
         let f3733a = if combined < 0 { -combined } else { combined };
-
         W { f3733a }
     }
 }
 
 pub fn generate_device_id() -> String {
     let w_arr = [W::new(), W::new(), W::new(), W::new()];
-
-    let mut buffer = Cursor::new(vec![0u8; 32]); // Mengalokasikan buffer 32 byte
-
+    let mut buffer = Cursor::new(vec![0u8; 32]);
     for w in w_arr.iter() {
-        buffer.write_i64::<BigEndian>(w.f3733a).unwrap(); // Menulis nilai `f3733a` ke buffer
+        buffer.write_i64::<BigEndian>(w.f3733a).unwrap();
     }
-
-    let encoded_string = encode(buffer.into_inner()); // Mengencode buffer ke Base64
-    //println!("GenDeviceId: {}", &encoded_string); // Log hasil encoding
-
-    encoded_string // Mengembalikan string hasil encoding
+    let encoded_string = encode(buffer.into_inner());
+    encoded_string 
 }
 
 /*fn main() {
@@ -70,19 +63,16 @@ pub fn random_hex_string(len: usize) -> String {
     let mut rng = rand::thread_rng();
     let charset = b"0123456789abcdef";
     let mut result = String::with_capacity(len);
-
     for _ in 0..len {
         let idx = rng.gen_range(0..16);
         result.push(charset[idx] as char);
     }
-
     result
 }
 
 pub fn create_devices(fp: &str) -> DeviceInfo {
     let device_id = generate_device_id();
     let device_fingerprint = generate_device_fingerprint();
-    
     let device_info = DeviceInfo {
         device_id,
         device_fingerprint,
@@ -93,8 +83,7 @@ pub fn create_devices(fp: &str) -> DeviceInfo {
         },
         gps_location_info: GpsLocationInfo {},
     };
-
-    println!("{:?}", device_info); // Debug print untuk output struct
+    println!("{:?}", device_info);
     device_info
 }
 
