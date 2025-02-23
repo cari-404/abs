@@ -26,7 +26,7 @@ jobs:
             bin: abs-linux-android-arm64
             savevoucher: savevoucher-linux-android-arm64
           - os_name: Linux-aarch64
-            os: ubuntu-24.04
+            os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             bin: abs-linux-arm64
             savevoucher: savevoucher-linux-arm64
@@ -108,7 +108,6 @@ jobs:
       if: matrix.platform.os_name == 'Linux-aarch64'
       run: |
         sudo apt install build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross libstdc++6-arm64-cross
-        sudo apt install gcc-i686-linux-gnu g++-i686-linux-gnu libc6-dev-i386-cross libstdc++6-i386-cross
         sudo apt install llvm-dev libclang-dev clang libgcc-9-dev-arm64-cross
         sudo apt install cmake g++-aarch64-linux-gnu gcc-aarch64-linux-gnu
         clang --version
