@@ -39,6 +39,7 @@ struct GetProduct {
 pub struct ShippingInfo {
     pub original_cost: i64,
     pub channelid: i64,
+    pub channelidroot: i64,
     pub channel_name: String,
 }
 #[derive(Debug, Deserialize)]
@@ -232,6 +233,7 @@ pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, addr
                     ShippingInfo {
                         original_cost,
                         channelid,
+                        channelidroot: channelid,
                         channel_name,
                     }
                 }).collect::<Vec<_>>()

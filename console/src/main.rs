@@ -2,6 +2,7 @@
 Whats new in 0.10.5 :
     Add telegram notification
     Add job option
+    initialize support specific shipping
 Whats new in 0.10.4 :
     test algorithm
 Whats new in 0.10.3 :
@@ -151,6 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut chosen_shipping = ShippingInfo {
 		original_cost: i64::default(),
 		channelid: i64::default(),
+        channelidroot: i64::default(),
 		channel_name: String::default(),
 	};
     let mut chosen_payment = PaymentInfo {
@@ -341,6 +343,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         shipping_info.push(ShippingInfo {
             original_cost: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
             channelid: integrated.as_i64().unwrap_or(0),
+            channelidroot: integrated.as_i64().unwrap_or(0),
             channel_name: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["channel_data"]["name"].to_string(),
         });
         let integrated = integrated.clone();
@@ -378,6 +381,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     shipping_info.push(ShippingInfo {
                         original_cost: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
                         channelid: specific.as_i64().unwrap_or(0),
+                        channelidroot: integrated.as_i64().unwrap_or(0),
                         channel_name: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["channel_data"]["name"].as_str().unwrap_or("").to_string(),
                     });
                 }

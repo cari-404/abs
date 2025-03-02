@@ -97,10 +97,7 @@ pub async fn place_order_builder(device_info: &DeviceInfo, checkout_price_data: 
 		},
 		"device_info": device_info,
 		"device_type": "mobile",
-		"_cft": [
-		  4227792767 as i64,
-		  24191
-		]
+		"_cft": vec![4227792767 as i64, 36961919]
 	  });
 	//println!("{body_json}");
 	Ok(body_json)
@@ -328,10 +325,7 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 		"is_platform_voucher_changed": false
 	  },
 	  "add_to_cart_info": {},
-	  "_cft": [
-		4227792767 as i64,
-		54001407
-	  ],
+	  "_cft": vec![4227792767 as i64, 36961919],
 	  "dropshipping_info": {},
 	  "shipping_orders": [
 		{
@@ -357,7 +351,12 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 			"order_fulfillment_type": 1,
 			"warehouse_address_id": 0,
 			"is_from_overseas": false
-		  }
+		  },
+		  "selected_logistic_channel_data": {
+			"support_advance_booking": false,
+			"selected_from": 1,
+			"fulfillment_shipping_order_channel_data": null,
+		  },
 		}
 	  ],
 	  "order_update_info": {}

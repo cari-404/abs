@@ -3,6 +3,8 @@
 mod core;
 mod func_main;
 mod login;
+mod about;
+mod manager;
 
 use winsafe::{prelude::*, co, AnyResult, HWND};
 use core::MyWindow;

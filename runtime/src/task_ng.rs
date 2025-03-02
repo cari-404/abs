@@ -80,7 +80,7 @@ impl PlaceOrderBody {
             },
             device_info: device_info.clone(),
             device_type: "mobile".to_string(),
-            _cft: vec![4227792767, 24191],
+            _cft: vec![4227792767, 36961919],
         }
     }
 
@@ -207,6 +207,7 @@ struct ShippingOrder {
     selected_preferred_delivery_time_option_id: i32,
     prescription_info: PrescriptionInfo,
     fulfillment_info: FulfillmentInfo,
+    selected_logistic_channel_data: SelectedLogisticChannelData,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -229,6 +230,13 @@ struct FulfillmentInfo {
     order_fulfillment_type: i32,
     warehouse_address_id: i64,
     is_from_overseas: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+struct SelectedLogisticChannelData {
+    support_advance_booking: bool,
+    selected_from: i32,
+    fulfillment_shipping_order_channel_data: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -460,7 +468,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         tax_info: TaxInfo { tax_id: "".to_string() },
         client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
         add_to_cart_info: AddToCartInfo {},
-        _cft: vec![469696383],
+        _cft: vec![4227792767, 36961919],
         dropshipping_info: DropshippingInfo {},
         shipping_orders: vec![ShippingOrder {
             sync: true,
@@ -484,6 +492,11 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
                 warehouse_address_id: 0,
                 is_from_overseas: false,
             },
+            selected_logistic_channel_data: SelectedLogisticChannelData{
+                support_advance_booking: false,
+                selected_from: 1,
+                fulfillment_shipping_order_channel_data: None,
+            },
         }],
         order_update_info: OrderUpdateInfo {},
     };
@@ -496,6 +509,8 @@ pub async fn get_ng(cookie_content: &CookieData, body_json: &GetBodyJson, device
 	println!("Status: Start Checkout");
 
 	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
+    //let body_str = serde_json::to_string(&body_json)?;
+    //println!("{}", body_str);
 	println!("{}", url2);
 	let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
@@ -686,7 +701,7 @@ pub async fn get_builder(cookie_content: &CookieData,
         tax_info: TaxInfo { tax_id: "".to_string() },
         client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
         add_to_cart_info: AddToCartInfo {},
-        _cft: vec![469696383],
+        _cft: vec![4227792767, 36961919],
         dropshipping_info: DropshippingInfo {},
         shipping_orders: vec![ShippingOrder {
             sync: true,
@@ -709,6 +724,11 @@ pub async fn get_builder(cookie_content: &CookieData,
                 order_fulfillment_type: 1,
                 warehouse_address_id: 0,
                 is_from_overseas: false,
+            },
+            selected_logistic_channel_data: SelectedLogisticChannelData{
+                support_advance_booking: false,
+                selected_from: 1,
+                fulfillment_shipping_order_channel_data: None,
             },
         }],
         order_update_info: OrderUpdateInfo {},

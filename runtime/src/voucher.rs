@@ -501,7 +501,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, produc
             models: None,
             tier_variations: None,
         }],
-        selected_carrier_id: chosen_shipping.channelid,
+        selected_carrier_id: chosen_shipping.channelidroot,
     }];
     // Konversi orders_json menjadi string
     let orders_string = to_string(&orders_json)?;
