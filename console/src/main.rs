@@ -1,12 +1,13 @@
 /*This Is a Auto Buy Shopee
+Whats new in 0.10.6 :
+    Enchance specific shipping
+    Security update
 Whats new in 0.10.5 :
     Add telegram notification
     Add job option
     initialize support specific shipping
 Whats new in 0.10.4 :
     test algorithm
-Whats new in 0.10.3 :
-    Enchance Interactive Interface
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -339,58 +340,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tasks = Vec::new();
 
     println!("{}", shipping_orders[0]["selected_logistic_channelid"]);
-    for integrated in shipping_orders[0]["logistics"]["integrated_channelids"].as_array().unwrap() {
-        shipping_info.push(ShippingInfo {
-            original_cost: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
-            channelid: integrated.as_i64().unwrap_or(0),
-            channelidroot: integrated.as_i64().unwrap_or(0),
-            channel_name: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["channel_data"]["name"].to_string(),
-        });
-        let integrated = integrated.clone();
-        let device_info = device_info.clone();
-        let product_info = product_info.clone();
-        let address_info = address_info.clone();
-        let cookie_data = cookie_data.clone();
-        let chosen_model = chosen_model.clone();
-        let chosen_payment = chosen_payment.clone();
-        let mut chosen_shipping = chosen_shipping.clone();
-        
-        let task = tokio::spawn(async move {
-            let mut shipping_info = Vec::new();
-            chosen_shipping.channelid = integrated.as_i64().unwrap_or(0);
-            println!("integrated_special: {:?}", chosen_shipping);  
-            let get_body_shipl = match task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await
-            {
-                Ok(body) => body,
-                Err(err) => {
-                    eprintln!("Error in get_builder: {:?}", err);
-                    return None;
+    if let Some(integrated_channelids) = shipping_orders[0]["logistics"]["integrated_channelids"].as_array() {
+        for integrated in integrated_channelids {
+            shipping_info.push(ShippingInfo {
+                original_cost: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
+                channelid: integrated.as_i64().unwrap_or(0),
+                channelidroot: integrated.as_i64().unwrap_or(0),
+                channel_name: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["channel_data"]["name"].to_string(),
+            });
+            let integrated = integrated.clone();
+            let device_info = device_info.clone();
+            let product_info = product_info.clone();
+            let address_info = address_info.clone();
+            let cookie_data = cookie_data.clone();
+            let chosen_model = chosen_model.clone();
+            let chosen_payment = chosen_payment.clone();
+            let mut chosen_shipping = chosen_shipping.clone();
+            
+            let task = tokio::spawn(async move {
+                let mut shipping_info = Vec::new();
+                chosen_shipping.channelid = integrated.as_i64().unwrap_or(0);
+                println!("integrated_special: {:?}", chosen_shipping);  
+                let get_body_shipl = match task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await
+                {
+                    Ok(body) => body,
+                    Err(err) => {
+                        eprintln!("Error in get_builder: {:?}", err);
+                        return None;
+                    }
+                };
+                let (_, _, _, _, _, _, shipping_ordersl, _, _, _, _, _, _, _, _) = match task::checkout_get(&cookie_data, get_body_shipl).await
+                {
+                    Ok(body) => body,
+                    Err(err) => {
+                        eprintln!("Error in get_builder: {:?}", err);
+                        return None;
+                    }
+                };
+                if let Some(specific_channel_ids) = shipping_ordersl[0]["logistics"]["specific_channel_mappings"][integrated.to_string()]["specific_channel_ids"].as_array() {
+                    for specific in specific_channel_ids {
+                        println!("specific_channelid: {}", specific);
+                        shipping_info.push(ShippingInfo {
+                            original_cost: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
+                            channelid: specific.as_i64().unwrap_or(0),
+                            channelidroot: integrated.as_i64().unwrap_or(0),
+                            channel_name: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["channel_data"]["name"].as_str().unwrap_or("").to_string(),
+                        });
+                    }
+                } else {
+                    eprintln!("specific_channel_ids not found or is not an array for integrated_channelid: {}", integrated);
                 }
-            };
-            let (_, _, _, _, _, _, shipping_ordersl, _, _, _, _, _, _, _, _) = match task::checkout_get(&cookie_data, get_body_shipl).await
-            {
-                Ok(body) => body,
-                Err(err) => {
-                    eprintln!("Error in get_builder: {:?}", err);
-                    return None;
-                }
-            };
-            if let Some(specific_channel_ids) = shipping_ordersl[0]["logistics"]["specific_channel_mappings"][integrated.to_string()]["specific_channel_ids"].as_array() {
-                for specific in specific_channel_ids {
-                    println!("specific_channelid: {}", specific);
-                    shipping_info.push(ShippingInfo {
-                        original_cost: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
-                        channelid: specific.as_i64().unwrap_or(0),
-                        channelidroot: integrated.as_i64().unwrap_or(0),
-                        channel_name: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["channel_data"]["name"].as_str().unwrap_or("").to_string(),
-                    });
-                }
-            } else {
-                eprintln!("specific_channel_ids not found or is not an array for integrated_channelid: {}", integrated);
-            }
-            Some(shipping_info)
-        });
-        tasks.push(task);
+                Some(shipping_info)
+            });
+            tasks.push(task);
+        }
     }
     let results = futures::future::join_all(tasks).await;
     for result in results {

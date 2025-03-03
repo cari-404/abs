@@ -2,7 +2,7 @@ use rquest as reqwest;
 use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, Version};
 use reqwest::header::HeaderValue;
-use chrono::{Utc};
+use chrono::{Utc, Timelike};
 use anyhow::Result;
 use serde_json::{Value};
 use std::collections::HashMap;
@@ -41,13 +41,14 @@ pub struct PlaceOrderBody {
     captcha_version: i64,
     captcha_signature: String,
     extra_data: ExtraData,
+    checkout_session_id: String,
     device_info: DeviceInfo,
     device_type: String,
     _cft: Vec<i64>,
 }
 
 impl PlaceOrderBody {
-    fn new(device_info: &DeviceInfo) -> Self {
+    fn new(device_info: &DeviceInfo, checkout_session_id: &str) -> Self {
         let current_time = Utc::now();
         PlaceOrderBody {
             client_id: 5,
@@ -78,6 +79,7 @@ impl PlaceOrderBody {
             extra_data: ExtraData {
                 snack_click_id: None,
             },
+            checkout_session_id: checkout_session_id.to_string(),
             device_info: device_info.clone(),
             device_type: "mobile".to_string(),
             _cft: vec![4227792767, 36961919],
@@ -126,6 +128,7 @@ pub struct GetBodyJson {
     client_event_info: ClientEventInfo,
     add_to_cart_info: AddToCartInfo,
     _cft: Vec<i64>,
+    checkout_session_id: String,
     dropshipping_info: DropshippingInfo,
     shipping_orders: Vec<ShippingOrder>,
     order_update_info: OrderUpdateInfo,
@@ -350,6 +353,12 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     chosen_shipping: &ShippingInfo, freeshipping_voucher: &Option<Vouchers>, 
     platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
+    let timestamp_millis = current_time.timestamp_millis();
+    let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
+    let checkout_session_id = format!(
+        "{}:{}:{}{}",
+        device_info.device_id, timestamp_millis, timestamp_millis, timestamp_specific
+    );
     let freeshipping_voucher_clone = freeshipping_voucher.clone();
     let shop_id = product_info.shop_id;
 
@@ -469,6 +478,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
         add_to_cart_info: AddToCartInfo {},
         _cft: vec![4227792767, 36961919],
+        checkout_session_id,
         dropshipping_info: DropshippingInfo {},
         shipping_orders: vec![ShippingOrder {
             sync: true,
@@ -549,7 +559,7 @@ pub async fn get_ng(cookie_content: &CookieData, body_json: &GetBodyJson, device
         "iof_info",
     ];
 
-    let mut place_order_body = PlaceOrderBody::new(&device_info);
+    let mut place_order_body = PlaceOrderBody::new(&device_info, &body_json.checkout_session_id);
 
     let handles = keys.iter().map(|key| {
         let v_clone = v.clone();
@@ -583,6 +593,12 @@ pub async fn get_builder(cookie_content: &CookieData,
     chosen_shipping: &ShippingInfo, freeshipping_voucher: &Option<Vouchers>, 
     platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
+    let timestamp_millis = current_time.timestamp_millis();
+    let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
+    let checkout_session_id = format!(
+        "{}:{}:{}{}",
+        device_info.device_id, timestamp_millis, timestamp_millis, timestamp_specific
+    );
     let freeshipping_voucher_clone = freeshipping_voucher.clone();
     let shop_id = product_info.shop_id;
 
@@ -702,6 +718,7 @@ pub async fn get_builder(cookie_content: &CookieData,
         client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
         add_to_cart_info: AddToCartInfo {},
         _cft: vec![4227792767, 36961919],
+        checkout_session_id,
         dropshipping_info: DropshippingInfo {},
         shipping_orders: vec![ShippingOrder {
             sync: true,
@@ -777,7 +794,7 @@ pub async fn get_builder(cookie_content: &CookieData,
         "iof_info",
     ];
 
-    let mut place_order_body = PlaceOrderBody::new(&device_info);
+    let mut place_order_body = PlaceOrderBody::new(&device_info, &body_json.checkout_session_id);
 
     let handles = keys.iter().map(|key| {
         let v_clone = v.clone();
