@@ -373,15 +373,16 @@ impl MyWindow {
 
     }
     pub fn run(&self) -> AnyResult<i32> {
-		self.wnd.run_main(None) // simply let the window manager do the hard work
+        self.wnd.run_main(None)
 	}
 
     fn build_menu() -> w::AnyResult<(HMENU, guard::DestroyAcceleratorTableGuard)> {
-        let main_menu = w::HINSTANCE::GetModuleHandle(None)?
+        let mut main_menu = w::HINSTANCE::GetModuleHandle(None)?
             .LoadMenu(w::IdStr::Id(1)).unwrap();
+        let lmain_menu = main_menu.leak();
         let accel_table = w::HINSTANCE::GetModuleHandle(None)?
             .LoadAccelerators(w::IdStr::Str(w::WString::from_str("MENU1"))).unwrap();
-		Ok((main_menu, accel_table))
+		Ok((lmain_menu, accel_table))
 	}
 
 	fn events(&self) {
@@ -507,18 +508,8 @@ impl MyWindow {
 		let self2 = self.clone();
         self.btn_jalankan.on().bn_clicked(move || {
             let command = self2.generate_cmd();
-            let file = self2.file_combo.text();
             if let Ok(Some(command))  = command {
-                if !file.is_empty() {
-                    let _status = std::process::Command::new("cmd")
-                        .arg("/c")
-                        .args(&command)
-                        .spawn()
-                        .expect("Gagal menjalankan program");
-                    println!("{:?}", command);
-                }else{
-                    let _ = func_main::error_cek(&self2.wnd, "Error", "Please select a file before running the program");
-                }
+                let _ = self2.execute(command);
             }
             Ok(())
         });
@@ -629,17 +620,32 @@ impl MyWindow {
         });
 
 		self.wnd.on().wm_command_accel_menu(101 as u16, move || {
-            println!("Manual Run. STUB!");
+            let command = vec!["start","abs.exe",];
+            let _status = std::process::Command::new("cmd")
+                .arg("/c")
+                .args(&command)
+                .spawn()
+                .expect("Gagal menjalankan program");
+            println!("{:?}", command);
 			Ok(())
 		});
-
+        let self2 = self.clone();
 		self.wnd.on().wm_command_accel_menu(102 as u16, move || {
-            println!("Generate Struct. STUB!");
+            let command = self2.generate_cmd();
+            if let Ok(Some(command))  = command {
+                let _ = self2.generate_struct(command);
+            } else {
+                println!("No command generated.");
+            }
 			Ok(())
 		});
-
+        let self2 = self.clone();
         self.wnd.on().wm_command_accel_menu(103 as u16, move || {
-            println!("Save Voucher. STUB!");
+            let command = self2.generate_vouc();
+            if let Ok(Some(command))  = command {
+                let _ = self2.generate_struct(command.clone());
+                let _ = self2.execute(command);
+            }
 			Ok(())
 		});
         let self2 = self.clone();
@@ -747,8 +753,6 @@ impl MyWindow {
                 command.push(variasi);
             }
             command.extend(extra_args);
-            //
-            println!("{:?}", command);
             command
         };
         let mut commands = vec![];
@@ -817,5 +821,86 @@ impl MyWindow {
                 self.signature_text.hwnd().EnableWindow(false);
             }
         }
+    }
+    fn generate_vouc(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
+        let self2 = self.clone();
+        let Some(file) = self2.file_combo.items().selected_text() else {
+            eprintln!("File is not selected");
+            return Ok(None);
+        };
+        let jam = self2.jam_text.text();
+        let menit = self2.menit_text.text();
+        let detik = self2.detik_text.text();
+        let mili = self2.mili_text.text();
+        let time_arg = format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili);
+        let promotionid_text = self2.promotionid_text.text();
+        let signature_text = self2.signature_text.text();
+        let collectionid = self2.cid_text.text();
+        let create_command = |extra_args: Vec<String>| -> Vec<String> {
+            let mut command = vec![
+                "start".to_string(),
+                "savevoucher.exe".to_string(),
+                "--file".to_string(), file,
+                "--time".to_string(), time_arg,
+            ];
+            command.extend(extra_args);
+            command
+        };
+        let mut commands = vec![];
+
+        if self2.platform_checkbox.check_state() == gui::CheckState::Checked {
+            match self2.platform_combobox.items().selected_index() {
+                Some(0) => {
+                    commands.push("--mode".to_string());
+                    commands.push("1".to_string());                    
+                    commands.push("--pro-id".to_string());
+                    commands.push(promotionid_text);
+                    commands.push("--sign".to_string());
+                    commands.push(signature_text);
+                }
+                //future code
+                /*Some(1) => {
+                    commands.push("--platform-vouchers".to_string());
+                    commands.push("--code-platform".to_string());
+                    commands.push(code_platform_text);
+                }*/
+                Some(2) => {
+                    commands.push("--mode".to_string());
+                    commands.push("2".to_string());
+                    commands.push("--collectionid".to_string());
+                    commands.push(collectionid);
+                }
+                _ => {}
+            }
+        }
+        Ok(Some(create_command(commands)))
+    }
+    fn execute(&self, command: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+        let file = self.file_combo.text();
+        if !file.is_empty() {
+            let _status = std::process::Command::new("cmd")
+                .arg("/c")
+                .args(&command)
+                .spawn()
+                .expect("Gagal menjalankan program");
+        }else{
+            let _ = func_main::error_cek(&self.wnd, "Error", "Please select a file before running the program");
+        }
+        Ok(())
+    }
+    fn generate_struct(&self, command: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+        let command_str = command
+            .iter()
+            .map(|s| {
+                if s.trim().is_empty() {
+                    "\" \"".to_string() // Mengganti nilai kosong dengan " "
+                } else {
+                    format!("\"{}\"", s) // Format nilai asli
+                }
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
+        println!("{}", &command_str);
+        Ok(())
     }
 }

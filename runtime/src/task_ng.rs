@@ -18,7 +18,7 @@ pub struct PlaceOrderBody {
     client_id: i64,
     cart_type: i64,
     timestamp: i64,
-    checkout_price_data: Option<Value>, // Define more specific types if known
+    pub checkout_price_data: Option<Value>, // Define more specific types if known
     order_update_info: Option<Value>,
     dropshipping_info: Option<Value>,
     promotion_data: Option<Value>,

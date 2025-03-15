@@ -1,4 +1,6 @@
 /*This Is a Auto Buy Shopee
+Whats new in 0.10.7 :
+    Add Safety factor
 Whats new in 0.10.6 :
     Enchance specific shipping
     Security update
@@ -6,8 +8,6 @@ Whats new in 0.10.5 :
     Add telegram notification
     Add job option
     initialize support specific shipping
-Whats new in 0.10.4 :
-    test algorithm
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -481,12 +481,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chosen_payment = Arc::new(chosen_payment);
     let chosen_shipping = Arc::new(chosen_shipping);
     countdown_to_task(&task_time_dt).await;
-	
-	/* Code 0.9.0
-	get();
-	checkout();
-	place_order();
-	*/
 
     if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only || opt.shop_vouchers {
         if !voucher_collectionid.is_empty() {
@@ -563,8 +557,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let device_info = Arc::clone(&device_info);
             let chosen_payment = Arc::clone(&chosen_payment);
             let get_body = Arc::clone(&get_body);
+            let max_price = max_price.clone();
     
             tokio::spawn(async move {
+                let mut try_count = 0;
                 loop{
                     if stop_flag.load(Ordering::Relaxed) {
                         break;
@@ -577,6 +573,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
                     };
+                    if !max_price.is_empty(){
+                        if let Some(ref data) = place_order_body.checkout_price_data {
+                            if let Some(merchandise_subtotal) = data.get("merchandise_subtotal").and_then(|v| v.as_i64()) {
+                                println!("merchandise_subtotal: {}", merchandise_subtotal);
+                                let max_price_no_comma = max_price.replace(",", "");
+                                let cleaned_max_price = max_price_no_comma.trim(); 
+                                if let Ok(parsed_max_price) = cleaned_max_price.parse::<i64>() {
+                                    let adjusted_max_price = parsed_max_price * 100_000;
+                                    println!("max_price (setelah dikali 100000): {}", adjusted_max_price);
+                                    if merchandise_subtotal <= adjusted_max_price {
+                                        println!("Harga merchandise_subtotal sesuai dengan max_price * 100000.");
+                                    } else {
+                                        println!("Harga merchandise_subtotal lebih besar dari max_price * 100000.");
+                                        continue;
+                                    }
+                                } else {
+                                    println!("Gagal mengonversi max_price menjadi angka.");
+                                    continue;
+                                }
+                            } else {
+                                println!("Gagal mendapatkan nilai merchandise_subtotal.");
+                                continue;
+                            }
+                        } else {
+                            println!("Gagal mendapatkan data checkout_price_data.");
+                            continue;
+                        }
+                    }
                     let mpp = match task_ng::place_order_ng(&cookie_data, &place_order_body).await
                     {
                         Ok(response) => response,
@@ -595,6 +619,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         stop_flag.store(true, Ordering::Relaxed);
                         break;
                     }
+                    if try_count == 3 {
+                        eprintln!("Gagal mendapatkan checkoutid setelah 3 kali percobaan.");
+                        stop_flag.store(true, Ordering::Relaxed);
+                        break;
+                    }
+                    try_count += 1;
                 }
             });
         }

@@ -281,3 +281,11 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     Ok(())
 }
+pub fn log_window(wnd: &gui::WindowMain) -> Result<(), ()> {
+    let dont_move = (gui::Horz::None, gui::Vert::None);
+    let wnd2 = gui::WindowMain::new_dlg(600, None, None);
+    let txt_log = gui::Edit::new_dlg(&wnd2, 601, dont_move);
+
+    let _ = wnd2.run_main(None);
+    Ok(())
+}
