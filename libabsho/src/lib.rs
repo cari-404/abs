@@ -1,4 +1,4 @@
-use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, CookieData};
+use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, CookieData, UserData};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
 use runtime::task::{self};
 use runtime::task_ng::{self};
@@ -144,10 +144,10 @@ pub extern "C" fn info_akun(cookie_content: &FFICookieData) -> AccountInfo {
     });
 
     match result {
-        Ok(Ok((username, email, phone))) => AccountInfo {
-            username: CString::new(username).unwrap().into_raw(),
-            email: CString::new(email).unwrap().into_raw(),
-            phone: CString::new(phone).unwrap().into_raw(),
+        Ok(Ok(user_info)) => AccountInfo {
+            username: CString::new(user_info.username).unwrap().into_raw(),
+            email: CString::new(user_info.email).unwrap().into_raw(),
+            phone: CString::new(user_info.phone).unwrap().into_raw(),
             error: std::ptr::null_mut(),
         },
         Ok(Err(e)) => AccountInfo {

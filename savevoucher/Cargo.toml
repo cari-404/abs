@@ -1,6 +1,6 @@
 [package]
 name = "savevoucher"
-version = "1.2.3"
+version = "1.2.4"
 edition = "2021"
 authors = ["Paijo"]
 description = "Save Voucher"
@@ -20,9 +20,8 @@ runtime = { path = "../runtime" }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 chrono = "0.4"
-indicatif = "0.17"
-atty = "0.2.14"
-windows-version = "0.1.0"
 structopt = "0.3"
 num_cpus = "1.16"
-windows-sys = "0.59.0"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Console"] }

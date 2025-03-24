@@ -150,6 +150,26 @@ struct RecommendPlatform {
     payment_manual_change: bool,
 }
 
+pub struct VoucherInfo {
+    pub promotion_id: i64,
+    pub voucher_code: String,
+    pub signature: String,
+    pub extra_data: String,
+    pub bug: bool,
+    pub status: rquest::StatusCode,
+}
+
+#[derive(Serialize)]
+struct ReqData {
+    promotion_id: i64,
+    voucher_code: String,
+}
+#[derive(Serialize)]
+pub struct FoodVoucherRequest {
+    pub cmd: String,
+    pub req_data: String,
+}
+
 pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &CookieData, product_info: &ProductInfo) -> Result<Option<Vouchers>>{
 	let shop_id = product_info.shop_id;
     let headers = headers_checkout(&cookie_content).await;
@@ -799,9 +819,8 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 	Ok((String::new(), String::new()))	
 }
 
-pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest, cookie_content: &CookieData) -> Result<(String, String)> {
-    let mut promotionid = String::new();
-	let mut signature = String::new();
+pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest, cookie_content: &CookieData) -> Result<Vec<VoucherInfo>, Box<dyn std::error::Error>> {
+    let mut voucher_data = Vec::new();
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29335 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
@@ -841,5 +860,133 @@ pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest,
 
     let status = response.status();
     let hasil: Value = response.json().await?;
-    Ok((promotionid, signature))
+    if status == reqwest::StatusCode::OK {
+        if let Some(data_array) = hasil.get("data").and_then(|data| data.as_array()) {
+            for data_value in data_array {
+                if let Some(vouchers_array) = data_value.get("vouchers").and_then(|vouchers| vouchers.as_array()) {
+                    for voucher_value in vouchers_array {
+                        if let Some(voucher_obj) = voucher_value.get("voucher").and_then(|voucher| voucher.as_object()) {
+                            if let Some(voucher_identifier_obj) = voucher_obj.get("voucher_identifier").and_then(|vi| vi.as_object()) {
+                                let ui_info_obj = voucher_obj.get("ui_info").and_then(|ui| ui.as_object());
+                                voucher_data.push(VoucherInfo {
+                                    promotion_id: voucher_identifier_obj.get("promotion_id").and_then(|pi| pi.as_i64()).unwrap_or(0),
+                                    voucher_code: voucher_identifier_obj.get("voucher_code").and_then(|vc| vc.as_str()).unwrap_or("").to_string(),
+                                    signature: voucher_identifier_obj.get("signature").and_then(|s| s.as_str()).map(String::from).unwrap_or_default(),
+                                    extra_data: ui_info_obj.and_then(|ui| ui.get("icon_text").and_then(|ed| ed.as_str()).map(String::from)).unwrap_or_default(),
+                                    bug: false,
+                                    status,
+                                });
+                            }
+                        }
+                    }
+                } else {
+                    voucher_data.push(VoucherInfo{
+                        promotion_id: 0,
+                        voucher_code: "".to_string(),
+                        signature: "".to_string(),
+                        extra_data: "".to_string(),
+                        bug: true,
+                        status,
+                    });
+                }
+            }
+        } else {
+            voucher_data.push(VoucherInfo{
+                promotion_id: 0,
+                voucher_code: "".to_string(),
+                signature: "".to_string(),
+                extra_data: "none".to_string(),
+                bug: false,
+                status,
+            });
+        }
+    } else {
+        voucher_data.push(VoucherInfo{
+            promotion_id: 0,
+            voucher_code: "".to_string(),
+            signature: "".to_string(),
+            extra_data: "".to_string(),
+            bug: false,
+            status,
+        });
+    }
+    Ok(voucher_data)
+}
+
+pub async fn claim_food_voucher(cookie_content: &CookieData, start: &str, code: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>> {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("User-Agent", HeaderValue::from_static("okhttp/3.12.4 app_type=1 platform=native_android os_ver=34 appver=34560"));
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    headers.insert("Accept", HeaderValue::from_static("application/json"));
+    headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
+    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
+	let start: i64 = start.trim().parse().expect("Input tidak valid");
+
+    let req_data = ReqData {
+        promotion_id: start,
+        voucher_code: code.to_string(),
+    };
+    let req_data_string = to_string(&req_data)?;
+	let body_json = FoodVoucherRequest {
+        cmd: "voucher.core.claim_shopee_food_voucher".to_string(),
+        req_data: req_data_string,
+	};
+
+    let mut vouchers: Option<Vouchers> = None;
+	loop {
+        let client = ClientBuilder::new()
+            .danger_accept_invalid_certs(true)
+            .impersonate_skip_headers(Impersonate::OkHttp3_13)
+            .enable_ech_grease(true)
+            .permute_extensions(true)
+            .gzip(true)
+            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
+            .build()?;
+    
+        // Buat permintaan HTTP POST
+        let response = client
+            .post("https://foody.shopee.co.id/api/buyer/voucher/-/action/proxy")
+			.headers(headers.clone())
+			.json(&body_json)
+            .version(Version::HTTP_2) 
+            .send()
+            .await?;
+		// Check for HTTP status code indicating an error
+		//let http_version = response.version(); 		// disable output features
+		//println!("HTTP Version: {:?}", http_version); // disable output features
+		let status = response.status();
+		println!("{}", status);
+		let parsed: Value = response.json().await?;
+		if status == reqwest::StatusCode::OK {
+            if let Some(msg) = parsed.get("msg").and_then(|m| m.as_str()) {
+                if msg == "success" {
+                    println!("Berhasil: {}", msg);
+                } else {
+                    println!("Error: {}", msg);
+                    continue;
+                }
+            }
+            if let Some(data) = parsed.get("data") {
+                if let Some(claim_error) = data.get("claim_error").and_then(|e| e.as_i64()){
+                    if claim_error == 0 || claim_error == 1 {
+                        println!("Berhasil: {} - {}", claim_error, data.get("debug_msg").unwrap_or(&serde_json::Value::Null));
+                        vouchers = Some(Vouchers {
+                            promotionid: start,
+                            voucher_code: code.to_string(),
+                            signature: "".to_string(),
+                        });
+                    } else {
+                        println!("Error: {} - {}", claim_error, data.get("debug_msg").unwrap_or(&serde_json::Value::Null));
+                        continue;
+                    }
+                }
+            }
+            break;
+		} else {
+			println!("Status: {}", status);
+			break;
+		}
+	}
+	Ok(vouchers)
 }

@@ -1,13 +1,11 @@
 /*This Is a Auto Buy Shopee
+Whats new in 0.10.8 :
+    refactoring data types
 Whats new in 0.10.7 :
     Add Safety factor
 Whats new in 0.10.6 :
     Enchance specific shipping
     Security update
-Whats new in 0.10.5 :
-    Add telegram notification
-    Add job option
-    initialize support specific shipping
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -17,12 +15,11 @@ use runtime::voucher::{self};
 use runtime::crypt::{self};
 use runtime::telegram::{self};
 use chrono::{Local, Duration, NaiveDateTime};
-use std::io::{self, Write};
+use std::io::{self, Write, Read};
 use std::process;
 use std::process::Command;
 use anyhow::Result;
 use std::fs::File;
-use std::io::Read;
 use structopt::StructOpt;
 use num_cpus;
 use serde_json::json;
@@ -288,12 +285,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         prepare::address(&cookie_data),
         prepare::get_product(&product_info, &cookie_data)
     );
-    let (username, email, phone) = info_result?;
+    let userdata = info_result?;
     let address_info = address_result?;
     let (name, model_info, is_official_shop, status_code) = product_result?;
-	println!("Username  : {}", username);
-	println!("Email     : {}", email);
-	println!("Phone     : {}", phone);
+	println!("Username  : {}", userdata.username);
+	println!("Email     : {}", userdata.email);
+	println!("Phone     : {}", userdata.phone);
 	println!("State     : {}", address_info.state);
 	println!("City      : {}", address_info.city);
 	println!("District  : {}", address_info.district);
@@ -309,7 +306,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         process::exit(1);
     }
     clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 	println!("addressid  : {}", address_info.id);
 	println!("name             : {}", name);
     // println!("models           : \n{:#?}", model_info);
@@ -328,82 +325,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Anda memilih model: {}", chosen_model.name);
 
-    let get_body_ship = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
-    let (shipping_info_result, shipping_orders_result) = tokio::join!(
-        prepare::kurir(&cookie_data, &product_info, &address_info),
-        task::checkout_get(&cookie_data, get_body_ship)
+    let shipping_info = kurir_ng::get_shipping_data(&cookie_data, &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
 
-    );
-    let mut shipping_info = shipping_info_result?;
-    let (_, _, _, _, _, _, shipping_orders, _, _, _, _, _, _, _, _) = shipping_orders_result?;
-
-    let mut tasks = Vec::new();
-
-    println!("{}", shipping_orders[0]["selected_logistic_channelid"]);
-    if let Some(integrated_channelids) = shipping_orders[0]["logistics"]["integrated_channelids"].as_array() {
-        for integrated in integrated_channelids {
-            shipping_info.push(ShippingInfo {
-                original_cost: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
-                channelid: integrated.as_i64().unwrap_or(0),
-                channelidroot: integrated.as_i64().unwrap_or(0),
-                channel_name: shipping_orders[0]["logistics"]["logistic_channels"][integrated.to_string()]["channel_data"]["name"].to_string(),
-            });
-            let integrated = integrated.clone();
-            let device_info = device_info.clone();
-            let product_info = product_info.clone();
-            let address_info = address_info.clone();
-            let cookie_data = cookie_data.clone();
-            let chosen_model = chosen_model.clone();
-            let chosen_payment = chosen_payment.clone();
-            let mut chosen_shipping = chosen_shipping.clone();
-            
-            let task = tokio::spawn(async move {
-                let mut shipping_info = Vec::new();
-                chosen_shipping.channelid = integrated.as_i64().unwrap_or(0);
-                println!("integrated_special: {:?}", chosen_shipping);  
-                let get_body_shipl = match task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await
-                {
-                    Ok(body) => body,
-                    Err(err) => {
-                        eprintln!("Error in get_builder: {:?}", err);
-                        return None;
-                    }
-                };
-                let (_, _, _, _, _, _, shipping_ordersl, _, _, _, _, _, _, _, _) = match task::checkout_get(&cookie_data, get_body_shipl).await
-                {
-                    Ok(body) => body,
-                    Err(err) => {
-                        eprintln!("Error in get_builder: {:?}", err);
-                        return None;
-                    }
-                };
-                if let Some(specific_channel_ids) = shipping_ordersl[0]["logistics"]["specific_channel_mappings"][integrated.to_string()]["specific_channel_ids"].as_array() {
-                    for specific in specific_channel_ids {
-                        println!("specific_channelid: {}", specific);
-                        shipping_info.push(ShippingInfo {
-                            original_cost: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["shipping_fee_data"]["shipping_fee_before_discount"].as_i64().unwrap_or(0),
-                            channelid: specific.as_i64().unwrap_or(0),
-                            channelidroot: integrated.as_i64().unwrap_or(0),
-                            channel_name: shipping_ordersl[0]["logistics"]["logistic_channels"][specific.to_string()]["channel_data"]["name"].as_str().unwrap_or("").to_string(),
-                        });
-                    }
-                } else {
-                    eprintln!("specific_channel_ids not found or is not an array for integrated_channelid: {}", integrated);
-                }
-                Some(shipping_info)
-            });
-            tasks.push(task);
-        }
-    }
-    let results = futures::future::join_all(tasks).await;
-    for result in results {
-        if let Ok(Some(mut info)) = result {
-            shipping_info.append(&mut info);
-        }
-    }
-    println!("{:?}", shipping_info);
     clear_screen();
-    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
+    heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
 
 	if let Some(shipping) = kurir_ng::choose_shipping(&shipping_info, &opt) {
 		chosen_shipping = shipping;
@@ -416,7 +341,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 	println!("{:?}", chosen_shipping);
 	clear_screen();
-	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
+	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 	let max_price = opt.harga.clone().unwrap_or_else(|| get_user_input("Harga MAX:")).trim().to_string();
     quantity = opt.quantity.clone().unwrap_or_else(|| {
         loop {
@@ -471,7 +396,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	println!("{:?}", chosen_payment);
 	clear_screen();
-	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
+	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
     println!("{:?}", chosen_payment);
     let cookie_data = Arc::new(cookie_data);
     let device_info = Arc::new(device_info);
@@ -659,7 +584,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     price_data, update_info, dropship_info, promo_data, payment_data, 
                     orders, shipping_orders_data, meta_data, fsv_infos, buyer_info_data, 
                     event_info, txn_fee_info, disabled_info, service_fee_info, iof_data
-                ) = task::checkout_get(&cookie_data, get_body.clone()).await?;
+                ) = task::checkout_get(&cookie_data, &get_body.clone()).await?;
                 // Cek apakah `merchandise_subtotal` sesuai dengan `max_price * 100000`
                 if let Some(merchandise_subtotal) = price_data["merchandise_subtotal"].as_i64() {
                     println!("merchandise_subtotal: {}", merchandise_subtotal);
@@ -713,7 +638,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }else {
         loop{
             let get_body = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
-            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_data, get_body).await?;
+            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_data, &get_body).await?;
             let place_order_body = task::place_order_builder(&device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
             let mpp = task::place_order(&cookie_data, place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`

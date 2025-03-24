@@ -33,8 +33,9 @@ struct Opt {
 }
 
 enum Mode {
-	Normal,
 	Collection,
+	Food,
+	Normal,
 }
 
 fn select_cookie_file() -> Result<String> {
@@ -87,6 +88,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	File::open(&file_path)?.read_to_string(&mut cookie_content)?;
 	let cookie_data = prepare::create_cookie(&cookie_content);
 	match mode {
+		Mode::Food => {
+			println!("Contoh input: \npromotion_id: 1096081392418868, \nCode: MISSION11");
+
+			let promotion_id = opt.pro_id.clone().unwrap_or_else(|| get_user_input("Masukan Promotion_Id: "));
+			let code = get_user_input("Masukan Code: ");	
+			
+			let task_time_str = opt.time.clone().unwrap_or_else(|| get_user_input("Enter task time (HH:MM:SS.NNNNNNNNN): "));
+			let task_time_dt = parse_task_time(&task_time_str)?;
+			let max_threads = if num_cpus::get() > 4 { 
+				num_cpus::get() 
+			} else {
+				4 
+			}; 
+			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
+			let notify = Arc::new(Notify::new());
+			// Process HTTP with common function
+			countdown_to_task(task_time_dt).await;
+			for _ in 0..max_threads {
+				let tx = tx.clone();
+				let cookie_data = cookie_data.clone();
+				let promotion_id = promotion_id.clone();
+				let code = code.clone();
+				let notify = notify.clone();
+				tokio::spawn(async move {
+					let resp = match voucher::claim_food_voucher(&cookie_data, &promotion_id, &code).await {
+						Ok(Some(value)) => Some(value),
+						Ok(None) => None,
+						Err(e) => {
+							eprintln!("Error: {:?}", e);
+							None // Pastikan `resp` selalu memiliki tipe `Option<Vouchers>`
+						}
+					};
+					if resp.is_some() {
+						notify.notify_one(); // Beri sinyal ke thread lain
+					}
+				
+					if let Some(value) = resp {
+						if let Err(e) = tx.send(Some(value)).await {
+							eprintln!("Gagal mengirim nilai: {:?}", e);
+						}
+					}
+				});
+			}
+			drop(tx); // Tutup pengirim setelah semua tugas selesai
+			while let Some(value) = rx.recv().await {
+				if let Some(vouchers) = value {
+					println!("Vouchers ditemukan: {:?}", vouchers);
+					break; 
+				} else {
+					println!("Tidak ada vouchers.");
+				}
+			}
+			notify.notify_waiters();
+		}
 		Mode::Normal => {
 			println!("Contoh input: \npromotion_id: 856793882394624, \nSignature: 8e8a4ced8d6905570114f163a08a15de55c3fed560f8a3a8a25e6e179783b480");
 
@@ -163,12 +218,14 @@ fn select_mode(opt: &Opt) -> Mode {
 		println!("Pilih mode:");
 		println!("1. Normal");
 		println!("2. Collection");
+		println!("3. Food");
 
-        let input = opt.mode.clone().unwrap_or_else(|| get_user_input("Masukkan pilihan (1/2): "));
+        let input = opt.mode.clone().unwrap_or_else(|| get_user_input("Masukkan pilihan (1/2/..): "));
 
 		match input.trim() {
 			"1" => return Mode::Normal,
 			"2" => return Mode::Collection,
+			"3" => return Mode::Food,
 			_ => println!("Pilihan tidak valid, coba lagi."),
 		}
 	}

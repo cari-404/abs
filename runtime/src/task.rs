@@ -364,7 +364,7 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn checkout_get(cookie_content: &CookieData, body_json: serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
+pub async fn checkout_get(cookie_content: &CookieData, body_json: &serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());

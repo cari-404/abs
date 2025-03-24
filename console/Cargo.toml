@@ -1,6 +1,6 @@
 [package]
 name = "abs"
-version = "0.10.7"
+version = "0.10.8"
 edition = "2021"
 authors = ["Paijo"]
 description = "Auto Buy from Shopee.co.id"
@@ -28,4 +28,4 @@ num_cpus = "1.16"
 futures = "0.3"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = "0.59.0"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Console"] }

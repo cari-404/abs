@@ -95,10 +95,11 @@ pub struct ProductInfo {
 }
 
 #[derive(Deserialize, Debug)]
-struct UserData {
-    username: String,
-    email: String,
-    phone: String,
+pub struct UserData {
+    pub username: String,
+    pub email: String,
+    pub phone: String,
+    pub userid: i64,
 }
 #[derive(Deserialize, Debug)]
 struct InfoAkun {
@@ -344,7 +345,7 @@ pub async fn address(cookie_content: &CookieData) -> Result<AddressInfo, Box<dyn
         process::exit(1);
     }
 }
-pub async fn info_akun(cookie_content: &CookieData) -> Result<(String, String, String), Box<dyn std::error::Error>> {
+pub async fn info_akun(cookie_content: &CookieData) -> Result<UserData, Box<dyn std::error::Error>> {
 	let headers = create_headers(&cookie_content);
 	let url2 = format!("https://shopee.co.id/api/v4/account/basic/get_account_info");
 	println!("{}", url2);
@@ -366,12 +367,16 @@ pub async fn info_akun(cookie_content: &CookieData) -> Result<(String, String, S
         .await?;
 
     if response.status() == StatusCode::OK {
-        //println!("Headers: {:#?}", response.headers());
         let hasil: InfoAkun = response.json().await?;
         if let Some(data) = hasil.data {
-            Ok((data.username, data.email, data.phone))
+            Ok(data)
         } else {
-            Ok(("LOGOUT (WARNING)".to_string(), "LOGOUT (WARNING)".to_string(), "LOGOUT (WARNING)".to_string()))
+            Ok(UserData {
+                username: "LOGOUT (WARNING)".to_string(),
+                email: "LOGOUT (WARNING)".to_string(),
+                phone: "LOGOUT (WARNING)".to_string(),
+                userid: 0,
+            })
         }
     } else {
         println!("Status: {}", response.status());

@@ -1,13 +1,12 @@
 [package]
-name = "live"
+name = "draw"
 version = "0.10.8"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
 runtime = { path = "../runtime" }
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
 anyhow = "1.0"
-structopt = "0.3"
 rquest = { version = "1.5.5", features = ["gzip"] }
 serde_json = "1"
