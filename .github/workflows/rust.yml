@@ -8,6 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  FINAL_VERSION: "0.10.8"
 
 permissions:
   contents: write
@@ -164,16 +165,7 @@ jobs:
         args: "--release -p launchng"
         strip: true
 
-    - name: Build binary
-      if: matrix.platform.os_name == 'Android-aarch64' && matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
-      uses: actions-rs/toolchain@v1
-      with:
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy
-          target: ${{ matrix.platform.target }}
-
-    - name: install
+    - name: Build for Android-NDK
       if: matrix.platform.os_name == 'Android-aarch64'
       run: |
         cargo install cargo-ndk
@@ -230,28 +222,29 @@ jobs:
     - name: Run tests
       run: ls -R
 
-    - name: Rename binary (linux and macos)
-      if: matrix.platform.os_name != 'Windows7-x86_64' && matrix.platform.os_name != 'Windows7-i686' && matrix.platform.os_name != 'Windows-aarch64' && matrix.platform.os_name != 'Windows-x86_64' && matrix.platform.os_name != 'Windows-i686' && matrix.platform.os_name != 'WindowsXP-x86_64' && matrix.platform.os_name != 'WindowsXP-i686'
+    - name: Archive (linux)
+      if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64' || matrix.platform.os_name == 'Android-aarch64'
       run: |
-        mv target/${{ matrix.platform.target }}/release/abs target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
-        mv target/${{ matrix.platform.target }}/release/savevoucher target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
+        cd target/${{ matrix.platform.target }}/release
+        tar -czf ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.tar.gz abs savevoucher
 
-    - name: Rename binary (windows)
+    - name: Archive (Windows)
       if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
       run: |
-        mv target/${{ matrix.platform.target }}/release/savevoucher.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
-        mv target/${{ matrix.platform.target }}/release/abs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
-        mv target/${{ matrix.platform.target }}/release/launcabs.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}
-        mv target/${{ matrix.platform.target }}/release/launchng.exe target/${{ matrix.platform.target }}/release/${{ matrix.platform.guing }}
+        cd target/${{ matrix.platform.target }}/release
+        zip -r ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.zip abs.exe savevoucher.exe launcabs.exe launchng.exe
 
-    - name: Generate SHA-256
-      run: shasum -a 256 target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }} | cut -d ' ' -f 1 > target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}.sha256
-    - name: Release binary and SHA-256 checksum to GitHub
+    - name: Release binary and SHA-256 checksum to GitHub (Linux)
+      if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64' || matrix.platform.os_name == 'Android-aarch64'
       uses: softprops/action-gh-release@v2
       with:
-        tag_name: v0.10.8
+        tag_name: v${{ env.FINAL_VERSION }}
         files: |
-          target/${{ matrix.platform.target }}/release/${{ matrix.platform.savevoucher }}
-          target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin }}
-          target/${{ matrix.platform.target }}/release/${{ matrix.platform.gui }}
-          target/${{ matrix.platform.target }}/release/${{ matrix.platform.guing }}
+          target/${{ matrix.platform.target }}/release/ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.tar.gz
+    - name: Release binary and SHA-256 checksum to GitHub (Windows)
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ env.FINAL_VERSION }}
+        files: |
+          target/${{ matrix.platform.target }}/release/ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.zip
