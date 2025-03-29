@@ -201,12 +201,22 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() > 1 && args[1] == "upgrade" {
-        if let Err(e) = run_updater() {
-            println!("Gagal melakukan update: {}", e);
+    let mut force = false;
+    if args.len() > 1 {
+        match args[1].as_str() {
+            "upgrade" => {
+                if let Err(e) = run_updater() {
+                    println!("Gagal melakukan update: {}", e);
+                }
+                return;
+            }
+            "force" => {
+                force = true;
+            }
+            _ => {}
         }
-        return;
     }
+    
     println!("Versi saat ini: {}", CURRENT_VERSION);
     let os = get_os();
     let arch = if ARCH == "x86"{
@@ -221,30 +231,27 @@ async fn main() {
     };
     if let Some(latest_version) = get_latest_release().await {
         println!("Versi terbaru: {}", latest_version);
-        match compare_versions(CURRENT_VERSION, &latest_version) {
-            Ordering::Less => {
-                println!("Versi baru tersedia! Mengunduh...");
-                let download_url = format!("https://github.com/{}/{}/releases/download/v{}/ABS_{}-{}-v{}.{}", REPO_OWNER, REPO_NAME, latest_version, os, arch, latest_version, archive);
-                if download_latest_release(&download_url).await.is_ok() {
-                    println!("Unduhan selesai. Simpan sebagai: {}", OUTPUT_PATH);
-                    if let Err(e) = extract_archive().await {
-                        println!("Gagal mengekstrak arsip: {}", e);
-                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                    }
-                    println!("Ekstraksi selesai. Updater akan upgrade dengan versi terbaru.");
-                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
-                    println!("Restarting..");
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                    std::process::exit(0);
-                } else {
-                    println!("Gagal mengunduh update.");
+        if compare_versions(CURRENT_VERSION, &latest_version) == Ordering::Less || force {
+            println!("Versi baru tersedia! Mengunduh...");
+            let download_url = format!("https://github.com/{}/{}/releases/download/v{}/ABS_{}-{}-v{}.{}", REPO_OWNER, REPO_NAME, latest_version, os, arch, latest_version, archive);
+            if download_latest_release(&download_url).await.is_ok() {
+                println!("Unduhan selesai. Simpan sebagai: {}", OUTPUT_PATH);
+                if let Err(e) = extract_archive().await {
+                    println!("Gagal mengekstrak arsip: {}", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
-            }
-            _ => {
-                println!("Aplikasi sudah versi terbaru.");
+                println!("Ekstraksi selesai. Updater akan upgrade dengan versi terbaru.");
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                println!("Restarting..");
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                std::process::exit(0);
+            } else {
+                println!("Gagal mengunduh update.");
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
             }
+        }else {
+            println!("Versi terbaru sudah terpasang.");
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
     } else {
         println!("Gagal mengecek versi terbaru.");
