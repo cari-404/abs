@@ -241,8 +241,10 @@ async fn main() {
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }
-            _ => println!("Aplikasi sudah versi terbaru."),
-            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            _ => {
+                println!("Aplikasi sudah versi terbaru.");
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
         }
     } else {
         println!("Gagal mengecek versi terbaru.");
