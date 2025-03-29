@@ -125,10 +125,14 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
     use tokio::task;
 
     task::spawn_blocking(|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let update_dir = Path::new("update-dir");
+        if !update_dir.exists() {
+            tokio::fs::create_dir(update_dir).await?;
+        }
         let file = File::open(OUTPUT_PATH)?;
         let decompressed = GzDecoder::new(file);
         let mut archive = Archive::new(decompressed);
-        archive.unpack(Path::new("."))?;
+        archive.unpack(update_dir)?;
         fn set_executable(path: PathBuf) -> std::io::Result<()> {
             let metadata = fs::metadata(&path)?;
             let mut perms = metadata.permissions();
@@ -153,7 +157,7 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
         }
 
         // Terapkan izin eksekusi pada seluruh direktori hasil ekstraksi
-        make_all_executable(Path::new("."))?;
+        make_all_executable(update_dir)?;
         Ok(())
     })
     .await??;
@@ -212,7 +216,6 @@ async fn main() {
     }
 }
 
-#[cfg(target_os = "windows")]
 fn run_updater() -> io::Result<()> {
     use std::fs;
     use std::io;
