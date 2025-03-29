@@ -130,8 +130,9 @@ async fn extract_archive() -> io::Result<()> {
     }
 
     let _ = std::process::Command::new("cmd")
-    .args(&["cd", "update_dir", "/C", "start", "updater.exe", "upgrade"])
-    .spawn();
+        .arg("/C")
+        .arg("update-dir\\updater.exe upgrade")
+        .spawn();
 
     Ok(())
 }
@@ -188,6 +189,11 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     println!("Almost Done");
 
+    let _ = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("./update-dir/updater upgrade")
+        .spawn();
+
     Ok(())
 }
 
@@ -223,18 +229,24 @@ async fn main() {
                     println!("Unduhan selesai. Simpan sebagai: {}", OUTPUT_PATH);
                     if let Err(e) = extract_archive().await {
                         println!("Gagal mengekstrak arsip: {}", e);
-                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                     }
-                    println!("Ekstraksi selesai. Silakan jalankan aplikasi baru.");
+                    println!("Ekstraksi selesai. Updater akan upgrade dengan versi terbaru.");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                    println!("Restarting..");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                     std::process::exit(0);
                 } else {
                     println!("Gagal mengunduh update.");
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }
             _ => println!("Aplikasi sudah versi terbaru."),
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
     } else {
         println!("Gagal mengecek versi terbaru.");
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
 }
 
