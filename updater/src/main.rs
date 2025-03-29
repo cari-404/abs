@@ -46,6 +46,7 @@ async fn get_latest_release() -> Option<String> {
 }
 
 async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
+    use tokio::fs::OpenOptions;
     println!("URL unduhan: {}", url);
     let client = ClientBuilder::new()
         .gzip(true)
@@ -55,7 +56,10 @@ async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
     let response = client.get(url)
         .send()
         .await
-        .expect("Failed to download");
+        .map_err(|e| {
+            eprintln!("Gagal mengunduh: {}", e);
+            io::Error::new(io::ErrorKind::Other, "Gagal mengunduh file")
+        })?;
     println!("Status: {}", response.status());
     let total_size = response.content_length().unwrap_or(0);
     let pb = ProgressBar::new(total_size);
@@ -64,18 +68,36 @@ async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
         .expect("Invalid template")
         .progress_chars("#>-"));
 
-    let mut file = BufWriter::new(File::create(OUTPUT_PATH).await?);
+    let file = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true) // Hindari data lama tertinggal
+        .open(OUTPUT_PATH)
+        .await?;
+    let mut file = BufWriter::new(file);
     let mut stream = response.bytes_stream();
+    let mut downloaded: u64 = 0;
     let start = Instant::now();
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.expect("Error while downloading");
+        let chunk = chunk.map_err(|e| {
+            eprintln!("Error saat mengunduh chunk: {}", e);
+            io::Error::new(io::ErrorKind::Other, "Error saat menerima data")
+        })?;
         file.write_all(&chunk).await?;
+        downloaded += chunk.len() as u64;
         pb.inc(chunk.len() as u64);
+        pb.set_position(downloaded);
         let elapsed = start.elapsed().as_secs_f64();
         let speed = (pb.position() as f64 / elapsed) / 1024.0;
         pb.set_message(format!("{:.2} KB/s", speed));
     }
+    file.flush().await?;
     pb.finish_with_message("Download selesai!");
+    let actual_size = tokio::fs::metadata(OUTPUT_PATH).await?.len();
+    if actual_size != total_size {
+        eprintln!("File mungkin corrupt! Ukuran seharusnya {} bytes, tetapi hanya {} bytes.", total_size, actual_size);
+        return Err(io::Error::new(io::ErrorKind::Other, "Ukuran file tidak sesuai"));
+    }
     Ok(())
 }
 
@@ -127,7 +149,7 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
     task::spawn_blocking(|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let update_dir = Path::new("update-dir");
         if !update_dir.exists() {
-            tokio::fs::create_dir(update_dir).await?;
+            fs::create_dir(update_dir)?;
         }
         let file = File::open(OUTPUT_PATH)?;
         let decompressed = GzDecoder::new(file);
@@ -202,6 +224,7 @@ async fn main() {
                     println!("Unduhan selesai. Simpan sebagai: {}", OUTPUT_PATH);
                     if let Err(e) = extract_archive().await {
                         println!("Gagal mengekstrak arsip: {}", e);
+                        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                     }
                     println!("Ekstraksi selesai. Silakan jalankan aplikasi baru.");
                     std::process::exit(0);
@@ -221,6 +244,7 @@ fn run_updater() -> io::Result<()> {
     use std::io;
     use std::path::Path;
     println!("Menjalankan updater...");
+    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
 
     // Tentukan folder update dan folder tujuan
     let update_dir = "update-dir";  // Nama folder hasil ekstraksi
