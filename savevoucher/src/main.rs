@@ -103,13 +103,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}; 
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			let notify = Arc::new(Notify::new());
+			let cookie_data = Arc::new(cookie_data);
+			let promotion_id = Arc::new(promotion_id);
+			let code = Arc::new(code);
 			// Process HTTP with common function
 			countdown_to_task(task_time_dt).await;
 			for _ in 0..max_threads {
 				let tx = tx.clone();
-				let cookie_data = cookie_data.clone();
-				let promotion_id = promotion_id.clone();
-				let code = code.clone();
+				let cookie_data = Arc::clone(&cookie_data);
+				let promotion_id = Arc::clone(&promotion_id);
+				let code = Arc::clone(&code);
 				let notify = notify.clone();
 				tokio::spawn(async move {
 					let resp = match voucher::claim_food_voucher(&cookie_data, &promotion_id, &code).await {
@@ -157,13 +160,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			}; 
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			let notify = Arc::new(Notify::new());
+			let cookie_data = Arc::new(cookie_data);
+			let promotion_id = Arc::new(promotion_id);
+			let signature = Arc::new(signature);
 			// Process HTTP with common function
 			countdown_to_task(task_time_dt).await;
 			for _ in 0..max_threads {
 				let tx = tx.clone();
-				let cookie_data = cookie_data.clone();
-				let promotion_id = promotion_id.clone();
-				let signature = signature.clone();
+				let cookie_data = Arc::clone(&cookie_data);
+				let promotion_id = Arc::clone(&promotion_id);
+				let signature = Arc::clone(&signature);
 				let notify = notify.clone();
 				tokio::spawn(async move {
 					let resp = match voucher::save_voucher(&promotion_id, &signature, &cookie_data).await {

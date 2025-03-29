@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  FINAL_VERSION: "0.10.8"
+  FINAL_VERSION: "0.10.9"
 
 permissions:
   contents: write
@@ -124,6 +124,7 @@ jobs:
         rustup target add ${{ matrix.platform.target }}
         cargo +stable build --release --target ${{ matrix.platform.target }} -p abs
         cargo +stable build --release --target ${{ matrix.platform.target }} -p savevoucher
+        cargo +stable build --release --target ${{ matrix.platform.target }} -p updater
 
     - name: Build binary(abs)
       uses: houseabsolute/actions-rust-cross@v0
@@ -165,6 +166,16 @@ jobs:
         args: "--release -p launchng"
         strip: true
 
+    - name: Build binary (updater)
+      uses: houseabsolute/actions-rust-cross@v0
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' 
+      with:
+        command: "build"
+        target: ${{ matrix.platform.target }}
+        toolchain: ${{ matrix.toolchain }}
+        args: "--release -p updater"
+        strip: true
+
     - name: Build for Android-NDK
       if: matrix.platform.os_name == 'Android-aarch64'
       run: |
@@ -172,6 +183,7 @@ jobs:
         rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p abs
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p savevoucher
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p updater
 
     - name: Configure for Windows XP Build
       if: matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
@@ -203,6 +215,7 @@ jobs:
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launchng
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
+        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p updater
 
     - name: Install nightly toolchain for Windows 7 32-bit or Windows XP 32-bit
       if: matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-i686'
@@ -218,6 +231,7 @@ jobs:
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launchng
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
+        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p updater
 
     - name: Run tests
       run: ls -R
@@ -226,13 +240,13 @@ jobs:
       if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64' || matrix.platform.os_name == 'Android-aarch64'
       run: |
         cd target/${{ matrix.platform.target }}/release
-        tar -czf ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.tar.gz abs savevoucher
+        tar -czf ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.tar.gz abs savevoucher updater
 
     - name: Archive (Windows)
       if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64' || matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
       run: |
         cd target/${{ matrix.platform.target }}/release
-        Compress-Archive -Path abs.exe,savevoucher.exe,launcabs.exe,launchng.exe -DestinationPath ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.zip
+        Compress-Archive -Path abs.exe,savevoucher.exe,launcabs.exe,launchng.exe,updater.exe -DestinationPath ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.zip
 
     - name: Release binary and SHA-256 checksum to GitHub (Linux)
       if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64' || matrix.platform.os_name == 'Android-aarch64'

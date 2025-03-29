@@ -1,11 +1,12 @@
 /*This Is a Auto Buy Shopee
+Whats new in 0.10.9 :
+    Add detail time infp
+    introdution updater
+    fix memory usage
 Whats new in 0.10.8 :
     refactoring data types
 Whats new in 0.10.7 :
     Add Safety factor
-Whats new in 0.10.6 :
-    Enchance specific shipping
-    Security update
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -17,7 +18,6 @@ use runtime::telegram::{self};
 use chrono::{Local, Duration, NaiveDateTime};
 use std::io::{self, Write, Read};
 use std::process;
-use std::process::Command;
 use anyhow::Result;
 use std::fs::File;
 use structopt::StructOpt;
@@ -82,6 +82,7 @@ struct Opt {
 
 #[cfg(windows)]
 fn clear_screen() {
+    use std::process::Command;
     // Use the 'cls' command to clear the screen on Windows
     if Command::new("cmd")
         .args(&["/c", "cls"])
@@ -506,11 +507,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let cleaned_max_price = max_price_no_comma.trim(); 
                                 if let Ok(parsed_max_price) = cleaned_max_price.parse::<i64>() {
                                     let adjusted_max_price = parsed_max_price * 100_000;
-                                    println!("max_price (setelah dikali 100000): {}", adjusted_max_price);
+                                    //println!("[{}]max_price (setelah dikali 100000): {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
                                     if merchandise_subtotal <= adjusted_max_price {
-                                        println!("Harga merchandise_subtotal sesuai dengan max_price * 100000.");
+                                        println!("[{}]Harga merchandise_subtotal sesuai dengan {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
                                     } else {
-                                        println!("Harga merchandise_subtotal lebih besar dari max_price * 100000.");
+                                        println!("[{}]Harga merchandise_subtotal lebih besar dari {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
                                         continue;
                                     }
                                 } else {
@@ -539,13 +540,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(checkout_id) = mpp.get("checkoutid") {
                         let checkout_id = checkout_id.as_i64().unwrap();
                         let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
-                        println!("{}", url);
+                        println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
                         let _ = tx.send(url).await;
                         stop_flag.store(true, Ordering::Relaxed);
                         break;
                     }
                     if try_count == 3 {
-                        eprintln!("Gagal mendapatkan checkoutid setelah 3 kali percobaan.");
+                        eprintln!("[{}]Gagal mendapatkan checkoutid setelah 3 kali percobaan.", Local::now().format("%H:%M:%S.%3f"));
                         stop_flag.store(true, Ordering::Relaxed);
                         break;
                     }
@@ -555,9 +556,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         drop(tx); // Tutup pengirim setelah semua tugas selesai
         while let Some(url) = rx.recv().await {
-            println!("{}", url);
+            println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
             if config.telegram_notif {
-                telegram::send_msg(&config, &url).await?;
+                let msg = format!("Auto Buy Shopee {}\n
+                REPORT!!!\n
+                Username     : {}\n
+                Product      : {}\n
+                Variant      : {}\n
+                Link Payment : {}\n
+                Checkout berhasil!", version_info, userdata.username, name, chosen_model.name, url);
+                telegram::send_msg(&config, &msg).await?;
             }
         }
     } else if !token.is_empty(){
@@ -664,10 +672,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 async fn print_voucher_info(voucher_type: &str, voucher: &Option<voucher::Vouchers>) {
     match voucher {
         Some(v) => println!(
-            "{}: {}, {}, {}",
+            "[{}]{}: {}, {}, {}", Local::now().format("%H:%M:%S.%3f"),
             voucher_type, v.promotionid, v.voucher_code, v.signature
         ),
-        None => println!("{} is None", voucher_type),
+        None => println!("[{}]{} is None", Local::now().format("%H:%M:%S.%3f"), voucher_type),
     }
 }
 fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {

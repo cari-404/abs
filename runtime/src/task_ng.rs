@@ -6,6 +6,7 @@ use chrono::{Utc, Timelike};
 use anyhow::Result;
 use serde_json::{Value};
 use std::collections::HashMap;
+use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
@@ -315,7 +316,7 @@ pub async fn place_order_ng(cookie_content: &CookieData, place_body: &PlaceOrder
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
     // Convert struct to JSON
 	//let body_str = serde_json::to_string(&place_body)?;
-	println!("Status: Start Place_Order");
+	//println!("Status: Start Place_Order");
 	//println!("{:?}", body_str);
 	//println!("Request Headers:\n{:?}", headers);
 
@@ -340,7 +341,7 @@ pub async fn place_order_ng(cookie_content: &CookieData, place_body: &PlaceOrder
         .send()
         .await?;
 	
-	println!("Status: Done Place_Order");
+	//println!("Status: Done Place_Order");
 	//println!("Status: {}", response.status());
     let v: Value = response.json().await?;
 	println!("Body: {}", v);
@@ -516,7 +517,7 @@ pub async fn get_ng(cookie_content: &CookieData, body_json: &GetBodyJson, device
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
-	println!("Status: Start Checkout");
+	//println!("Status: Start Checkout");
 
 	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
     //let body_str = serde_json::to_string(&body_json)?;
@@ -539,51 +540,55 @@ pub async fn get_ng(cookie_content: &CookieData, body_json: &GetBodyJson, device
         .send()
         .await?;
 
-	println!("Status: Done Checkout");
-	println!("Status: {}", response.status());
-	let v: Value = response.json().await?;
-    let keys = vec![
-        "checkout_price_data",
-        "order_update_info",
-        "dropshipping_info",
-        "promotion_data",
-        "shoporders",
-        "shipping_orders",
-        "display_meta_data",
-        "fsv_selection_infos",
-        "buyer_info",
-        "client_event_info",
-        "buyer_txn_fee_info",
-        "disabled_checkout_info",
-        "buyer_service_fee_info",
-        "iof_info",
-    ];
+	//println!("Status: Done Checkout");
+	let status = response.status();
+    if status == reqwest::StatusCode::OK {
+        let v: Value = response.json().await?;
+        let v = Arc::new(v);
+        let keys = [
+            "checkout_price_data",
+            "order_update_info",
+            "dropshipping_info",
+            "promotion_data",
+            "shoporders",
+            "shipping_orders",
+            "display_meta_data",
+            "fsv_selection_infos",
+            "buyer_info",
+            "client_event_info",
+            "buyer_txn_fee_info",
+            "disabled_checkout_info",
+            "buyer_service_fee_info",
+            "iof_info",
+        ];
 
-    let mut place_order_body = PlaceOrderBody::new(&device_info, &body_json.checkout_session_id);
+        let mut place_order_body = PlaceOrderBody::new(&device_info, &body_json.checkout_session_id);
 
-    let handles = keys.iter().map(|key| {
-        let v_clone = v.clone();
-        let key = key.to_string();
-        tokio::spawn(async move {
-            let value = v_clone.get(&key).cloned();
-            (key, value)
-        })
-    }).collect::<Vec<_>>();
-    let results = futures::future::join_all(handles).await;
-    for result in results {
-        match result {
-            Ok((key, value)) => {
-                place_order_body.insert(&key, value);
-            }
-            Err(e) => {
-                eprintln!("Error joining thread: {:?}", e);
+        let handles = keys.iter().map(|&key| {
+            let v_ref = Arc::clone(&v);
+            tokio::spawn(async move {
+                (key, v_ref.get(key).cloned())
+            })
+        }).collect::<Vec<_>>();
+        let results = futures::future::join_all(handles).await;
+        for result in results {
+            match result {
+                Ok((key, value)) => {
+                    place_order_body.insert(key, value);
+                }
+                Err(e) => {
+                    eprintln!("Error joining thread: {:?}", e);
+                }
             }
         }
+
+        place_order_body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
+
+        return Ok(place_order_body)
+    } else {
+        eprintln!("Failed to get checkout data: {}", status);
+        Err("Failed to get checkout data".into())
     }
-
-    place_order_body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
-
-	Ok(place_order_body)
 }
 pub async fn get_builder(cookie_content: &CookieData, 
     device_info: &DeviceInfo, 

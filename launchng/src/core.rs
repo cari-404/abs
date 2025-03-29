@@ -174,6 +174,7 @@ impl MyWindow {
         let variasi_combo = gui::ComboBox::new(&wnd, gui::ComboBoxOpts {
             position: (380, 80),
             width: 210,
+            window_style: co::WS::CHILD | co::WS::VISIBLE | co::WS::TABSTOP | co::WS::VSCROLL | co::WS::GROUP | co::CBS::AUTOHSCROLL.into() | co::CBS::DISABLENOSCROLL.into(),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
             ..Default::default()
         });

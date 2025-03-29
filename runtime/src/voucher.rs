@@ -5,6 +5,7 @@ use reqwest::header::HeaderValue;
 use serde_json::{json, to_string, Value};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use std::sync::Arc;
 
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
 use crate::crypt::random_hex_string;
@@ -332,7 +333,7 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
 }
 
 pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -> Result<Option<Vouchers>>{
-    let headers = headers_checkout(&cookie_content).await;
+    let headers = Arc::new(headers_checkout(&cookie_content).await);
 	let start: i64 = start.trim().parse().expect("Input tidak valid");
 
 	let body_json = SaveVoucherRequest {
@@ -362,7 +363,7 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -
         // Buat permintaan HTTP POST
         let response = client
             .post("https://mall.shopee.co.id/api/v2/voucher_wallet/save_voucher")
-			.headers(headers.clone())
+			.headers(headers.as_ref().clone())
 			.json(&body_json)
             .version(Version::HTTP_2) 
             .send()
@@ -488,7 +489,7 @@ pub async fn get_voucher_data(start: &str, end: &str, cookie_content: &CookieDat
 
 pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let headers = headers_checkout(&cookie_content).await;
-	let optioninfo: String = chosen_payment.option_info.clone();
+	let optioninfo = chosen_payment.option_info.to_string();
     let orders_json = vec![Orders {
         shopid: product_info.shop_id,
         carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
@@ -576,38 +577,36 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, produc
     println!("Status: get_voucher");
     // Handle response as needed
     //println!("Request Headers:\n{:?}", headers);
-    println!("Status: {}", response.status());
+    let status = response.status();
     let json_resp: RecomendPlatformResponse = response.json().await?;
     //println!("Body: {}", body_resp);
     // Parse response body as JSON
     let mut freeshipping_voucher: Option<Vouchers> = None;
     let mut vouchers: Option<Vouchers> = None;
     // Extract freeshipping_vouchers
-    if let Some(freeshipping_vouchers_array) = json_resp.data.as_ref().and_then(|data| data.freeshipping_vouchers.as_ref()) {
-        for voucher in freeshipping_vouchers_array {
-            if voucher.fsv_error_message.is_none() {
+    if status == reqwest::StatusCode::OK {
+        if let Some(freeshipping_vouchers_array) = json_resp.data.as_ref().and_then(|data| data.freeshipping_vouchers.as_ref()) {
+            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| v.fsv_error_message.is_none()) {
                 freeshipping_voucher = Some(Vouchers {
-                    promotionid : voucher.promotionid.clone(),
+                    promotionid : voucher.promotionid,
                     voucher_code : voucher.voucher_code.clone(),
                     signature : voucher.signature.clone(),
                 });
-                break; // Found one valid voucher, so break
             }
         }
-    }
 
-    // Extract vouchers
-    if let Some(vouchers_array) = json_resp.data.as_ref().and_then(|data| data.vouchers.as_ref()) {
-        for voucher in vouchers_array {
-            if voucher.fsv_error_message.is_none() {
+        // Extract vouchers
+        if let Some(vouchers_array) = json_resp.data.as_ref().and_then(|data| data.vouchers.as_ref()) {
+            if let Some(voucher) = vouchers_array.iter().find(|v| v.fsv_error_message.is_none()) {
                 vouchers = Some(Vouchers {
-                    promotionid : voucher.promotionid.clone(),
+                    promotionid : voucher.promotionid,
                     voucher_code : voucher.voucher_code.clone(),
                     signature : voucher.signature.clone(),
                 });
-                break; // Found one valid voucher, so break
             }
         }
+    } else {
+        println!("Status: {}", status);
     }
     Ok((freeshipping_voucher, vouchers))
 }
