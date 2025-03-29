@@ -270,9 +270,7 @@ fn run_updater() -> io::Result<()> {
     copy_recursive(update_path, target_path)?;
     println!("Berhasil mengganti semua file aplikasi dengan versi baru.");
 
-    // Hapus folder update-dir beserta isinya
-    fs::remove_dir_all(update_dir)?;
-    println!("Folder update-dir berhasil dihapus.");
+    std::thread::sleep(std::time::Duration::from_secs(10));
 
     println!("Update selesai!");
     #[cfg(target_os = "windows")]
