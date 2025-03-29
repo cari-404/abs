@@ -3,7 +3,6 @@ use reqwest::Client;
 use reqwest::ClientBuilder;
 use reqwest::redirect::Policy as RedirectPolicy;
 use serde_json::Value;
-use tokio::fs::File;
 use tokio::io::{self, BufWriter, AsyncWriteExt};
 use std::cmp::Ordering;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -244,7 +243,7 @@ fn run_updater() -> io::Result<()> {
     use std::io;
     use std::path::Path;
     println!("Menjalankan updater...");
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+    std::thread::sleep(std::time::Duration::from_secs(10));
 
     // Tentukan folder update dan folder tujuan
     let update_dir = "update-dir";  // Nama folder hasil ekstraksi
