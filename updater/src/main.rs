@@ -84,11 +84,17 @@ async fn extract_archive() -> io::Result<()> {
     use zip::ZipArchive;
     use std::io::Read;
 
+    // Buat folder update-dir
+    let update_dir = Path::new("update-dir");
+    if !update_dir.exists() {
+        tokio::fs::create_dir(update_dir).await?;
+    }
+
     let file = tokio::fs::File::open(OUTPUT_PATH).await?;
     let mut archive = ZipArchive::new(file.into_std().await)?;
     for i in 0..archive.len() {
         let mut file = archive.by_index(i)?;
-        let outpath = Path::new(".").join(file.name());
+        let outpath = update_dir.join(file.name());
         if file.name().ends_with('/') {
             tokio::fs::create_dir_all(&outpath).await?;
         } else {
@@ -101,6 +107,11 @@ async fn extract_archive() -> io::Result<()> {
             outfile.write_all(&buffer).await?;
         }
     }
+
+    let _ = std::process::Command::new("cmd")
+    .args(&["cd", "update_dir", "/C", "start", "updater.exe", "upgrade"])
+    .spawn();
+
     Ok(())
 }
 
@@ -158,6 +169,13 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
 
 #[tokio::main]
 async fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() > 1 && args[1] == "upgrade" {
+        if let Err(e) = run_updater() {
+            println!("Gagal melakukan update: {}", e);
+        }
+        return;
+    }
     println!("Versi saat ini: {}", CURRENT_VERSION);
     let os = get_os();
     let arch = if ARCH == "x86"{
@@ -182,19 +200,7 @@ async fn main() {
                         println!("Gagal mengekstrak arsip: {}", e);
                     }
                     println!("Ekstraksi selesai. Silakan jalankan aplikasi baru.");
-                    #[cfg(target_os = "windows")]
-                    {
-                        let _ = std::process::Command::new("cmd")
-                            .args(&["/C", "start", "launchng.exe"])
-                            .spawn();
-                    }
-                    #[cfg(target_os = "linux")]
-                    {
-                        let _ = std::process::Command::new("sh")
-                            .arg("-c")
-                            .arg("./abs")
-                            .spawn();
-                    }
+                    std::process::exit(0);
                 } else {
                     println!("Gagal mengunduh update.");
                 }
@@ -204,6 +210,59 @@ async fn main() {
     } else {
         println!("Gagal mengecek versi terbaru.");
     }
+}
+
+#[cfg(target_os = "windows")]
+fn run_updater() -> io::Result<()> {
+    use std::fs;
+    use std::io;
+    use std::path::Path;
+    println!("Menjalankan updater...");
+
+    // Tentukan folder update dan folder tujuan
+    let update_dir = "update-dir";  // Nama folder hasil ekstraksi
+
+    // Fungsi rekursif untuk menyalin semua file dan folder
+    fn copy_recursive(from: &Path, to: &Path) -> io::Result<()> {
+        if from.is_dir() {
+            fs::create_dir_all(to)?;
+            for entry in fs::read_dir(from)? {
+                let entry = entry?;
+                let from_path = entry.path();
+                let to_path = to.join(entry.file_name());
+                copy_recursive(&from_path, &to_path)?;
+            }
+        } else if from.is_file() {
+            fs::copy(from, to)?;
+        }
+        Ok(())
+    }
+
+    // Copy semua file dan folder dari update-dir ke direktori utama
+    let update_path = Path::new(update_dir);
+    let target_path = Path::new(".");
+    copy_recursive(update_path, target_path)?;
+    println!("Berhasil mengganti semua file aplikasi dengan versi baru.");
+
+    // Hapus folder update-dir beserta isinya
+    fs::remove_dir_all(update_dir)?;
+    println!("Folder update-dir berhasil dihapus.");
+
+    println!("Update selesai!");
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("cmd")
+            .args(&["/C", "start", "launchng.exe"])
+            .spawn();
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("./abs")
+            .spawn();
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
