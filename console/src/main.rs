@@ -1,14 +1,18 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.0 :
+    Introduce new version
+    Add detail info flashsale
+    Add detail time info
+    fix formating telegram messsage
+    memory management
 Whats new in 0.10.9 :
-    Add detail time infp
+    Add detail time info
     introdution updater
     fix memory usage
 Whats new in 0.10.8 :
     refactoring data types
-Whats new in 0.10.7 :
-    Add Safety factor
 */
-use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
+use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
 use runtime::task::{self};
 use runtime::task_ng::{self};
@@ -288,7 +292,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     let userdata = info_result?;
     let address_info = address_result?;
-    let (name, model_info, is_official_shop, status_code) = product_result?;
+    let (name, model_info, is_official_shop, fs_info, status_code) = product_result?;
 	println!("Username  : {}", userdata.username);
 	println!("Email     : {}", userdata.email);
 	println!("Phone     : {}", userdata.phone);
@@ -312,9 +316,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("name             : {}", name);
     // println!("models           : \n{:#?}", model_info);
     println!("Official Shop ?  : {}", is_official_shop);
+    let fs_item = if fs_info.promotionid != 0 {
+        println!("promotionid  : {}", fs_info.promotionid);
+        println!("start_time   : {}", fs_info.start_time);
+        println!("end_time     : {}", fs_info.end_time);
+        let fs_items = prepare::get_flash_sale_batch_get_items(&cookie_data, &product_info, &fs_info).await?;
+        fs_items
+    }else {
+        Vec::new()
+    };
 	
 	//std::thread::sleep(std::time::Duration::from_secs(2));
-    if let Some(model) = choose_model(&model_info, &opt){
+    if let Some(model) = choose_model(&model_info, &opt, &fs_item) {
         chosen_model = model;
         println!("Anda memilih model: {:#?}", chosen_model);
         // Lanjutkan dengan logika berikutnya
@@ -406,6 +419,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chosen_model = Arc::new(chosen_model);
     let chosen_payment = Arc::new(chosen_payment);
     let chosen_shipping = Arc::new(chosen_shipping);
+    let max_price_clone = Arc::new(max_price.clone());
     countdown_to_task(&task_time_dt).await;
 
     if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only || opt.shop_vouchers {
@@ -471,7 +485,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("platform_voucher", &final_voucher).await;
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
 
-        let get_body = task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, &freeshipping_voucher, &final_voucher, &selected_shop_voucher).await?;
+        let get_body = task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher)).await?;
         let get_body = Arc::new(get_body);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
         let stop_flag = Arc::new(AtomicBool::new(false));
@@ -479,11 +493,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Running on thread: {}", i);
             let tx = tx.clone();
             let stop_flag = Arc::clone(&stop_flag);
-            let cookie_data = Arc::clone(&cookie_data);
-            let device_info = Arc::clone(&device_info);
-            let chosen_payment = Arc::clone(&chosen_payment);
-            let get_body = Arc::clone(&get_body);
-            let max_price = max_price.clone();
+            let cookie_data_clone = Arc::clone(&cookie_data);
+            let device_info_clone = Arc::clone(&device_info);
+            let chosen_payment_clone = Arc::clone(&chosen_payment);
+            let get_body_clone = Arc::clone(&get_body);
+            let max_price = Arc::clone(&max_price_clone);
     
             tokio::spawn(async move {
                 let mut try_count = 0;
@@ -491,7 +505,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if stop_flag.load(Ordering::Relaxed) {
                         break;
                     }
-                    let place_order_body = match task_ng::get_ng(&cookie_data, &get_body, &device_info, &chosen_payment).await
+                    let place_order_body = match task_ng::get_ng(&cookie_data_clone, &get_body_clone, &device_info_clone, &chosen_payment_clone).await
                     {
                         Ok(body) => body,
                         Err(err) => {
@@ -523,11 +537,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 continue;
                             }
                         } else {
-                            println!("Gagal mendapatkan data checkout_price_data.");
+                            println!("[{}]Gagal mendapatkan data checkout_price_data.", Local::now().format("%H:%M:%S.%3f"));
                             continue;
                         }
                     }
-                    let mpp = match task_ng::place_order_ng(&cookie_data, &place_order_body).await
+                    let mpp = match task_ng::place_order_ng(&cookie_data_clone, &place_order_body).await
                     {
                         Ok(response) => response,
                         Err(err) => {
@@ -558,13 +572,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         while let Some(url) = rx.recv().await {
             println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
             if config.telegram_notif {
-                let msg = format!("Auto Buy Shopee {}\n
-                REPORT!!!\n
-                Username     : {}\n
-                Product      : {}\n
-                Variant      : {}\n
-                Link Payment : {}\n
-                Checkout berhasil!", version_info, userdata.username, name, chosen_model.name, url);
+                let msg = format!("Auto Buy Shopee {}\nREPORT!!!\nUsername     : {}\nProduct      : {}\nVariant      : {}\nLink Payment : {}\nCheckout berhasil!", version_info, userdata.username, name, chosen_model.name, url);
                 telegram::send_msg(&config, &msg).await?;
             }
         }
@@ -632,8 +640,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Harga merchandise_subtotal tidak sesuai, ulangi...");
                 // Loop akan berlanjut jika kondisi tidak terpenuhi
             }
-            let place_order_body = task::place_order_builder(&device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-            let mpp = task::place_order(&cookie_data, place_order_body).await?;
+            let place_order_body = task::place_order_builder(&device_info, &checkout_price_data, &order_update_info, &dropshipping_info, &promotion_data, &chosen_payment, &shoporders, &shipping_orders, &display_meta_data, &fsv_selection_infos, &buyer_info, &client_event_info, &buyer_txn_fee_info, &disabled_checkout_info, &buyer_service_fee_info, &iof_info).await?;
+            let mpp = task::place_order(&cookie_data, &place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
             if let Some(checkout_id) = mpp.get("checkoutid") {
@@ -646,9 +654,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }else {
         loop{
             let get_body = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
-            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_data, &get_body).await?;
-            let place_order_body = task::place_order_builder(&device_info, checkout_price_data, order_update_info, dropshipping_info, promotion_data, &chosen_payment, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info).await?;
-            let mpp = task::place_order(&cookie_data, place_order_body).await?;
+            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, _selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_data, &get_body).await?;
+            let place_order_body = task::place_order_builder(&device_info, &checkout_price_data, &order_update_info, &dropshipping_info, &promotion_data, &chosen_payment, &shoporders, &shipping_orders, &display_meta_data, &fsv_selection_infos, &buyer_info, &client_event_info, &buyer_txn_fee_info, &disabled_checkout_info, &buyer_service_fee_info, &iof_info).await?;
+            let mpp = task::place_order(&cookie_data, &place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
             if let Some(checkout_id) = mpp.get("checkoutid") {
@@ -708,11 +716,21 @@ fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {
     None
 }
 
-fn choose_model(models: &[ModelInfo], opt: &Opt) -> Option<ModelInfo> {
+fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Option<ModelInfo> {
     println!("Variasi yang tersedia:");
 
     for (index, model) in models.iter().enumerate() {
-        println!("{}. {} - Harga: {} - Stok: {}", index + 1, model.name, model.price / 100000, model.stock);
+        let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.contains(&model.modelid)) {
+            format!(
+                "[FLASHSALE] - Est: {} - Hide: {} - fs-stok: {}",
+                format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
+                item.hidden_price_display,
+                item.stock
+            )
+        } else {
+            String::new()
+        };
+        println!("{}. {} - Harga: {} - Stok: {} {}", index + 1, model.name, format_thousands(model.price / 100000), model.stock, flashsale);
     }
     // Check if there is only one model
     if models.len() == 1 {
@@ -845,6 +863,19 @@ fn select_cookie_file() -> Result<String> {
     };
 
     Ok(selected_file)
+}
+
+fn format_thousands(num: i64) -> String {
+    let num_str = num.to_string();
+    let mut formatted = String::new();
+    let len = num_str.len();
+    for (i, c) in num_str.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            formatted.push('.');
+        }
+        formatted.push(c);
+    }
+    formatted
 }
 
 fn args_checking(opt: &Opt){

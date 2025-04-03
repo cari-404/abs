@@ -1,6 +1,6 @@
 [package]
 name = "abs"
-version = "0.10.9"
+version = "1.0.0"
 edition = "2021"
 authors = ["Paijo"]
 description = "Auto Buy from Shopee.co.id"
@@ -22,8 +22,6 @@ serde_json = "1"
 chrono = "0.4"
 anyhow = "1.0"
 structopt = "0.3"
-crossterm = "0.28.1"
-ctrlc = "3.4.5"
 num_cpus = "1.16"
 futures = "0.3"
 

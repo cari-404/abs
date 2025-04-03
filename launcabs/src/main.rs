@@ -623,7 +623,7 @@ impl App {
     async fn cek_async(product_info: &ProductInfo, cookie_data: &CookieData, shared_data: Arc<RwLock<SharedData>>) {
         // Memanggil get_product dengan timeout
         match timeout(Duration::from_secs(10), prepare::get_product(&product_info, cookie_data)).await {
-            Ok(Ok((name, model_info, is_official_shop, rcode))) => {
+            Ok(Ok((name, model_info, is_official_shop, _fs_info, rcode))) => {
                 let mut data = shared_data.write().unwrap();
                 data.name_model = model_info.iter().map(|model| model.name.clone()).collect();
                 data.model_infos = model_info;

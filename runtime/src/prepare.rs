@@ -2,7 +2,7 @@ use rquest as reqwest;
 use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, header::HeaderMap, Version, StatusCode};
 use reqwest::header::HeaderValue;
-use serde::{Deserialize, Deserializer};
+use serde::{Serialize, Deserialize, Deserializer};
 use std::process;
 use serde_json::{Value};
 use anyhow::Result;
@@ -10,6 +10,26 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use std::io::Read;
 use urlencoding::encode as url_encode;
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct FSItems {
+    pub itemid: i64,
+    pub shopid: i64,
+    pub modelids: Vec<i64>,
+    pub raw_discount: i64,
+    pub price_before_discount: i64,
+    pub stock: i64,
+    pub hidden_price_display: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct BodyGetFSItems {
+    limit: i64,
+    promotionid: i64,
+    itemids: Vec<i64>,
+    sort_soldout: bool,
+    with_dp_items: bool,
+}
 
 // Struct to represent model information
 #[derive(Deserialize, Debug, Clone)]
@@ -30,6 +50,21 @@ struct ProductData {
     name: Option<String>,
     models: Option<Vec<ModelInfo>>,
     is_official_shop: Option<bool>,
+    upcoming_flash_sale: Option<FSInfo>,
+}
+#[derive(Deserialize, Debug, Clone)]
+pub struct FSInfo {
+    pub promotionid: i64,
+    pub start_time: i64,
+    pub end_time: i64,
+}
+#[derive(Deserialize, Debug)]
+struct RespFS {
+    data: Option<RespFSData>,
+}
+#[derive(Deserialize, Debug)]
+struct RespFSData {
+    items: Vec<FSItems>,
 }
 #[derive(Deserialize, Debug)]
 struct GetProduct {
@@ -246,7 +281,63 @@ pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, addr
     }
     Ok(shipping_info_vec)
 }
-pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, String), Box<dyn std::error::Error>> {
+pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product_info: &ProductInfo, fs_info: &FSInfo) -> Result<Vec<FSItems>, Box<dyn std::error::Error>> {
+    let refe = format!("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Ccutline%25252Cfood_order_status");
+    let url2 = format!("https://mall.shopee.co.id/api/v4/flash_sale/flash_sale_batch_get_items");
+    println!("{}", url2);
+    println!("sending Get Shopee request...");
+    
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    headers.insert("Accept", HeaderValue::from_static("application/json"));
+    headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
+    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
+    headers.insert("if-none-match-", HeaderValue::from_static("8001"));
+    headers.insert("x-api-source", HeaderValue::from_static("rn"));
+    headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
+    headers.insert("referer", reqwest::header::HeaderValue::from_str(&refe)?);
+    headers.insert("af-ac-enc-dat", HeaderValue::from_static(""));
+    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
+    headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
+
+    let body_json = BodyGetFSItems {
+        limit: 12,
+        promotionid: fs_info.promotionid,
+        itemids: vec![product_info.item_id],
+        sort_soldout: true,
+        with_dp_items: false,
+    };
+    let client = ClientBuilder::new()
+        .danger_accept_invalid_certs(true)
+        .impersonate_skip_headers(Impersonate::Chrome130)
+        .enable_ech_grease(true)
+        .permute_extensions(true)
+        .gzip(true)
+        .build()?;
+
+    let response = client
+        .post(&url2)
+        .headers(headers)
+        .json(&body_json)
+        .version(Version::HTTP_2) 
+        .send()
+        .await?;
+
+    let status_code = response.status().to_string();
+    let hasil: RespFS = response.json().await?;
+    //println!("Body: {}", &body);
+
+    let items = if let Some(data) = hasil.data {
+        data.items
+    } else {
+        println!("Status: {}", status_code);
+        Vec::new()
+    };
+    Ok(items)
+}
+pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, FSInfo, String), anyhow::Error> {
     let refe = format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id);
     let url2 = format!("https://shopee.co.id/api/v4/item/get?itemid={}&shopid={}", product_info.item_id, product_info.shop_id);
     println!("{}", url2);
@@ -282,30 +373,37 @@ pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData
         .send()
         .await?;
 
-    let mut models_info = Vec::new();
-    let mut name = "INVALID".to_string();
-    let mut is_official_shop = false;
-
     //println!("Status: {}", response.status());
     //println!("Headers: {:#?}", response.headers());
     let status_code = response.status().to_string();
     let hasil: GetProduct = response.json().await?;
     //println!("Body: {}", &body);
 
-    if let Some(data) = hasil.data {
-        name = data.name.unwrap_or_else(|| "Unknown".to_string());
-        models_info = data.models.unwrap_or_else(|| vec![ModelInfo {
+    let (name, models_info, is_official_shop, fs_info) = if let Some(data) = hasil.data {
+        let name = data.name.unwrap_or("Unknown".to_string());
+        let models_info = data.models.unwrap_or_else(|| vec![ModelInfo {
             name: "Unknown".to_string(),
             price: 0,
             stock: 0,
             modelid: 0,
             promotionid: 0,
         }]);
-        is_official_shop = data.is_official_shop.unwrap_or(false);
+        let is_official_shop = data.is_official_shop.unwrap_or(false);
+        let fs_info = data.upcoming_flash_sale.unwrap_or(FSInfo {
+            promotionid: 0,
+            start_time: 0,
+            end_time: 0,
+        });
+        (name, models_info, is_official_shop, fs_info)
     } else {
         println!("Status: {}", status_code);
-    }
-	Ok((name.to_string(), models_info, is_official_shop, status_code))
+        ("INVALID".to_string(), Vec::new(), false, FSInfo {
+            promotionid: 0,
+            start_time: 0,
+            end_time: 0,
+        })
+    };
+	Ok((name, models_info, is_official_shop, fs_info, status_code))
 }
 pub async fn address(cookie_content: &CookieData) -> Result<AddressInfo, Box<dyn std::error::Error>> {
 	let headers = create_headers(&cookie_content);

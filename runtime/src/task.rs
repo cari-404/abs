@@ -10,7 +10,7 @@ use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductIn
 use crate::voucher::Vouchers;
 use crate::crypt::{self, DeviceInfo};
 
-pub async fn place_order(cookie_content: &CookieData, body_json: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn place_order(cookie_content: &CookieData, body_json: &serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
@@ -50,7 +50,7 @@ pub async fn place_order(cookie_content: &CookieData, body_json: serde_json::Val
 	Ok(hasil)
 }
 
-pub async fn place_order_builder(device_info: &DeviceInfo, checkout_price_data: serde_json::Value, order_update_info: serde_json::Value, dropshipping_info: serde_json::Value, promotion_data: serde_json::Value, chosen_payment: &PaymentInfo, shoporders: serde_json::Value, shipping_orders: serde_json::Value, display_meta_data: serde_json::Value, fsv_selection_infos: serde_json::Value, buyer_info: serde_json::Value, client_event_info: serde_json::Value, buyer_txn_fee_info: serde_json::Value, disabled_checkout_info: serde_json::Value, buyer_service_fee_info: serde_json::Value, iof_info: serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn place_order_builder(device_info: &DeviceInfo, checkout_price_data: &serde_json::Value, order_update_info: &serde_json::Value, dropshipping_info: &serde_json::Value, promotion_data: &serde_json::Value, chosen_payment: &PaymentInfo, shoporders: &serde_json::Value, shipping_orders: &serde_json::Value, display_meta_data: &serde_json::Value, fsv_selection_infos: &serde_json::Value, buyer_info: &serde_json::Value, client_event_info: &serde_json::Value, buyer_txn_fee_info: &serde_json::Value, disabled_checkout_info: &serde_json::Value, buyer_service_fee_info: &serde_json::Value, iof_info: &serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let channel_id = chosen_payment.channel_id;
 	let version = chosen_payment.version;
 	let optioninfo: String = chosen_payment.option_info.clone();

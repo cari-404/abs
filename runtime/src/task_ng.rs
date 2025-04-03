@@ -351,8 +351,8 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     product_info: &ProductInfo, 
     address_info: &AddressInfo, quantity: i32, 
     chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
-    chosen_shipping: &ShippingInfo, freeshipping_voucher: &Option<Vouchers>, 
-    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
+    chosen_shipping: &ShippingInfo, freeshipping_voucher: Arc<Option<Vouchers>>, 
+    platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -360,74 +360,82 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         "{}:{}:{}{}",
         device_info.device_id, timestamp_millis, timestamp_millis, timestamp_specific
     );
-    let freeshipping_voucher_clone = freeshipping_voucher.clone();
     let shop_id = product_info.shop_id;
 
-    let free_shipping_thread = tokio::spawn(async move{
-        match freeshipping_voucher_clone {
-            Some(shipping_vc) => FreeShippingVoucherInfo {
-                free_shipping_voucher_id: shipping_vc.promotionid,
-                free_shipping_voucher_code: Some(shipping_vc.voucher_code.clone()),
-                disabled_reason: None,
-                disabled_reason_code: 0,
-                banner_info: Some(BannerInfo {
-                    banner_type: 5,
-                    learn_more_msg: "".to_string(),
-                    msg: "Berhasil mendapatkan Gratis Ongkir".to_string(),
-                }),
-                required_be_channel_ids: Some(vec![]),
-                required_spm_channels: Some(vec![]),
-            },
-            None => FreeShippingVoucherInfo {
-                free_shipping_voucher_id: 0,
-                free_shipping_voucher_code: None,
-                disabled_reason: Some("".to_string()),
-                disabled_reason_code: 0,
-                banner_info: None,
-                required_be_channel_ids: None,
-                required_spm_channels: None,
-            },
-        }
-    });
+    let free_shipping_thread = {
+        let freeshipping_voucher = Arc::clone(&freeshipping_voucher);
+        tokio::spawn(async move{
+            match &*freeshipping_voucher {
+                Some(shipping_vc) => FreeShippingVoucherInfo {
+                    free_shipping_voucher_id: shipping_vc.promotionid,
+                    free_shipping_voucher_code: Some(shipping_vc.voucher_code.clone()),
+                    disabled_reason: None,
+                    disabled_reason_code: 0,
+                    banner_info: Some(BannerInfo {
+                        banner_type: 5,
+                        learn_more_msg: "".to_string(),
+                        msg: "Berhasil mendapatkan Gratis Ongkir".to_string(),
+                    }),
+                    required_be_channel_ids: Some(vec![]),
+                    required_spm_channels: Some(vec![]),
+                },
+                None => FreeShippingVoucherInfo {
+                    free_shipping_voucher_id: 0,
+                    free_shipping_voucher_code: None,
+                    disabled_reason: Some("".to_string()),
+                    disabled_reason_code: 0,
+                    banner_info: None,
+                    required_be_channel_ids: None,
+                    required_spm_channels: None,
+                },
+            }
+        })
+    };
 
-    let shop_vouchers_target_clone = shop_vouchers_target.clone();
-    let shop_vouchers_thread = tokio::spawn(async move{
-        match shop_vouchers_target_clone {
-            Some(shop) => vec![Some(ShopVoucher {
-                shopid: shop_id,
-                promotionid: shop.promotionid,
-                voucher_code: shop.voucher_code.clone(),
-                applied_voucher_code: shop.voucher_code.clone(),
-                invalid_message_code: 0,
-                reward_type: 0,
-                shipping_order_distributions: vec![],
-            })],
-            None => vec![],
-        }
-    });
+    let shop_vouchers_thread = {
+        let shop_vouchers_target = Arc::clone(&shop_vouchers_target);
+        tokio::spawn(async move{
+            match &*shop_vouchers_target {
+                Some(shop) => vec![Some(ShopVoucher {
+                    shopid: shop_id,
+                    promotionid: shop.promotionid,
+                    voucher_code: shop.voucher_code.clone(),
+                    applied_voucher_code: shop.voucher_code.clone(),
+                    invalid_message_code: 0,
+                    reward_type: 0,
+                    shipping_order_distributions: vec![],
+                })],
+                None => vec![],
+            }
+        })
+    };
 
-    let platform_vouchers_target_clone = platform_vouchers_target.clone();
-    let platform_vouchers_thread = tokio::spawn(async move{
-        match platform_vouchers_target_clone {
-            Some(platform) => vec![Some(PlatformVoucher {
-                voucher_code: platform.voucher_code.clone(),
-                promotionid: platform.promotionid,
-            })],
-            None => vec![],
-        }
-    });
+    let platform_vouchers_thread = {
+        let platform_vouchers_target = Arc::clone(&platform_vouchers_target);
+        tokio::spawn(async move{
+            match &*platform_vouchers_target {
+                Some(platform) => vec![Some(PlatformVoucher {
+                    voucher_code: platform.voucher_code.clone(),
+                    promotionid: platform.promotionid,
+                })],
+                None => vec![],
+            }
+        })
+    };
 
-    let freeshipping_voucher_clone = freeshipping_voucher.clone();
-    let fsv_selection_thread = tokio::spawn(async move{
-        match freeshipping_voucher_clone {
-            Some(shipping_vca) => vec![Some(FsvSelectionInfo {
-                fsv_id: shipping_vca.promotionid,
-                selected_shipping_ids: vec![1],
-                potentially_applied_shipping_ids: vec![1],
-            })],
-            None => vec![],
-        }
-    });
+    let fsv_selection_thread = {
+        let freeshipping_voucher = Arc::clone(&freeshipping_voucher);
+        tokio::spawn(async move{
+            match &*freeshipping_voucher {
+                Some(shipping_vca) => vec![Some(FsvSelectionInfo {
+                    fsv_id: shipping_vca.promotionid,
+                    selected_shipping_ids: vec![1],
+                    potentially_applied_shipping_ids: vec![1],
+                })],
+                None => vec![],
+            }
+        })
+    };
 
     let free_shipping_voucher_info = free_shipping_thread.await?;
     let shop_vouchers = shop_vouchers_thread.await?;

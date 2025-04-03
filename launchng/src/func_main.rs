@@ -198,3 +198,15 @@ pub fn set_visibility(label: &gui::Label, text: &gui::Edit, visible: bool) {
     label.hwnd().ShowWindow(if visible { SW::SHOW } else { SW::HIDE });
     text.hwnd().ShowWindow(if visible { SW::SHOW } else { SW::HIDE });
 }
+pub fn format_thousands(num: i64) -> String {
+    let num_str = num.to_string();
+    let mut formatted = String::new();
+    let len = num_str.len();
+    for (i, c) in num_str.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            formatted.push('.');
+        }
+        formatted.push(c);
+    }
+    formatted
+}

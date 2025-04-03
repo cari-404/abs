@@ -428,11 +428,37 @@ impl MyWindow {
                     tokio::spawn(async move {
                         // Memanggil get_product dengan timeout
                         match timeout(Duration::from_secs(10), prepare::get_product(&product_info_clone, &cookie_data_clone)).await {
-                            Ok(Ok((name, model_info, is_official_shop, rcode))) => {
+                            Ok(Ok((name, model_info, is_official_shop, fs_info, rcode))) => {
                                 if rcode == "200 OK" {
+                                    let fs_items = if fs_info.promotionid != 0 {
+                                        println!("promotionid  : {}", fs_info.promotionid);
+                                        println!("start_time   : {}", fs_info.start_time);
+                                        println!("end_time     : {}", fs_info.end_time);
+                                        match prepare::get_flash_sale_batch_get_items(&cookie_data_clone, &product_info_clone, &fs_info).await {
+                                            Ok(body) => body,
+                                            Err(e) => {
+                                                eprintln!("Error in get_flash_sale_batch_get_items: {:?}", e);
+                                                Vec::new() // Jika error, kembalikan array kosong
+                                            }
+                                        }
+                                    }else {
+                                        Vec::new()
+                                    };
+                                    for (index, model) in model_info.iter().enumerate() {
+                                        let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.contains(&model.modelid)) {
+                                            format!(
+                                                "[FLASHSALE] - Est: {} - Hide: {} - fs-stok: {}",
+                                                func_main::format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
+                                                item.hidden_price_display,
+                                                item.stock
+                                            )
+                                        } else {
+                                            String::new()
+                                        };
+                                        println!("{}. {} - Harga: {} - Stok: {} {}", index + 1, model.name, func_main::format_thousands(model.price / 100000), model.stock, flashsale);
+                                    }
                                     let name_model_vec: Vec<String> = model_info.iter().map(|model| model.name.clone()).collect();
                                     for name_model in &name_model_vec {
-                                        println!("{}", name_model);
                                         variasi_combo_clone.items().add(&[name_model]);
                                         variasi_combo_clone.items().select(Some(0));
                                     }
@@ -447,9 +473,9 @@ impl MyWindow {
                                 let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nError : {:?}", e);
                                 let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
                             },
-                            Err(e) => {
-                                println!("Timeout: {:?}", e);
-                                let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nTimeout : {:?}", e);
+                            Err(_) => {
+                                eprintln!("Timeout occurred");
+                                let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nTimeout : Timeout occurred");
                                 let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
                             }
                         };
