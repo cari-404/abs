@@ -14,9 +14,9 @@ pub fn choose_shipping(shippings: &[ShippingInfo], opt: &Opt) -> Option<Shipping
         println!("{}. {} - Harga: {} - Id: {}", index + 1, shipping.channel_name, shipping.original_cost / 100000, shipping.channelid);
     }
 
-    if let Some(kurir) = opt.kurir.clone() {
+    if let Some(kurir) = &opt.kurir {
         // If opt.kurir is present, find the shipping with a matching channel_name
-        if let Some(selected_shipping) = shippings.iter().find(|shipping| shipping.channel_name == kurir) {
+        if let Some(selected_shipping) = shippings.iter().find(|shipping| shipping.channel_name == *kurir) {
             println!("{:?}", selected_shipping);
             return Some(selected_shipping.clone());
         } else {

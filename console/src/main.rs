@@ -1,4 +1,8 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.1 :
+    memory management
+    reuse rayon par-iter
+    automatically set timer when empty
 Whats new in 1.0.0 :
     Introduce new version
     Add detail info flashsale
@@ -9,8 +13,6 @@ Whats new in 0.10.9 :
     Add detail time info
     introdution updater
     fix memory usage
-Whats new in 0.10.8 :
-    refactoring data types
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -19,11 +21,12 @@ use runtime::task_ng::{self};
 use runtime::voucher::{self};
 use runtime::crypt::{self};
 use runtime::telegram::{self};
-use chrono::{Local, Duration, NaiveDateTime};
+use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike};
 use std::io::{self, Write, Read};
 use std::process;
 use anyhow::Result;
 use std::fs::File;
+use std::borrow::Cow;
 use structopt::StructOpt;
 use num_cpus;
 use serde_json::json;
@@ -126,18 +129,18 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     println!("{:<padding$}: {}", "Payment", chosen_payment.name, padding = padding);
     if opt.claim_platform_vouchers {
         println!("{:<padding$}: {}", "Mode", "Klaim Platform Voucher", padding = padding);
-        println!("{:<padding$}: {}", "Promotion_Id", opt.pro_id.clone().unwrap_or_else(|| promotionid.to_string()), padding = padding);
-        println!("{:<padding$}: {}", "Signature", opt.sign.clone().unwrap_or_else(|| signature.to_string()), padding = padding);
+        println!("{:<padding$}: {}", "Promotion_Id", opt.pro_id.as_deref().unwrap_or(promotionid), padding = padding);
+        println!("{:<padding$}: {}", "Signature", opt.sign.as_deref().unwrap_or(signature), padding = padding);
     } else if opt.platform_vouchers {
         println!("{:<padding$}: {}", "Mode", "Code Platform Voucher", padding = padding);
-        println!("{:<padding$}: {}", "Code", opt.code_platform.clone().unwrap_or_else(|| voucher_code_platform.to_string()), padding = padding);
+        println!("{:<padding$}: {}", "Code", opt.code_platform.as_deref().unwrap_or(voucher_code_platform), padding = padding);
     } else if opt.collection_vouchers {
         println!("{:<padding$}: {}", "Mode", "Voucher Collection", padding = padding);
-        println!("{:<padding$}: {}", "Collection", opt.collectionid.clone().unwrap_or_else(|| voucher_collectionid.to_string()), padding = padding);
+        println!("{:<padding$}: {}", "Collection", opt.collectionid.as_deref().unwrap_or(voucher_collectionid), padding = padding);
     } 
     if opt.shop_vouchers {
         println!("{:<padding$}: {}", "Mode", "Code Shop Voucher", padding = padding);
-        println!("{:<padding$}: {}", "Code", opt.code_shop.clone().unwrap_or_else(|| voucher_code_shop.to_string()), padding = padding);
+        println!("{:<padding$}: {}", "Code", opt.code_shop.as_deref().unwrap_or(voucher_code_shop), padding = padding);
     }
     println!("---------------------------------------------------------------");
     println!("");
@@ -220,9 +223,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get account details
     let selected_file = opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"));
-    
     let cookie_content = prepare::read_cookie_file(&selected_file);
-	
     let cookie_data = prepare::create_cookie(&cookie_content);
     println!("csrftoken: {}", cookie_data.csrftoken);
 
@@ -246,7 +247,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let device_info = crypt::create_devices(&sz_token_content);
 	
     // Get target URL
-	let target_url = opt.url.clone().unwrap_or_else(|| get_user_input("Masukan URL: "));
+	let target_url = get_or_prompt(opt.url.as_deref(), "Masukkan URL:");
 	
 	let mut promotionid = String::new();
 	let mut signature = String::new();
@@ -277,13 +278,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 
     // Get task_time from user input
-	let task_time_str = opt.time.clone().unwrap_or_else(|| get_user_input("Enter task time (HH:MM:SS.NNNNNNNNN): "));
+	let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ");
+    if task_time_str.trim().is_empty() {
+        println!("Task time is empty, using default time.");
+        let local: DateTime<Local> = Local::now();
+        let hour = local.hour();
+        let rounded_minute = match local.minute() {
+            m if m <= 14 => 14,
+            m if m <= 29 => 29,
+            m if m <= 44 => 44,
+            _ => 59,
+        };
+        task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
+    }
     let task_time_dt = parse_task_time(&task_time_str)?;
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
-	let url_1 = target_url.trim();
-    let product_info = prepare::process_url(url_1);
+    let product_info = prepare::process_url(&target_url.trim());
     // Perform the main task
     let (info_result, address_result, product_result) = tokio::join!(
         prepare::info_akun(&cookie_data),
@@ -357,7 +369,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	clear_screen();
 	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
 	let max_price = opt.harga.clone().unwrap_or_else(|| get_user_input("Harga MAX:")).trim().to_string();
-    quantity = opt.quantity.clone().unwrap_or_else(|| {
+    quantity = opt.quantity.unwrap_or_else(|| {
         loop {
             let input = get_user_input("Kuantiti: ");
             match input.parse::<i32>() {
@@ -368,7 +380,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     });
-    let token = opt.token.clone().unwrap_or_else(|| get_user_input("Token Media: ")).trim().to_string();
+    let token = get_or_prompt(opt.token.as_deref(), "Token Media: ");
 	
     let payment_json_data = prepare::open_payment_file().await?;
 	let payment_info = prepare::get_payment(&payment_json_data).await?;
@@ -406,6 +418,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             version: chosen_payment.version,
         })
         .unwrap();
+    };
+    let adjusted_max_price = if !max_price.is_empty() {
+        match max_price.replace(",", "").trim().parse::<i64>() {
+            Ok(val) => Some(val * 100_000),
+            Err(_) => {
+                println!("Gagal mengonversi max_price menjadi angka.");
+                None
+            }
+        }
+    } else {
+        None
     };
 
 	println!("{:?}", chosen_payment);
@@ -514,31 +537,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     };
                     if !max_price.is_empty(){
-                        if let Some(ref data) = place_order_body.checkout_price_data {
-                            if let Some(merchandise_subtotal) = data.get("merchandise_subtotal").and_then(|v| v.as_i64()) {
-                                println!("merchandise_subtotal: {}", merchandise_subtotal);
-                                let max_price_no_comma = max_price.replace(",", "");
-                                let cleaned_max_price = max_price_no_comma.trim(); 
-                                if let Ok(parsed_max_price) = cleaned_max_price.parse::<i64>() {
-                                    let adjusted_max_price = parsed_max_price * 100_000;
-                                    //println!("[{}]max_price (setelah dikali 100000): {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
-                                    if merchandise_subtotal <= adjusted_max_price {
-                                        println!("[{}]Harga merchandise_subtotal sesuai dengan {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
-                                    } else {
-                                        println!("[{}]Harga merchandise_subtotal lebih besar dari {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
-                                        continue;
-                                    }
-                                } else {
-                                    println!("Gagal mengonversi max_price menjadi angka.");
+                        if let Some(adjusted_max_price) = adjusted_max_price {
+                            let data = match &place_order_body.checkout_price_data {
+                                Some(d) => d,
+                                None => {
+                                    println!("[{}]Gagal mendapatkan data checkout_price_data.", Local::now().format("%H:%M:%S.%3f"));
                                     continue;
                                 }
+                            };
+                            let merchandise_subtotal = match data.get("merchandise_subtotal").and_then(|v| v.as_i64()) {
+                                Some(val) => val,
+                                None => {
+                                    println!("[{}]Gagal mendapatkan nilai merchandise_subtotal.", Local::now().format("%H:%M:%S.%3f"));
+                                    continue;
+                                }
+                            };
+                            if merchandise_subtotal <= adjusted_max_price {
+                                println!("[{}]Harga merchandise_subtotal sesuai dengan {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
                             } else {
-                                println!("Gagal mendapatkan nilai merchandise_subtotal.");
+                                println!("[{}]Harga merchandise_subtotal lebih besar dari {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
                                 continue;
                             }
-                        } else {
-                            println!("[{}]Gagal mendapatkan data checkout_price_data.", Local::now().format("%H:%M:%S.%3f"));
-                            continue;
                         }
                     }
                     let mpp = match task_ng::place_order_ng(&cookie_data_clone, &place_order_body).await
@@ -693,9 +712,9 @@ fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {
         println!("{}. {} - Services: {} - Id: {}", index + 1, payment.name, payment.txn_fee / 100000, payment.channel_id);
     }
 
-    if let Some(bayar) = opt.payment.clone() {
+    if let Some(bayar) = &opt.payment {
         // If opt.payment is present, find the payment with a matching name
-        if let Some(selected_payment) = payments.iter().find(|payment| payment.name == bayar) {
+        if let Some(selected_payment) = payments.iter().find(|payment| payment.name == *bayar) {
             println!("{:?}", selected_payment);
             return Some(selected_payment.clone());
         } else {
@@ -704,10 +723,8 @@ fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {
         }
     }
 
-	let user_input = get_user_input("Pilih payment yang disediakan: ");
-
     // Convert user input to a number
-    if let Ok(choice_index) = user_input.trim().parse::<usize>() {
+    if let Ok(choice_index) = get_user_input("Pilih payment yang disediakan: ").trim().parse::<usize>() {
         // Return the selected payment based on the index
         println!("{:?}", payments.get(choice_index - 1).cloned());
         return payments.get(choice_index - 1).cloned();
@@ -722,7 +739,7 @@ fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Option
     for (index, model) in models.iter().enumerate() {
         let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.contains(&model.modelid)) {
             format!(
-                "[FLASHSALE] - Est: {} - Hide: {} - fs-stok: {}",
+                "[FLASHSALE] - Est≉ {} - Hide: {} - fs-stok: {}",
                 format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
                 item.hidden_price_display,
                 item.stock
@@ -738,9 +755,9 @@ fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Option
         return Some(models[0].clone());
     }
 
-    if let Some(product) = opt.product.clone() {
+    if let Some(product) = &opt.product {
         // If opt.product is present, find the model with a matching name
-        if let Some(selected_model) = models.iter().find(|model| model.name == product) {
+        if let Some(selected_model) = models.iter().find(|model| model.name == *product) {
             println!("{:?}", selected_model);
             return Some(selected_model.clone());
         } else {
@@ -749,10 +766,8 @@ fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Option
         }
     }
 
-    let user_input = get_user_input("Pilih Variasi yang disediakan: ");
-
     // Mengubah input pengguna ke dalam bentuk angka
-    if let Ok(choice_index) = user_input.trim().parse::<usize>() {
+    if let Ok(choice_index) = get_user_input("Pilih Variasi yang disediakan: ").trim().parse::<usize>() {
         // If opt.product is not present, proceed with user input logic
         if let Some(selected_model) = models.get(choice_index - 1) {
             println!("{:?}", selected_model);
@@ -788,8 +803,16 @@ fn format_duration(duration: Duration) -> String {
     let seconds = duration.num_seconds() % 60;
     let milliseconds = duration.num_milliseconds() % 1_000;
 
-    format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, milliseconds)
+    format!("{:02}:{:02}:{:02}.{:03}", &hours, &minutes, &seconds, &milliseconds)
 }
+
+fn get_or_prompt<'a>(opt: Option<&'a str>, prompt: &str) -> Cow<'a, str> {
+    match opt {
+        Some(s) => Cow::Borrowed(s),
+        None => Cow::Owned(get_user_input(prompt)),
+    }
+}
+
 #[cfg(not(windows))]
 fn get_user_input(prompt: &str) -> String {
     print!("{}", prompt);
@@ -853,9 +876,7 @@ fn select_cookie_file() -> Result<String> {
     }
 
     let selected_file = loop {
-		let input = get_user_input("Pilih nomor file cookie yang ingin digunakan: ");
-
-        if let Ok(index) = input.trim().parse::<usize>() {
+        if let Ok(index) = get_user_input("Pilih nomor file cookie yang ingin digunakan: ").trim().parse::<usize>() {
             if index > 0 && index <= file_options.len() {
                 break file_options[index - 1].clone();
             }

@@ -9,16 +9,25 @@ use indicatif::{ProgressBar, ProgressStyle};
 use futures_util::StreamExt;
 use std::time::Instant;
 use std::path::Path;
+use once_cell::sync::Lazy;
+use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT};
 
-const REPO_OWNER: &str = "cari-404"; // Ganti dengan pemilik repo
-const REPO_NAME: &str = "ABS"; // Ganti dengan nama repo
-const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION"); // Versi lokal aplikasi
+pub static HEADER_TEST: Lazy<HeaderMap> = Lazy::new(|| {
+    let mut headers = HeaderMap::new();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(USER_AGENT, HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+    headers
+});
+
+const REPO_OWNER: &str = "cari-404";
+const REPO_NAME: &str = "ABS";
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const OS: &str = std::env::consts::OS;
 const ARCH: &str = std::env::consts::ARCH;
 #[cfg(target_os = "windows")]
-const OUTPUT_PATH: &str = "update.zip"; // Nama file hasil unduhan di Windows
+const OUTPUT_PATH: &str = "update.zip";
 #[cfg(not(target_os = "windows"))]
-const OUTPUT_PATH: &str = "update.tar.gz"; // Nama file hasil unduhan di Linux/MacOS
+const OUTPUT_PATH: &str = "update.tar.gz";
 
 fn compare_versions(local: &str, remote: &str) -> Ordering {
     let parse = |s: &str| s.split('.').filter_map(|p| p.parse::<u32>().ok()).collect::<Vec<_>>();
@@ -197,7 +206,6 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
     Ok(())
 }
 
-
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -212,6 +220,11 @@ async fn main() {
             }
             "force" => {
                 force = true;
+            }
+            "test" => {
+                println!("Test mode aktif");
+                test().await;
+                return;
             }
             _ => {}
         }
@@ -257,6 +270,18 @@ async fn main() {
         println!("Gagal mengecek versi terbaru.");
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
+}
+
+async fn test() {
+    let client = Client::new();
+    let res = client
+        .get("https://httpbin.org/get")
+        .headers(HEADER_TEST.clone())
+        .send()
+        .await
+        .unwrap();
+
+    println!("{}", res.text().await.unwrap());
 }
 
 fn run_updater() -> io::Result<()> {

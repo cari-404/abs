@@ -5,13 +5,14 @@ integarted tp ABS
 */
 use runtime::prepare;
 use runtime::voucher::{self, Vouchers};
+use runtime::telegram::{self};
 use anyhow::Result;
-use std::fs::File;
-use std::io::{self, Read, Write};
-use chrono::{Local, Duration, NaiveDateTime};
+use std::io::{self, Write};
+use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike};
 use structopt::StructOpt;
 use tokio::sync::Notify;
 use std::sync::Arc;
+use std::borrow::Cow;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Auto save voucher Shopee", about = "Make fast save from shopee.co.id")]
@@ -70,6 +71,26 @@ fn select_cookie_file() -> Result<String> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let version_info = env!("CARGO_PKG_VERSION");
+	let max_threads = if num_cpus::get() > 4 { 
+		num_cpus::get() 
+	} else {
+		4 
+	}; 
+	let config = match telegram::open_config_file().await {
+        Ok(config_content) => {
+            match telegram::get_config(&config_content).await {
+                Ok(tele_info) => tele_info,
+                Err(e) => {
+                    eprintln!("Failed to parse config file: {}. Using default data.", e);
+                    telegram::get_data("a", "a")
+                }
+            }
+        },
+        Err(e) => {
+            eprintln!("Failed to open config file: {}. Using default data.", e);
+            telegram::get_data("a", "a")
+        }
+    };
 	
 	println!("-------------------------------------------");
 	println!("save_vouchers [Version {}]", version_info);
@@ -81,37 +102,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mode = select_mode(&opt);
 	
 	let selected_file = opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"));
-
-	// Read the content of the selected cookie file
-	let file_path = format!("./akun/{}", selected_file);
-	let mut cookie_content = String::new();
-	File::open(&file_path)?.read_to_string(&mut cookie_content)?;
+	let cookie_content = prepare::read_cookie_file(&selected_file);
 	let cookie_data = prepare::create_cookie(&cookie_content);
+	let userdata = prepare::info_akun(&cookie_data).await?;
+	println!("Username  : {}", &userdata.username);
 	match mode {
 		Mode::Food => {
 			println!("Contoh input: \npromotion_id: 1096081392418868, \nCode: MISSION11");
-
-			let promotion_id = opt.pro_id.clone().unwrap_or_else(|| get_user_input("Masukan Promotion_Id: "));
-			let code = get_user_input("Masukan Code: ");	
-			
-			let task_time_str = opt.time.clone().unwrap_or_else(|| get_user_input("Enter task time (HH:MM:SS.NNNNNNNNN): "));
+			let promotion_id = get_or_prompt(opt.pro_id.as_deref(), "Masukan Promotion_Id: ").to_string();
+			let code = get_user_input("Masukan Code: ");
+			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ");
+			if task_time_str.trim().is_empty() {
+				println!("Task time is empty, using default time.");
+				let local: DateTime<Local> = Local::now();
+				let hour = local.hour();
+				let rounded_minute = match local.minute() {
+					m if m <= 14 => 14,
+					m if m <= 29 => 29,
+					m if m <= 44 => 44,
+					_ => 59,
+				};
+				task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
+			}
 			let task_time_dt = parse_task_time(&task_time_str)?;
-			let max_threads = if num_cpus::get() > 4 { 
-				num_cpus::get() 
-			} else {
-				4 
-			}; 
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			let notify = Arc::new(Notify::new());
-			let cookie_data = Arc::new(cookie_data);
-			let promotion_id = Arc::new(promotion_id);
+			let cookie_data_clone = Arc::new(cookie_data.clone());
+			let promotion_id_clone = Arc::new(promotion_id.clone());
 			let code = Arc::new(code);
 			// Process HTTP with common function
-			countdown_to_task(task_time_dt).await;
+			countdown_to_task(&task_time_dt).await;
 			for _ in 0..max_threads {
 				let tx = tx.clone();
-				let cookie_data = Arc::clone(&cookie_data);
-				let promotion_id = Arc::clone(&promotion_id);
+				let cookie_data = Arc::clone(&cookie_data_clone);
+				let promotion_id = Arc::clone(&promotion_id_clone);
 				let code = Arc::clone(&code);
 				let notify = notify.clone();
 				tokio::spawn(async move {
@@ -137,7 +161,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			drop(tx); // Tutup pengirim setelah semua tugas selesai
 			while let Some(value) = rx.recv().await {
 				if let Some(vouchers) = value {
-					println!("Vouchers ditemukan: {:?}", vouchers);
+					println!("[{}]Vouchers ditemukan: {:?}", Local::now().format("%H:%M:%S.%3f"), &vouchers);
+					if config.telegram_notif {
+						let msg = format!("Save Voucher Shopee {}\nREPORT!!!\nUsername     : {}\nMode      : Food\nVoucher Data      : {:?}\nClaim berhasil!", version_info, userdata.username, &vouchers);
+						telegram::send_msg(&config, &msg).await?;
+					}
 					break; 
 				} else {
 					println!("Tidak ada vouchers.");
@@ -147,29 +175,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 		Mode::Normal => {
 			println!("Contoh input: \npromotion_id: 856793882394624, \nSignature: 8e8a4ced8d6905570114f163a08a15de55c3fed560f8a3a8a25e6e179783b480");
-
-            let promotion_id = opt.pro_id.clone().unwrap_or_else(|| get_user_input("Masukan Promotion_Id: "));
-            let signature = opt.sign.clone().unwrap_or_else(|| get_user_input("Masukan Signature: "));	
-			
-			let task_time_str = opt.time.clone().unwrap_or_else(|| get_user_input("Enter task time (HH:MM:SS.NNNNNNNNN): "));
+            let promotion_id = get_or_prompt(opt.pro_id.as_deref(), "Masukan Promotion_Id: ").to_string();
+            let signature = get_or_prompt(opt.sign.as_deref(), "Masukan Signature: ").to_string();
+			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ");
+			if task_time_str.trim().is_empty() {
+				println!("Task time is empty, using default time.");
+				let local: DateTime<Local> = Local::now();
+				let hour = local.hour();
+				let rounded_minute = match local.minute() {
+					m if m <= 14 => 14,
+					m if m <= 29 => 29,
+					m if m <= 44 => 44,
+					_ => 59,
+				};
+				task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
+			}
 			let task_time_dt = parse_task_time(&task_time_str)?;
-			let max_threads = if num_cpus::get() > 4 { 
-				num_cpus::get() 
-			} else {
-				4 
-			}; 
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			let notify = Arc::new(Notify::new());
-			let cookie_data = Arc::new(cookie_data);
-			let promotion_id = Arc::new(promotion_id);
-			let signature = Arc::new(signature);
+			let cookie_data_clone = Arc::new(cookie_data.clone());
+			let promotion_id_clone = Arc::new(promotion_id.clone());
+			let signature_clone = Arc::new(signature.clone());
 			// Process HTTP with common function
-			countdown_to_task(task_time_dt).await;
+			countdown_to_task(&task_time_dt).await;
 			for _ in 0..max_threads {
 				let tx = tx.clone();
-				let cookie_data = Arc::clone(&cookie_data);
-				let promotion_id = Arc::clone(&promotion_id);
-				let signature = Arc::clone(&signature);
+				let cookie_data = Arc::clone(&cookie_data_clone);
+				let promotion_id = Arc::clone(&promotion_id_clone);
+				let signature = Arc::clone(&signature_clone);
 				let notify = notify.clone();
 				tokio::spawn(async move {
 					let resp = match voucher::save_voucher(&promotion_id, &signature, &cookie_data).await {
@@ -194,7 +227,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			drop(tx); // Tutup pengirim setelah semua tugas selesai
 			while let Some(value) = rx.recv().await {
 				if let Some(vouchers) = value {
-					println!("Vouchers ditemukan: {:?}", vouchers);
+					println!("[{}]Vouchers ditemukan: {:?}", Local::now().format("%H:%M:%S.%3f"), &vouchers);
+					if config.telegram_notif {
+						let msg = format!("Save Voucher Shopee {}\nREPORT!!!\nUsername     : {}\nMode      : Normal\nVoucher Data      : {:?}\nClaim berhasil!", version_info, userdata.username, &vouchers);
+						telegram::send_msg(&config, &msg).await?;
+					}
 					break; 
 				} else {
 					println!("Tidak ada vouchers.");
@@ -204,14 +241,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 		Mode::Collection => {
 			println!("Contoh input: collection_id: 12923214728");
-			let voucher_collectionid = opt.collectionid.clone().unwrap_or_else(|| get_user_input("Masukan collection_id: "));
-			let task_time_str = opt.time.clone().unwrap_or_else(|| get_user_input("Enter task time (HH:MM:SS.NNNNNNNNN): "));
+			let voucher_collectionid = get_or_prompt(opt.collectionid.as_deref(), "Masukan collection_id: ");
+			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ");
+			if task_time_str.trim().is_empty() {
+				println!("Task time is empty, using default time.");
+				let local: DateTime<Local> = Local::now();
+				let hour = local.hour();
+				let rounded_minute = match local.minute() {
+					m if m <= 14 => 14,
+					m if m <= 29 => 29,
+					m if m <= 44 => 44,
+					_ => 59,
+				};
+				task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
+			}
 			let task_time_dt = parse_task_time(&task_time_str)?;
 			// Process HTTP with common function
-			countdown_to_task(task_time_dt).await;
+			countdown_to_task(&task_time_dt).await;
 			let (promotion_id, signature) = voucher::some_function(&voucher_collectionid, &cookie_data).await?;
-			println!("promotion_id : {}", promotion_id);
-			println!("signature	: {}", signature);
+			println!("promotion_id : {}", &promotion_id);
+			println!("signature	: {}", &signature);
 			voucher::save_voucher(&promotion_id, &signature, &cookie_data).await?;
 		}
 	}
@@ -225,9 +274,7 @@ fn select_mode(opt: &Opt) -> Mode {
 		println!("1. Normal");
 		println!("2. Collection");
 		println!("3. Food");
-
         let input = opt.mode.clone().unwrap_or_else(|| get_user_input("Masukkan pilihan (1/2/..): "));
-
 		match input.trim() {
 			"1" => return Mode::Normal,
 			"2" => return Mode::Collection,
@@ -236,49 +283,36 @@ fn select_mode(opt: &Opt) -> Mode {
 		}
 	}
 }
-async fn check_and_adjust_time(task_time_dt: NaiveDateTime) -> NaiveDateTime {
-	let mut updated_task_time_dt = task_time_dt;
+async fn check_and_adjust_time(task_time_dt: &NaiveDateTime) -> NaiveDateTime {
+	let mut updated_task_time_dt = *task_time_dt;
 	let current_time = Local::now().naive_local();
-	let time_until_task = updated_task_time_dt.signed_duration_since(current_time);
 
-	if time_until_task < Duration::zero() {
-		// Jika waktu sudah berlalu, tawarkan untuk menyesuaikan waktu
+	if updated_task_time_dt.signed_duration_since(current_time) < Duration::zero() {
 		println!("Waktu yang dimasukkan telah berlalu.");
-		println!("Apakah Anda ingin menyetel waktu untuk besok? (yes/no): ");
-		
-		let mut input = String::new();
-		io::stdin().read_line(&mut input).expect("Gagal membaca baris");
-
+		let input = get_user_input("Apakah Anda ingin menyetel waktu untuk besok? (yes/no): ");
 		match input.trim().to_lowercase().as_str() {
 			"yes" | "y" => {
-				// Tambahkan satu hari ke waktu target
 				updated_task_time_dt += Duration::days(1);
 				println!("Waktu telah disesuaikan untuk hari berikutnya: {}", updated_task_time_dt);
 			}
 			_ => println!("Pengaturan waktu tidak diubah."),
 		}
 	}
-
 	updated_task_time_dt
 }
 
-async fn countdown_to_task(task_time_dt: NaiveDateTime) {
-	let task_time_dt = check_and_adjust_time(task_time_dt).await;
-
+async fn countdown_to_task(task_time_dt: &NaiveDateTime) {
+	let task_time_dt = check_and_adjust_time(&task_time_dt).await;
 	loop {
 		let current_time = Local::now().naive_local();
 		let time_until_task = task_time_dt.signed_duration_since(current_time);
-
 		if time_until_task <= Duration::zero() {
 			println!("\nTask completed! Current time: {}", current_time.format("%H:%M:%S.%3f"));
 			tugas_utama();
 			break;
 		}
-
-		let formatted_time = format_duration(time_until_task);
-		print!("\r{}", formatted_time);
+		print!("\r{}", format_duration(time_until_task));
 		io::stdout().flush().unwrap();
-
 		tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
 	}
 }
@@ -302,22 +336,15 @@ fn get_user_input(prompt: &str) -> String {
     use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
     use windows_sys::Win32::System::Console::{GetStdHandle, ReadConsoleW, STD_INPUT_HANDLE};
 
-    // Tampilkan prompt dan flush agar output langsung muncul
     print!("{}", prompt);
     io::stdout().flush().unwrap();
-
     unsafe {
-        // Dapatkan handle ke standard input
         let h_stdin = GetStdHandle(STD_INPUT_HANDLE);
         if h_stdin == INVALID_HANDLE_VALUE {
             println!("{}", io::Error::last_os_error());
         }
-
-        // Siapkan buffer untuk membaca input (misal 512 karakter UTF-16)
         let mut buffer: [u16; 512] = [0; 512];
         let mut chars_read: u32 = 0;
-
-        // Panggil ReadConsoleW untuk membaca input dari console
         let success = ReadConsoleW(
             h_stdin,
             buffer.as_mut_ptr() as *mut _,
@@ -325,15 +352,10 @@ fn get_user_input(prompt: &str) -> String {
             &mut chars_read as *mut u32,
             ptr::null_mut(),
         );
-
         if success == 0 {
             println!("{}", io::Error::last_os_error());
         }
-
-        // Konversi data UTF-16 yang terbaca menjadi String
         let input = String::from_utf16_lossy(&buffer[..chars_read as usize]);
-
-        // Kembalikan input yang telah di-trim (menghilangkan newline atau spasi berlebih)
         input.trim_end().to_string()
     }
 }
@@ -343,10 +365,16 @@ fn format_duration(duration: Duration) -> String {
 	let seconds = duration.num_seconds() % 60;
 	let milliseconds = duration.num_milliseconds() % 1_000;
 
-	format!("{:02}:{:02}:{:02}.{:03}", hours, minutes, seconds, milliseconds)
+	format!("{:02}:{:02}:{:02}.{:03}", &hours, &minutes, &seconds, &milliseconds)
 }
 fn parse_task_time(task_time_str: &str) -> Result<NaiveDateTime, Box<dyn std::error::Error>> {
 	let today = Local::now().date_naive();
 	let dt = NaiveDateTime::parse_from_str(&format!("{} {}", today.format("%Y-%m-%d"), task_time_str), "%Y-%m-%d %H:%M:%S%.f")?;
 	Ok(dt)
+}
+fn get_or_prompt<'a>(opt: Option<&'a str>, prompt: &str) -> Cow<'a, str> {
+    match opt {
+        Some(s) => Cow::Borrowed(s),
+        None => Cow::Owned(get_user_input(prompt)),
+    }
 }

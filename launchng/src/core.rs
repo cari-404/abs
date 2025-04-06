@@ -447,7 +447,7 @@ impl MyWindow {
                                     for (index, model) in model_info.iter().enumerate() {
                                         let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.contains(&model.modelid)) {
                                             format!(
-                                                "[FLASHSALE] - Est: {} - Hide: {} - fs-stok: {}",
+                                                "[FLASHSALE] - Est≉  {} - Hide: {} - fs-stok: {}",
                                                 func_main::format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
                                                 item.hidden_price_display,
                                                 item.stock

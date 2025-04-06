@@ -6,7 +6,8 @@ use chrono::{Utc, Timelike};
 use anyhow::Result;
 use serde_json::{Value};
 use std::collections::HashMap;
-use std::sync::Arc;
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
@@ -74,15 +75,15 @@ impl PlaceOrderBody {
             ignored_errors: vec![0],
             can_checkout: true,
             ignore_warnings: false,
-            captcha_id: "".to_string(),
+            captcha_id: "".to_owned(),
             captcha_version: 1,
-            captcha_signature: "".to_string(),
+            captcha_signature: "".to_owned(),
             extra_data: ExtraData {
                 snack_click_id: None,
             },
             checkout_session_id: checkout_session_id.to_string(),
             device_info: device_info.clone(),
-            device_type: "mobile".to_string(),
+            device_type: "mobile".to_owned(),
             _cft: vec![4227792767, 36961919],
         }
     }
@@ -373,8 +374,8 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
                     disabled_reason_code: 0,
                     banner_info: Some(BannerInfo {
                         banner_type: 5,
-                        learn_more_msg: "".to_string(),
-                        msg: "Berhasil mendapatkan Gratis Ongkir".to_string(),
+                        learn_more_msg: "".to_owned(),
+                        msg: "Berhasil mendapatkan Gratis Ongkir".to_owned(),
                     }),
                     required_be_channel_ids: Some(vec![]),
                     required_spm_channels: Some(vec![]),
@@ -382,7 +383,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
                 None => FreeShippingVoucherInfo {
                     free_shipping_voucher_id: 0,
                     free_shipping_voucher_code: None,
-                    disabled_reason: Some("".to_string()),
+                    disabled_reason: Some("".to_owned()),
                     disabled_reason_code: 0,
                     banner_info: None,
                     required_be_channel_ids: None,
@@ -458,7 +459,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
                 insurances: vec![],
                 channel_exclusive_info: ChannelExclusiveInfo {
                     source_id: 0,
-                    token: "".to_string(),
+                    token: "".to_owned(),
                     is_live_stream: false,
                     is_short_video: false,
                 },
@@ -479,11 +480,11 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         device_info: device_info.clone(),
         buyer_info: BuyerInfo {
             kyc_info: None,
-            checkout_email: "".to_string(),
+            checkout_email: "".to_owned(),
         },
         cart_type: 1,
         client_id: 5,
-        tax_info: TaxInfo { tax_id: "".to_string() },
+        tax_info: TaxInfo { tax_id: "".to_owned() },
         client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
         add_to_cart_info: AddToCartInfo {},
         _cft: vec![4227792767, 36961919],
@@ -494,7 +495,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
             buyer_address_data: BuyerAddressData {
                 addressid: address_info.id,
                 address_type: 0,
-                tax_address: "".to_string(),
+                tax_address: "".to_owned(),
             },
             selected_logistic_channelid: chosen_shipping.channelid,
             shipping_id: 1,
@@ -505,7 +506,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
             },
             fulfillment_info: FulfillmentInfo {
                 fulfillment_flag: 18,
-                fulfillment_source: "IDE".to_string(),
+                fulfillment_source: "IDE".to_owned(),
                 managed_by_sbs: false,
                 order_fulfillment_type: 1,
                 warehouse_address_id: 0,
@@ -570,29 +571,31 @@ pub async fn get_ng(cookie_content: &CookieData, body_json: &GetBodyJson, device
             "iof_info",
         ];
 
-        let mut place_order_body = PlaceOrderBody::new(&device_info, &body_json.checkout_session_id);
-
-        let handles = keys.iter().map(|&key| {
-            let v_ref = Arc::clone(&v);
-            tokio::spawn(async move {
-                (key, v_ref.get(key).cloned())
-            })
-        }).collect::<Vec<_>>();
-        let results = futures::future::join_all(handles).await;
-        for result in results {
-            match result {
-                Ok((key, value)) => {
-                    place_order_body.insert(key, value);
-                }
-                Err(e) => {
-                    eprintln!("Error joining thread: {:?}", e);
-                }
+        let place_order_body = Arc::new(Mutex::new(
+            PlaceOrderBody::new(&device_info, &body_json.checkout_session_id),
+        ));
+        
+        keys.par_iter().for_each(|&key| {
+            let value = v.get(key).cloned();
+        
+            if let Ok(mut body) = place_order_body.lock() {
+                body.insert(key, value);
+            } else {
+                eprintln!("Failed to lock place_order_body for key: {}", key);
             }
+        });
+        
+        if let Ok(mut body) = place_order_body.lock() {
+            body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
+        } else {
+            eprintln!("Failed to lock place_order_body for selected_payment_channel_data");
         }
+        let final_body = Arc::try_unwrap(place_order_body)
+            .map_err(|_| "Masih ada Arc yang nge-refer ke PlaceOrderBody")?
+            .into_inner()
+            .map_err(|_| "Gagal unlock Mutex")?;
 
-        place_order_body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
-
-        return Ok(place_order_body)
+        Ok(final_body)
     } else {
         eprintln!("Failed to get checkout data: {}", status);
         Err("Failed to get checkout data".into())
@@ -624,8 +627,8 @@ pub async fn get_builder(cookie_content: &CookieData,
                 disabled_reason_code: 0,
                 banner_info: Some(BannerInfo {
                     banner_type: 5,
-                    learn_more_msg: "".to_string(),
-                    msg: "Berhasil mendapatkan Gratis Ongkir".to_string(),
+                    learn_more_msg: "".to_owned(),
+                    msg: "Berhasil mendapatkan Gratis Ongkir".to_owned(),
                 }),
                 required_be_channel_ids: Some(vec![]),
                 required_spm_channels: Some(vec![]),
@@ -633,7 +636,7 @@ pub async fn get_builder(cookie_content: &CookieData,
             None => FreeShippingVoucherInfo {
                 free_shipping_voucher_id: 0,
                 free_shipping_voucher_code: None,
-                disabled_reason: Some("".to_string()),
+                disabled_reason: Some("".to_owned()),
                 disabled_reason_code: 0,
                 banner_info: None,
                 required_be_channel_ids: None,
@@ -702,7 +705,7 @@ pub async fn get_builder(cookie_content: &CookieData,
                 insurances: vec![],
                 channel_exclusive_info: ChannelExclusiveInfo {
                     source_id: 0,
-                    token: "".to_string(),
+                    token: "".to_owned(),
                     is_live_stream: false,
                     is_short_video: false,
                 },
@@ -723,11 +726,11 @@ pub async fn get_builder(cookie_content: &CookieData,
         device_info: device_info.clone(),
         buyer_info: BuyerInfo {
             kyc_info: None,
-            checkout_email: "".to_string(),
+            checkout_email: "".to_owned(),
         },
         cart_type: 1,
         client_id: 5,
-        tax_info: TaxInfo { tax_id: "".to_string() },
+        tax_info: TaxInfo { tax_id: "".to_owned() },
         client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
         add_to_cart_info: AddToCartInfo {},
         _cft: vec![4227792767, 36961919],
@@ -738,7 +741,7 @@ pub async fn get_builder(cookie_content: &CookieData,
             buyer_address_data: BuyerAddressData {
                 addressid: address_info.id,
                 address_type: 0,
-                tax_address: "".to_string(),
+                tax_address: "".to_owned(),
             },
             selected_logistic_channelid: chosen_shipping.channelid,
             shipping_id: 1,
@@ -749,7 +752,7 @@ pub async fn get_builder(cookie_content: &CookieData,
             },
             fulfillment_info: FulfillmentInfo {
                 fulfillment_flag: 18,
-                fulfillment_source: "IDE".to_string(),
+                fulfillment_source: "IDE".to_owned(),
                 managed_by_sbs: false,
                 order_fulfillment_type: 1,
                 warehouse_address_id: 0,

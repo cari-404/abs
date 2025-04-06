@@ -8,3 +8,4 @@ libabsho.*
 *.dll
 *.zip
 *.tar.gz
+update-dir/*

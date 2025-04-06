@@ -10,6 +10,7 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use std::io::Read;
 use urlencoding::encode as url_encode;
+use once_cell::sync::Lazy;
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct FSItems {
@@ -167,6 +168,50 @@ impl Default for AddressInfo {
     }
 }
 
+pub static BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    headers.insert("sec-ch-ua", HeaderValue::from_static("\"Chromium\";v=\"127\", \"Not)A;Brand\";v=\"24\", \"Google Chrome\";v=\"127\""));
+    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
+    headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));
+    headers.insert("sec-ch-ua-platform", HeaderValue::from_static("\"Windows\""));
+    headers.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
+	headers.insert("user-agent", HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"));
+    headers.insert("x-api-source", HeaderValue::from_static("pc"));
+    headers.insert("accept", HeaderValue::from_static("*/*"));
+    headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
+    headers.insert("sec-fetch-site", HeaderValue::from_static("same-origin"));
+    headers.insert("sec-fetch-mode", HeaderValue::from_static("cors"));
+    headers.insert("sec-fetch-dest", HeaderValue::from_static("empty"));
+    headers.insert("accept-language", HeaderValue::from_static("id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6,es;q=0.5"));
+    headers
+});
+pub static FS_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    headers.insert("Accept", HeaderValue::from_static("application/json"));
+    headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
+    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
+    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
+    headers.insert("if-none-match-", HeaderValue::from_static("8001"));
+    headers.insert("x-api-source", HeaderValue::from_static("rn"));
+    headers.insert("origin", HeaderValue::from_static("https://mall.shopee.co.id"));
+    headers.insert("af-ac-enc-dat", HeaderValue::from_static(""));
+    headers
+});
+pub static PRODUCT_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
+    headers.insert("if-none-match-", HeaderValue::from_static("55b03-8476c83de1a4cf3b74cc77b08ce741f9"));
+    headers.insert("x-api-source", HeaderValue::from_static("rn"));
+    headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
+    headers.insert("accept-language", HeaderValue::from_static("id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6,es;q=0.5"));
+    headers
+});
+
 fn default_unknown() -> String {
     "Unknown".to_string()
 }
@@ -194,7 +239,6 @@ pub async fn open_payment_file() -> Result<String, Box<dyn std::error::Error>> {
     file.read_to_string(&mut json_data).await?;
     Ok(json_data)
 }
-
 pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error>> {
     let response: PaymentData = serde_json::from_str(&json_data)?;
 
@@ -287,18 +331,8 @@ pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product
     println!("{}", url2);
     println!("sending Get Shopee request...");
     
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
-    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    headers.insert("Accept", HeaderValue::from_static("application/json"));
-    headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
-    headers.insert("Content-Type", HeaderValue::from_static("application/json"));
-    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
-    headers.insert("if-none-match-", HeaderValue::from_static("8001"));
-    headers.insert("x-api-source", HeaderValue::from_static("rn"));
-    headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
+    let mut headers = FS_BASE_HEADER.clone();
     headers.insert("referer", reqwest::header::HeaderValue::from_str(&refe)?);
-    headers.insert("af-ac-enc-dat", HeaderValue::from_static(""));
     headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
 
@@ -338,20 +372,12 @@ pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product
     Ok(items)
 }
 pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, FSInfo, String), anyhow::Error> {
-    let refe = format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id);
     let url2 = format!("https://shopee.co.id/api/v4/item/get?itemid={}&shopid={}", product_info.item_id, product_info.shop_id);
     println!("{}", url2);
     println!("sending Get Shopee request...");
 	
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
-    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
-    headers.insert("if-none-match-", HeaderValue::from_static("55b03-8476c83de1a4cf3b74cc77b08ce741f9"));
-    headers.insert("x-api-source", HeaderValue::from_static("rn"));
-    headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
-    headers.insert("referer", reqwest::header::HeaderValue::from_str(&refe)?);
-    headers.insert("accept-language", HeaderValue::from_static("id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6,es;q=0.5"));
+    let mut headers = FS_BASE_HEADER.clone();
+    headers.insert("referer", reqwest::header::HeaderValue::from_str(&format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id))?);
     headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
 
@@ -507,24 +533,9 @@ pub fn process_url(url: &str) -> ProductInfo {
     ProductInfo { shop_id, item_id }
 }
 fn create_headers(cookie_content: &CookieData) -> HeaderMap {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    headers.insert("sec-ch-ua", HeaderValue::from_static("\"Chromium\";v=\"127\", \"Not)A;Brand\";v=\"24\", \"Google Chrome\";v=\"127\""));
-    headers.insert("x-shopee-language", HeaderValue::from_static("id"));
-    headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));
+    let mut headers = BASE_HEADER.clone();
     headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
-    headers.insert("sec-ch-ua-platform", HeaderValue::from_static("\"Windows\""));
-    headers.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
-	headers.insert("user-agent", HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"));
-    headers.insert("x-api-source", HeaderValue::from_static("pc"));
-    headers.insert("accept", HeaderValue::from_static("*/*"));
-    headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
-    headers.insert("sec-fetch-site", HeaderValue::from_static("same-origin"));
-    headers.insert("sec-fetch-mode", HeaderValue::from_static("cors"));
-    headers.insert("sec-fetch-dest", HeaderValue::from_static("empty"));
-    headers.insert("accept-language", HeaderValue::from_static("id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7,fr;q=0.6,es;q=0.5"));
     headers.insert("cookie", HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
-    // Return the created headers
     headers
 }
 pub fn create_cookie(cookie_content: &str) -> CookieData {

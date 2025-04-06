@@ -6,6 +6,7 @@ use serde_json::{json, to_string, Value};
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
 use std::sync::Arc;
+use once_cell::sync::Lazy;
 
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
 use crate::crypt::random_hex_string;
@@ -170,6 +171,25 @@ pub struct FoodVoucherRequest {
     pub cmd: String,
     pub req_data: String,
 }
+
+pub static VC_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
+	headers.insert("x-api-source", HeaderValue::from_static("rn"));
+	headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
+	headers.insert("x-sap-access-f", HeaderValue::from_static(""));
+	headers.insert("x-sap-access-t", HeaderValue::from_static(""));
+	headers.insert("af-ac-enc-id", HeaderValue::from_static(""));
+	headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(""));
+	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
+	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
+	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
+    headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id"));
+	headers.insert("accept", HeaderValue::from_static("application/json"));
+	headers.insert("content-type", HeaderValue::from_static("application/json; charset=utf-8"));
+    headers
+});
 
 pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &CookieData, product_info: &ProductInfo) -> Result<Option<Vouchers>>{
 	let shop_id = product_info.shop_id;
@@ -611,25 +631,10 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, produc
     Ok((freeshipping_voucher, vouchers))
 }
 async fn headers_checkout(cookie_content: &CookieData) -> HeaderMap {
-    let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-	headers.insert("x-api-source", HeaderValue::from_static("rn"));
-	headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
-	headers.insert("x-sap-access-f", HeaderValue::from_static(""));
-	headers.insert("x-sap-access-t", HeaderValue::from_static(""));
-	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&format!("{}", random_hex_string(16))).unwrap());
-	headers.insert("af-ac-enc-id", HeaderValue::from_static(""));
-	headers.insert("af-ac-enc-sz-token", HeaderValue::from_static(""));
-	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
-	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
-	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
+    let mut headers = VC_HEADER_APP.clone();
+    headers.insert("af-ac-enc-dat", HeaderValue::from_str(&format!("{}", random_hex_string(16))).unwrap());
 	headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
-	headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
-	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id"));
-	headers.insert("accept", HeaderValue::from_static("application/json"));
-	headers.insert("content-type", HeaderValue::from_static("application/json; charset=utf-8"));
 	headers.insert("cookie", HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
-    // Return the created headers
     headers
 }
 
