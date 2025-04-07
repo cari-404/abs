@@ -1,6 +1,7 @@
 use rquest as reqwest;
 use reqwest::Client;
 use reqwest::ClientBuilder;
+use reqwest::tls::Impersonate;
 use reqwest::redirect::Policy as RedirectPolicy;
 use serde_json::Value;
 use tokio::io::{self, BufWriter, AsyncWriteExt};
@@ -10,6 +11,7 @@ use futures_util::StreamExt;
 use std::time::Instant;
 use std::path::Path;
 use once_cell::sync::Lazy;
+use std::env;
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT};
 
 pub static HEADER_TEST: Lazy<HeaderMap> = Lazy::new(|| {
@@ -24,10 +26,19 @@ const REPO_NAME: &str = "ABS";
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const OS: &str = std::env::consts::OS;
 const ARCH: &str = std::env::consts::ARCH;
+const OUTPUT_PATH_SLIM: &str = "update.7z";
 #[cfg(target_os = "windows")]
-const OUTPUT_PATH: &str = "update.zip";
+const OUTPUT_PATH_DEFAULT: &str = "update.zip";
 #[cfg(not(target_os = "windows"))]
-const OUTPUT_PATH: &str = "update.tar.gz";
+const OUTPUT_PATH_DEFAULT: &str = "update.tar.gz";
+static OUTPUT_PATH: Lazy<&'static str> = Lazy::new(|| {
+    let is_slim = env::args().any(|arg| arg == "slim");
+    if is_slim {
+        OUTPUT_PATH_SLIM
+    } else {
+        OUTPUT_PATH_DEFAULT
+    }
+});
 
 fn compare_versions(local: &str, remote: &str) -> Ordering {
     let parse = |s: &str| s.split('.').filter_map(|p| p.parse::<u32>().ok()).collect::<Vec<_>>();
@@ -80,7 +91,7 @@ async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
         .write(true)
         .create(true)
         .truncate(true) // Hindari data lama tertinggal
-        .open(OUTPUT_PATH)
+        .open(*OUTPUT_PATH)
         .await?;
     let mut file = BufWriter::new(file);
     let mut stream = response.bytes_stream();
@@ -101,7 +112,7 @@ async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
     }
     file.flush().await?;
     pb.finish_with_message("Download selesai!");
-    let actual_size = tokio::fs::metadata(OUTPUT_PATH).await?.len();
+    let actual_size = tokio::fs::metadata(*OUTPUT_PATH).await?.len();
     if actual_size != total_size {
         eprintln!("File mungkin corrupt! Ukuran seharusnya {} bytes, tetapi hanya {} bytes.", total_size, actual_size);
         return Err(io::Error::new(io::ErrorKind::Other, "Ukuran file tidak sesuai"));
@@ -110,7 +121,7 @@ async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
 }
 
 #[cfg(target_os = "windows")]
-async fn extract_archive() -> io::Result<()> {
+async fn extract_archive(exp: bool) -> io::Result<()> {
     use zip::ZipArchive;
     use std::io::Read;
 
@@ -119,25 +130,27 @@ async fn extract_archive() -> io::Result<()> {
     if !update_dir.exists() {
         tokio::fs::create_dir(update_dir).await?;
     }
-
-    let file = tokio::fs::File::open(OUTPUT_PATH).await?;
-    let mut archive = ZipArchive::new(file.into_std().await)?;
-    for i in 0..archive.len() {
-        let mut file = archive.by_index(i)?;
-        let outpath = update_dir.join(file.name());
-        if file.name().ends_with('/') {
-            tokio::fs::create_dir_all(&outpath).await?;
-        } else {
-            if let Some(parent) = outpath.parent() {
-                tokio::fs::create_dir_all(parent).await?;
+    if exp {
+        sevenz_rust2::decompress_file(*OUTPUT_PATH, "update-dir").expect("complete");
+    }else{
+        let file = tokio::fs::File::open(*OUTPUT_PATH).await?;
+        let mut archive = ZipArchive::new(file.into_std().await)?;
+        for i in 0..archive.len() {
+            let mut file = archive.by_index(i)?;
+            let outpath = update_dir.join(file.name());
+            if file.name().ends_with('/') {
+                tokio::fs::create_dir_all(&outpath).await?;
+            } else {
+                if let Some(parent) = outpath.parent() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+                let mut outfile = tokio::fs::File::create(&outpath).await?;
+                let mut buffer = Vec::new();
+                file.read_to_end(&mut buffer)?;
+                outfile.write_all(&buffer).await?;
             }
-            let mut outfile = tokio::fs::File::create(&outpath).await?;
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer)?;
-            outfile.write_all(&buffer).await?;
         }
     }
-
     let _ = std::process::Command::new("cmd")
         .arg("/C")
         .arg("update-dir\\updater.exe upgrade")
@@ -147,7 +160,7 @@ async fn extract_archive() -> io::Result<()> {
 }
 
 #[cfg(not(target_os = "windows"))]
-async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn extract_archive(exp: bool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use std::path::PathBuf;
     use std::fs::{self, File};
     use std::os::unix::fs::PermissionsExt;
@@ -160,10 +173,14 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
         if !update_dir.exists() {
             fs::create_dir(update_dir)?;
         }
-        let file = File::open(OUTPUT_PATH)?;
-        let decompressed = GzDecoder::new(file);
-        let mut archive = Archive::new(decompressed);
-        archive.unpack(update_dir)?;
+        if exp {
+            sevenz_rust2::decompress_file(*OUTPUT_PATH, "update-dir").expect("complete");
+        }else {
+            let file = File::open(*OUTPUT_PATH)?;
+            let decompressed = GzDecoder::new(file);
+            let mut archive = Archive::new(decompressed);
+            archive.unpack(update_dir)?;
+        };
         fn set_executable(path: PathBuf) -> std::io::Result<()> {
             let metadata = fs::metadata(&path)?;
             let mut perms = metadata.permissions();
@@ -186,7 +203,6 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
             }
             Ok(())
         }
-
         // Terapkan izin eksekusi pada seluruh direktori hasil ekstraksi
         make_all_executable(update_dir)?;
         Ok(())
@@ -210,8 +226,22 @@ async fn extract_archive() -> Result<(), Box<dyn std::error::Error + Send + Sync
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut force = false;
+    let mut slim = false;
     if args.len() > 1 {
         match args[1].as_str() {
+            "help" => {
+                println!("Penggunaan: updater [upgrade|force|test|slim]");
+                println!("upgrade: Melakukan pembaruan aplikasi.");
+                println!("force: Memaksa pembaruan meskipun versi terbaru sudah terpasang.");
+                println!("test: Menguji koneksi ke URL tertentu.");
+                println!("slim: Mengaktifkan fitur eksperimental (hanya untuk pengujian).");
+                return;
+            }
+            "slim" => {
+                println!("Fitur eksperimental aktif");
+                slim = true;
+                force = true;
+            }
             "upgrade" => {
                 if let Err(e) = run_updater() {
                     println!("Gagal melakukan update: {}", e);
@@ -223,13 +253,16 @@ async fn main() {
             }
             "test" => {
                 println!("Test mode aktif");
-                test().await;
+                let mpp = match test("https://shp.ee/wtuna3t6555").await {
+                    Ok(response) => response,
+                    Err(e) => format!("Gagal: {}", e),
+                };
+                println!("Test URL: {}", mpp);
                 return;
             }
             _ => {}
         }
     }
-    
     println!("Versi saat ini: {}", CURRENT_VERSION);
     let os = get_os();
     let arch = if ARCH == "x86"{
@@ -237,7 +270,9 @@ async fn main() {
     }else{
         ARCH
     };
-    let archive = if OS == "windows" {
+    let archive = if slim {
+        "7z"
+    } else if OS == "windows" {
         "zip"
     } else {
         "tar.gz"
@@ -248,8 +283,8 @@ async fn main() {
             println!("Versi baru tersedia! Mengunduh...");
             let download_url = format!("https://github.com/{}/{}/releases/download/v{}/ABS_{}-{}-v{}.{}", REPO_OWNER, REPO_NAME, latest_version, os, arch, latest_version, archive);
             if download_latest_release(&download_url).await.is_ok() {
-                println!("Unduhan selesai. Simpan sebagai: {}", OUTPUT_PATH);
-                if let Err(e) = extract_archive().await {
+                println!("Unduhan selesai. Simpan sebagai: {}", *OUTPUT_PATH);
+                if let Err(e) = extract_archive(slim).await {
                     println!("Gagal mengekstrak arsip: {}", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
@@ -272,16 +307,23 @@ async fn main() {
     }
 }
 
-async fn test() {
-    let client = Client::new();
-    let res = client
-        .get("https://httpbin.org/get")
-        .headers(HEADER_TEST.clone())
-        .send()
-        .await
-        .unwrap();
+async fn test(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let client = Client::builder()
+        .redirect(RedirectPolicy::limited(10))
+        .danger_accept_invalid_certs(true)
+        .impersonate(Impersonate::Chrome130)
+        .enable_ech_grease(true)
+        .permute_extensions(true)
+        .gzip(true)
+        .build()?;
 
-    println!("{}", res.text().await.unwrap());
+    let res = client.get(url)
+        .send()
+        .await?;
+
+    let final_url = res.url().clone();
+    println!("Final URL: {}", final_url);
+    Ok(final_url.to_string())
 }
 
 fn run_updater() -> io::Result<()> {

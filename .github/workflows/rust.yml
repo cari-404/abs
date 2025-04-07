@@ -204,6 +204,11 @@ jobs:
         mv savevoucher/CargoXP.toml savevoucher/Cargo.toml
         rm savevoucher/build.rs
         mv savevoucher/buildXP.rs savevoucher/build.rs
+        rm updater/Cargo.toml
+        mv updater/CargoXP.toml updater/Cargo.toml
+        rm updater/build.rs
+        mv updater/buildXP.rs updater/build.rs
+
 
     - name: Install nightly toolchain for Windows 7 64-bit or Windows XP 64-bit
       if: matrix.platform.os_name == 'Windows7-x86_64' || matrix.platform.os_name == 'WindowsXP-x86_64'

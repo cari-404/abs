@@ -7,6 +7,7 @@ description = "Software Update for ABS & Complement"
 build = "build.rs"
 
 [build-dependencies]
+thunk = { git = "https://github.com/cari-404/thunk.git", package = "thunk-rs" }
 winresource = "0.1"
 
 [package.metadata.winresource]
