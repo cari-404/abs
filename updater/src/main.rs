@@ -168,7 +168,7 @@ async fn extract_archive(exp: bool) -> Result<(), Box<dyn std::error::Error + Se
     use tar::Archive;
     use tokio::task;
 
-    task::spawn_blocking(|| -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    task::spawn_blocking(move || -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let update_dir = Path::new("update-dir");
         if !update_dir.exists() {
             fs::create_dir(update_dir)?;
