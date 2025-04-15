@@ -4,24 +4,32 @@ use winsafe::{self as w,
 };
 use ::runtime::login::{get_qrcode, authentication_qrcode, get_cookie};
 use std::io::Cursor;
-use image::ImageReader;
 use image::{load_from_memory};
 use image::DynamicImage::ImageRgba8;
 use base64::decode;
 use tokio::time::{sleep, Duration};
+use tokio::sync::mpsc;
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 
 pub fn login_window(wnd: &gui::WindowModal) -> Result<(), ()> {
+    let (tx_msg, rx_msg) = mpsc::unbounded_channel::<String>();
+    let _ = tx_msg.send("Stopped".to_string());
+    let interrupt_flag = Arc::new(AtomicBool::new(false));
     let dont_move = (gui::Horz::None, gui::Vert::None);
     let loginwnd = gui::WindowModal::new_dlg(wnd, 3000);
     let label = gui::Label::new_dlg(&loginwnd, 3001, dont_move);
     let button = gui::Button::new_dlg(&loginwnd, 3002, dont_move);
     let label_clone = label.clone();
+    let interrupt_flag_clone = interrupt_flag.clone();
+    let tx_msg_clone = tx_msg.clone();
     button.on().bn_clicked(move || {
         println!("Button clicked");
-        let _ = login_internals(&label_clone);
+        let _ = login_internals(&label_clone, &interrupt_flag_clone, &tx_msg_clone);
         Ok(())
     });
     let label_clone = label.clone();
+    let interrupt_flag_clone = interrupt_flag.clone();
+    let tx_msg_clone = tx_msg.clone();
     loginwnd.on().wm_init_dialog(move |_| {
         let bitmap_result = w::HINSTANCE::GetModuleHandle(None)
         .and_then(|hinstance| {
@@ -50,15 +58,38 @@ pub fn login_window(wnd: &gui::WindowModal) -> Result<(), ()> {
             };
             //button.hwnd().SetWindowText("Login");
         }
+        let _ = login_internals(&label_clone, &interrupt_flag_clone, &tx_msg_clone);
         Ok(true)
+    });
+    let interrupt_flag_clone = interrupt_flag.clone();
+    let rx_msg = Arc::new(Mutex::new(rx_msg));
+    let rx_msg_clone = rx_msg.clone();
+    loginwnd.on().wm_destroy(move || {
+        interrupt_flag_clone.store(true, Ordering::SeqCst);
+        interrupt_flag_clone.store(true, Ordering::Relaxed);
+        loop{
+            if let Ok(mut rx) = rx_msg_clone.lock() {
+                if let Ok(msg) = rx.try_recv() {
+                    println!("Got from task: {}", msg);
+                    if msg == "Stopped" {
+                        break;
+                    }
+                }
+            }
+        }
+        println!("Window is gone, goodbye!");
+        Ok(())
     });
     let _ = loginwnd.show_modal();
     Ok(())
 }
 
-fn login_internals(label: &gui::Label) -> AnyResult<()> {
+fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg: &mpsc::UnboundedSender<String>) -> AnyResult<()> {
     println!("start login_internals");
     let label_clone2 = label.clone();
+    interrupt_flag.store(false, Ordering::Relaxed);
+    let interrupt_flag_clone = interrupt_flag.clone();
+    let tx_msg = tx_msg.clone();
     tokio::spawn(async move {
         println!("start login_internals async");
         loop{
@@ -112,6 +143,11 @@ fn login_internals(label: &gui::Label) -> AnyResult<()> {
             }
             let mut qrcode_token = String::new();
             loop {
+                if interrupt_flag_clone.load(Ordering::Relaxed) {
+                    println!("Proses dibatalkan oleh user.");
+                    let _ = tx_msg.send("Stopped".to_string());
+                    break;
+                }
                 sleep(Duration::from_secs(5)).await;
                 // Menangani hasil dari authentication_qrcode
                 let (status, qrct) = match authentication_qrcode(&qrcode).await {
@@ -125,25 +161,34 @@ fn login_internals(label: &gui::Label) -> AnyResult<()> {
                 match status.as_str() {
                     "CONFIRMED" => {
                         println!("QR code berhasil di konfirmasi");
+                        let _ = tx_msg.send("Running".to_string());
                         qrcode_token = qrct;
                         break; // Keluar dari loop jika QR code berhasil dikonfirmasi
                     },
                     "SCANNED" => {
                         println!("QR code telah discan");
                         println!("Klik konfirmasi pada perangkat Anda");
+                        let _ = tx_msg.send("Running".to_string());
                         continue;
                     },
                     "EXPIRED" => {
                         println!("QR code telah kadaluarsa");
                         println!("Mengulangi proses mendapatkan QR code");
+                        let _ = tx_msg.send("Running".to_string());
                         break;
                     },
                     _ => {
                         println!("Status QR code: {}", status);
                         println!("Mengulangi proses mendapatkan QR code");
+                        let _ = tx_msg.send("Running".to_string());
                         continue;
                     },
                 }
+            }
+            if interrupt_flag_clone.load(Ordering::SeqCst) {
+                println!("Task was interrupted, exiting...");
+                let _ = tx_msg.send("Stopped".to_string());
+                return;
             }
             if qrcode_token.is_empty() {
                 continue;
@@ -157,6 +202,7 @@ fn login_internals(label: &gui::Label) -> AnyResult<()> {
                 };
             }
         }
+        let _ = tx_msg.send("Stopped".to_string());
     });
     Ok(())
 }

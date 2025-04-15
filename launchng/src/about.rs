@@ -1,4 +1,4 @@
-use winsafe::{self as w,
+use winsafe::{
     gui, prelude::*
 };
 use windows_version::*;
@@ -16,6 +16,8 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         (true, version) if version >= OsVersion::new(6, 3, 0, 9800) => "Windows Server 2012 R2".to_string(),
         (true, version) if version >= OsVersion::new(6, 2, 0, 9200) => "Windows Server 2012".to_string(),
         (true, version) if version >= OsVersion::new(6, 1, 0, 7600) => "Windows Server 2008 R2".to_string(),
+        (true, version) if version >= OsVersion::new(6, 0, 0, 6000) => "Windows Server 2008".to_string(),
+        (true, version) if version >= OsVersion::new(5, 2, 0, 3790) => "Windows Server 2003".to_string(),
         (true, _) => format!("Windows Server Build {:?}", OsVersion::current()),
         (false, version) if version >= OsVersion::new(10, 0, 0, 22000) => format!("Windows 11 Build {:?}", OsVersion::current().build),
         (false, version) if version >= OsVersion::new(10, 0, 0, 10240) => format!("Windows 10 Build {:?}", OsVersion::current().build),
@@ -23,6 +25,9 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         (false, version) if version >= OsVersion::new(6, 2, 0, 9200) => format!("Windows 8 Build {:?}", OsVersion::current().build),
         (false, version) if version >= OsVersion::new(6, 1, 1, 7601) => "Windows 7 SP1".to_string(),
         (false, version) if version >= OsVersion::new(6, 1, 0, 7600) => "Windows 7 RTM".to_string(),
+        (false, version) if version >= OsVersion::new(6, 0, 0, 6000) => "Windows Vista".to_string(),
+        (false, version) if version >= OsVersion::new(5, 2, 0, 3790) => "Windows XP x64 Edition".to_string(),
+        (false, version) if version >= OsVersion::new(5, 1, 0, 2600) => "Windows XP".to_string(),
         _ => format!("Running on an unsupported version {:?}", OsVersion::current()),
     };
     let run_win = match func_main::detect_wine() {
@@ -50,9 +55,9 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     wnd2.on().wm_init_dialog(move |_| {
         println!("Start About APL");
-        ver_label.set_text_and_resize(&version_info);
-        os_label.set_text_and_resize(&version_message);
-        run_label.set_text_and_resize(&run_win);
+        ver_label.set_text(&version_info);
+        os_label.set_text(&version_message);
+        run_label.set_text(&run_win);
         Ok(true)
     });
     let _ = wnd2.show_modal();

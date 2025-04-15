@@ -100,11 +100,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("-------------------------------------------");
 	let opt = Opt::from_args();
 	let mode = select_mode(&opt);
-	
-	let selected_file = opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"));
-	let cookie_content = prepare::read_cookie_file(&selected_file);
-	let cookie_data = prepare::create_cookie(&cookie_content);
+	let client = Arc::new(prepare::universal_client_skip_headers());
+	let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"))));
 	let userdata = prepare::info_akun(&cookie_data).await?;
+	let vc_header = Arc::new(voucher::headers_checkout(&cookie_data));
 	println!("Username  : {}", &userdata.username);
 	match mode {
 		Mode::Food => {
@@ -138,8 +137,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 				let promotion_id = Arc::clone(&promotion_id_clone);
 				let code = Arc::clone(&code);
 				let notify = notify.clone();
+				let client_clone = Arc::clone(&client);
 				tokio::spawn(async move {
-					let resp = match voucher::claim_food_voucher(&cookie_data, &promotion_id, &code).await {
+					let resp = match voucher::claim_food_voucher(client_clone, &cookie_data, &promotion_id, &code).await {
 						Ok(Some(value)) => Some(value),
 						Ok(None) => None,
 						Err(e) => {
@@ -193,19 +193,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let task_time_dt = parse_task_time(&task_time_str)?;
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			let notify = Arc::new(Notify::new());
-			let cookie_data_clone = Arc::new(cookie_data.clone());
 			let promotion_id_clone = Arc::new(promotion_id.clone());
 			let signature_clone = Arc::new(signature.clone());
 			// Process HTTP with common function
 			countdown_to_task(&task_time_dt).await;
 			for _ in 0..max_threads {
 				let tx = tx.clone();
-				let cookie_data = Arc::clone(&cookie_data_clone);
+				let vc_header = Arc::clone(&vc_header);
 				let promotion_id = Arc::clone(&promotion_id_clone);
 				let signature = Arc::clone(&signature_clone);
 				let notify = notify.clone();
+				let client_clone = Arc::clone(&client);
+
 				tokio::spawn(async move {
-					let resp = match voucher::save_voucher(&promotion_id, &signature, &cookie_data).await {
+					let resp = match voucher::save_voucher(client_clone, &promotion_id, &signature, vc_header).await {
 						Ok(Some(value)) => Some(value),
 						Ok(None) => None,
 						Err(e) => {
@@ -258,10 +259,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			let task_time_dt = parse_task_time(&task_time_str)?;
 			// Process HTTP with common function
 			countdown_to_task(&task_time_dt).await;
-			let (promotion_id, signature) = voucher::some_function(&voucher_collectionid, &cookie_data).await?;
+			let (promotion_id, signature) = voucher::some_function(client.clone(), &voucher_collectionid, &cookie_data).await?;
 			println!("promotion_id : {}", &promotion_id);
 			println!("signature	: {}", &signature);
-			voucher::save_voucher(&promotion_id, &signature, &cookie_data).await?;
+			voucher::save_voucher(client.clone(), &promotion_id, &signature, vc_header).await?;
 		}
 	}
 	println!("\nTask completed! Current time: {}", Local::now().format("%H:%M:%S.%3f"));

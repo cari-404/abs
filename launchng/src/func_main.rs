@@ -1,10 +1,14 @@
 use std::{fs, io::{Write, Read}};
 use winsafe::{self as w,
-    gui, path, prelude::*, co::{self, SW},
+    gui, path, prelude::*, co::{self, SW, SEE_MASK},
 };
 use ::runtime::prepare::{self};
 use serde_json::{Value};
-use std::ffi::CStr;
+use std::{ffi::CStr, ptr, io::{self, Error}};
+use chrono::{Local, DateTime, Utc};
+use windows_sys::Win32::System::DataExchange::*;
+use windows_sys::Win32::System::Memory::*;
+
 pub fn error_modal(wnd: &gui::WindowModal, title: &str, message: &str) -> Result<(), ()> {
     wnd.hwnd().MessageBox(message, title, co::MB::OK | co::MB::ICONSTOP).ok();
     Ok(())
@@ -209,4 +213,61 @@ pub fn format_thousands(num: i64) -> String {
         formatted.push(c);
     }
     formatted
+}
+pub fn human_readable_time(epoch: i64) -> DateTime<Local> {
+    let utc = DateTime::<Utc>::from_timestamp(epoch, 0).expect("Invalid timestamp");
+    utc.with_timezone(&Local)
+}
+const CF_UNICODETEXT: u32 = 13;
+pub fn set_clipboard(text: &str) -> io::Result<()> {
+    let utf16: Vec<u16> = text.encode_utf16().chain(Some(0)).collect();
+    let bytes = unsafe {
+        std::slice::from_raw_parts(
+            utf16.as_ptr() as *const u8,
+            utf16.len() * std::mem::size_of::<u16>(),
+        )
+    };
+
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return Err(Error::last_os_error());
+        }
+        EmptyClipboard();
+
+        let hglobal = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
+        if hglobal.is_null() {
+            CloseClipboard();
+            return Err(Error::last_os_error());
+        }
+
+        let ptr = GlobalLock(hglobal);
+        if ptr.is_null() {
+            CloseClipboard();
+            return Err(Error::last_os_error());
+        }
+
+        ptr::copy_nonoverlapping(bytes.as_ptr(), ptr as *mut u8, bytes.len());
+
+        SetClipboardData(CF_UNICODETEXT, hglobal);
+        CloseClipboard();
+    }
+    Ok(())
+}
+pub fn open_url(url: &str) -> winsafe::AnyResult<()> {
+    let mut exec_info = w::SHELLEXECUTEINFO {
+        mask: SEE_MASK::default(), // bisa juga pakai SEE_MASK::NOASYNC | lainnya
+        hwnd: None,
+        verb: Some("open"),
+        file: url,
+        parameters: None,
+        directory: None,
+        show: SW::SHOWNORMAL,
+        id_list: None,
+        class: None,
+        hkey_class: None,
+        hot_key: None,
+        hicon_hmonitor: Default::default(), // penting! karena ini enum, harus di-set
+    };
+    w::ShellExecuteEx(&mut exec_info)?;
+    Ok(())
 }

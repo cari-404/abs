@@ -191,13 +191,10 @@ pub static VC_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
     headers
 });
 
-pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &CookieData, product_info: &ProductInfo) -> Result<Option<Vouchers>>{
-	let shop_id = product_info.shop_id;
-    let headers = headers_checkout(&cookie_content).await;
-
+pub async fn save_shop_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>, product_info: &ProductInfo) -> Result<Option<Vouchers>>{
     let body_json = json!({
         "voucher_code": code.to_string(),
-        "shopid": shop_id
+        "shopid": product_info.shop_id,
     });
 
     // Convert struct to JSON
@@ -209,21 +206,12 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &Cook
 	loop {
         let url2 = format!("https://mall.shopee.co.id/api/v2/voucher_wallet/save_shop_voucher_by_voucher_code");
         println!("{}", url2);
-        // Buat klien HTTP
-        let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .impersonate_skip_headers(Impersonate::Chrome130)
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .gzip(true)
-            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-            .build()?;
 
         // Buat permintaan HTTP POST
-        let response = client
+        let response = (*client).clone()
             .post(&url2)
             .header("Content-Type", "application/json")
-			.headers(headers.clone())
+			.headers((*headers).clone())
 			.body(body_str.clone())
             .version(Version::HTTP_2) 
             .send()
@@ -272,9 +260,7 @@ pub async fn save_shop_voucher_by_voucher_code(code: &str, cookie_content: &Cook
     Ok(vouchers)
 }
 
-pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &CookieData) -> Result<Option<Vouchers>>{
-    let headers = headers_checkout(&cookie_content).await;
-
+pub async fn save_platform_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>) -> Result<Option<Vouchers>>{
     let body_json = json!({
         "voucher_code": code.to_string(),
         "need_user_voucher_status":true
@@ -290,20 +276,10 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
         let url2 = format!("https://mall.shopee.co.id/api/v2/voucher_wallet/save_voucher");
         println!("{}", url2);
         // Buat klien HTTP
-        let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .impersonate_skip_headers(Impersonate::Chrome130)
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .gzip(true)
-            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-            .build()?;
-
-        // Buat permintaan HTTP POST
-        let response = client
+        let response = (*client).clone()
             .post(&url2)
             .header("Content-Type", "application/json")
-			.headers(headers.clone())
+			.headers((*headers).clone())
 			.body(body_str.clone())
             .version(Version::HTTP_2) 
             .send()
@@ -352,16 +328,13 @@ pub async fn save_platform_voucher_by_voucher_code(code: &str, cookie_content: &
     Ok(vouchers)
 }
 
-pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -> Result<Option<Vouchers>>{
-    let headers = Arc::new(headers_checkout(&cookie_content).await);
-	let start: i64 = start.trim().parse().expect("Input tidak valid");
-
-	let body_json = SaveVoucherRequest {
-	  voucher_promotionid: start as i64,
-	  signature: end.to_string(),
-	  security_device_fingerprint: String::new(),
-	  signature_source: 0.to_string(),
-	};
+pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> Result<Option<Vouchers>>{
+    let body_json = SaveVoucherRequest {
+        voucher_promotionid: start.trim().parse().expect("Input tidak valid"),
+        signature: end.to_string(),
+        security_device_fingerprint: String::new(),
+        signature_source: "0".to_string(),
+    };
 	
 	let body_str = serde_json::to_string(&body_json)?;
 
@@ -371,19 +344,10 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -
 	//println!("header:{:#?}", headers);
     let mut vouchers: Option<Vouchers> = None;
 	loop {
-        let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .impersonate_skip_headers(Impersonate::Chrome130)
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .gzip(true)
-            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-            .build()?;
-    
         // Buat permintaan HTTP POST
-        let response = client
+        let response = (*client).clone()
             .post("https://mall.shopee.co.id/api/v2/voucher_wallet/save_voucher")
-			.headers(headers.as_ref().clone())
+			.headers((*headers).clone())
 			.json(&body_json)
             .version(Version::HTTP_2) 
             .send()
@@ -429,8 +393,7 @@ pub async fn save_voucher(start: &str, end: &str, cookie_content: &CookieData) -
 	Ok(vouchers)
 }
 
-pub async fn get_voucher_data(start: &str, end: &str, cookie_content: &CookieData) -> Result<Option<Vouchers>>{
-    let headers = headers_checkout(&cookie_content).await;
+pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> Result<Option<Vouchers>>{
 	let start: i64 = start.trim().parse().expect("Input tidak valid");
 
 	let body_json = GetVoucherRequest{
@@ -449,19 +412,9 @@ pub async fn get_voucher_data(start: &str, end: &str, cookie_content: &CookieDat
 	//println!("header:{:#?}", headers);
     let mut vouchers: Option<Vouchers> = None;
 	loop {
-        let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .impersonate_skip_headers(Impersonate::Chrome130)
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .gzip(true)
-            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-            .build()?;
-    
-        // Buat permintaan HTTP POST
-        let response = client
+        let response = (*client).clone()
             .post("https://mall.shopee.co.id/api/v2/voucher_wallet/get_voucher_detail")
-			.headers(headers.clone())
+			.headers((*headers).clone())
 			.json(&body_json)
             .version(Version::HTTP_2) 
             .send()
@@ -507,9 +460,7 @@ pub async fn get_voucher_data(start: &str, end: &str, cookie_content: &CookieDat
 	Ok(vouchers)
 }
 
-pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
-    let headers = headers_checkout(&cookie_content).await;
-	let optioninfo = chosen_payment.option_info.to_string();
+pub async fn get_recommend_platform_vouchers(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let orders_json = vec![Orders {
         shopid: product_info.shop_id,
         carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
@@ -555,7 +506,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, produc
             option_info: String::new(),
             channel_id: chosen_payment.channel_id,
             channel_item_option_info: ChannelItemOptionInfoOnRecommendPlatform {
-                option_info: optioninfo,
+                option_info: chosen_payment.option_info.to_string(),
             },
             text_info: TextInfo {},
         },
@@ -575,20 +526,11 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, produc
 
     let url2 = format!("https://mall.shopee.co.id/api/v2/voucher_wallet/get_recommend_platform_vouchers");
     println!("{}", url2);
-    // Buat klien HTTP
-    let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)        
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
 
     // Buat permintaan HTTP POST
-    let response = client
+    let response = (*client)
         .post(&url2)
-        .headers(headers)
+        .headers((*headers).clone())
         .json(&body_json)
         .version(Version::HTTP_2) 
         .send()
@@ -630,7 +572,7 @@ pub async fn get_recommend_platform_vouchers(cookie_content: &CookieData, produc
     }
     Ok((freeshipping_voucher, vouchers))
 }
-async fn headers_checkout(cookie_content: &CookieData) -> HeaderMap {
+pub fn headers_checkout(cookie_content: &CookieData) -> HeaderMap {
     let mut headers = VC_HEADER_APP.clone();
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&format!("{}", random_hex_string(16))).unwrap());
 	headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
@@ -638,7 +580,7 @@ async fn headers_checkout(cookie_content: &CookieData) -> HeaderMap {
     headers
 }
 
-pub async fn some_function(start: &str, cookie_content: &CookieData) -> Result<(String, String)> {
+pub async fn some_function(client: Arc<reqwest::Client>, start: &str, cookie_content: &CookieData) -> Result<(String, String)> {
 	let voucher_request = VoucherCollectionRequest {
 		collection_id: start.to_string(),
 		component_type: 2,
@@ -679,17 +621,8 @@ pub async fn some_function(start: &str, cookie_content: &CookieData) -> Result<(
 	//println!("{}", json_body);
 	
 	loop {
-        let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .impersonate_skip_headers(Impersonate::Chrome130)
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .gzip(true)
-            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-            .build()?;
-
         // Buat permintaan HTTP POST
-        let response = client
+        let response = (*client).clone()
             .post("https://mall.shopee.co.id/api/v1/microsite/get_vouchers_by_collections")
             .headers(headers.clone())
             .json(&json_request)
@@ -822,11 +755,9 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 	}
 	Ok((String::new(), String::new()))	
 }
-
-pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest, cookie_content: &CookieData) -> Result<Vec<VoucherInfo>, Box<dyn std::error::Error>> {
-    let mut voucher_data = Vec::new();
+pub async fn headers_collection(cookie_content: &CookieData) -> HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29335 app_type=1"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("Accept", HeaderValue::from_static("application/json"));
     headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
@@ -842,8 +773,12 @@ pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest,
     headers.insert("x-sap-access-f", HeaderValue::from_static(""));
     headers.insert("x-shopee-client-timezone", HeaderValue::from_static("Asia/Jakarta"));
     headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/"));
-    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
-    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
+    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
+    headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
+    headers
+}
+pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest, headers: &HeaderMap) -> Result<Vec<VoucherInfo>, Box<dyn std::error::Error>> {
+    let mut voucher_data = Vec::new();
 
     let client = ClientBuilder::new()
         .danger_accept_invalid_certs(true)
@@ -917,7 +852,7 @@ pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest,
     Ok(voucher_data)
 }
 
-pub async fn claim_food_voucher(cookie_content: &CookieData, start: &str, code: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>> {
+pub async fn claim_food_voucher(client: Arc<reqwest::Client>, cookie_content: &CookieData, start: &str, code: &str) -> Result<Option<Vouchers>, Box<dyn std::error::Error>> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("User-Agent", HeaderValue::from_static("okhttp/3.12.4 app_type=1 platform=native_android os_ver=34 appver=34560"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
@@ -939,17 +874,7 @@ pub async fn claim_food_voucher(cookie_content: &CookieData, start: &str, code: 
 
     let mut vouchers: Option<Vouchers> = None;
 	loop {
-        let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .impersonate_skip_headers(Impersonate::OkHttp3_13)
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .gzip(true)
-            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-            .build()?;
-    
-        // Buat permintaan HTTP POST
-        let response = client
+        let response = (*client).clone()
             .post("https://foody.shopee.co.id/api/buyer/voucher/-/action/proxy")
 			.headers(headers.clone())
 			.json(&body_json)

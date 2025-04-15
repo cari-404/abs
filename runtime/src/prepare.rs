@@ -2,6 +2,7 @@ use rquest as reqwest;
 use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, header::HeaderMap, Version, StatusCode};
 use reqwest::header::HeaderValue;
+use reqwest::redirect::Policy as RedirectPolicy;
 use serde::{Serialize, Deserialize, Deserializer};
 use std::process;
 use serde_json::{Value};
@@ -12,15 +13,16 @@ use std::io::Read;
 use urlencoding::encode as url_encode;
 use once_cell::sync::Lazy;
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Deserialize, Debug, Clone, Default)]
 pub struct FSItems {
     pub itemid: i64,
     pub shopid: i64,
-    pub modelids: Vec<i64>,
+    pub modelids: Option<Vec<i64>>,
     pub raw_discount: i64,
     pub price_before_discount: i64,
     pub stock: i64,
-    pub hidden_price_display: String,
+    pub hidden_price_display: Option<String>,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -53,7 +55,7 @@ struct ProductData {
     is_official_shop: Option<bool>,
     upcoming_flash_sale: Option<FSInfo>,
 }
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct FSInfo {
     pub promotionid: i64,
     pub start_time: i64,
@@ -65,7 +67,7 @@ struct RespFS {
 }
 #[derive(Deserialize, Debug)]
 struct RespFSData {
-    items: Vec<FSItems>,
+    items: Option<Vec<FSItems>>,
 }
 #[derive(Deserialize, Debug)]
 struct GetProduct {
@@ -124,7 +126,7 @@ struct Entry {
 struct PaymentData {
     data: Option<Vec<Entry>>,
 }
-#[derive(Clone)]
+#[derive(Clone, Default, Debug)]
 pub struct ProductInfo {
     pub shop_id: i64,
     pub item_id: i64,
@@ -325,7 +327,8 @@ pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, addr
     }
     Ok(shipping_info_vec)
 }
-pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product_info: &ProductInfo, fs_info: &FSInfo) -> Result<Vec<FSItems>, Box<dyn std::error::Error>> {
+pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product_info: &[ProductInfo], fs_info: &FSInfo) -> Result<Vec<FSItems>, anyhow::Error> {
+    let itemids: Vec<i64> = product_info.iter().map(|p| p.item_id).collect();
     let refe = format!("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Ccutline%25252Cfood_order_status");
     let url2 = format!("https://mall.shopee.co.id/api/v4/flash_sale/flash_sale_batch_get_items");
     println!("{}", url2);
@@ -337,9 +340,9 @@ pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
 
     let body_json = BodyGetFSItems {
-        limit: 12,
+        limit: 16,
         promotionid: fs_info.promotionid,
-        itemids: vec![product_info.item_id],
+        itemids,
         sort_soldout: true,
         with_dp_items: false,
     };
@@ -364,7 +367,7 @@ pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product
     //println!("Body: {}", &body);
 
     let items = if let Some(data) = hasil.data {
-        data.items
+        data.items.unwrap_or_default()
     } else {
         println!("Status: {}", status_code);
         Vec::new()
@@ -508,6 +511,24 @@ pub async fn info_akun(cookie_content: &CookieData) -> Result<UserData, Box<dyn 
         process::exit(1);
     }
 }
+pub async fn get_redirect_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let client = ClientBuilder::new()
+        .redirect(RedirectPolicy::limited(10))
+        .danger_accept_invalid_certs(true)
+        .impersonate(Impersonate::Chrome130)
+        .enable_ech_grease(true)
+        .permute_extensions(true)
+        .gzip(true)
+        .build()?;
+
+    let res = client.get(url)
+        .send()
+        .await?;
+
+    let final_url = res.url().clone();
+    println!("Final URL: {}", final_url);
+    Ok(final_url.to_string())
+}
 pub fn process_url(url: &str) -> ProductInfo {
     let mut shop_id = String::new();
     let mut item_id = String::new();
@@ -569,4 +590,14 @@ pub fn read_cookie_file(file_name: &str) -> String {
     } else {
         trimmed_content
     }
+}
+pub fn universal_client_skip_headers() -> reqwest::Client {
+    ClientBuilder::new()
+        .danger_accept_invalid_certs(true)
+        .impersonate_skip_headers(Impersonate::Chrome130)
+        .enable_ech_grease(true)
+        .permute_extensions(true)
+        .gzip(true)
+        .build()
+        .expect("Failed to create HTTP client")
 }

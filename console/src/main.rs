@@ -1,4 +1,8 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.2 :
+    Add support get_redirect_url
+    Add flashsale info
+    try to cutting process
 Whats new in 1.0.1 :
     memory management
     reuse rayon par-iter
@@ -9,19 +13,16 @@ Whats new in 1.0.0 :
     Add detail time info
     fix formating telegram messsage
     memory management
-Whats new in 0.10.9 :
-    Add detail time info
-    introdution updater
-    fix memory usage
 */
-use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
+use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems, CookieData, ProductInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
 use runtime::task::{self};
 use runtime::task_ng::{self};
 use runtime::voucher::{self};
 use runtime::crypt::{self};
 use runtime::telegram::{self};
-use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike};
+use runtime::product::{self};
+use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike, Utc};
 use std::io::{self, Write, Read};
 use std::process;
 use anyhow::Result;
@@ -85,6 +86,8 @@ struct Opt {
     collectionid: Option<String>,
     #[structopt(short, long, help = "Set Custom Threads")]
     job: Option<String>,
+    #[structopt(short, long, help = "Test mode")]
+    test: bool,
 }
 
 #[cfg(windows)]
@@ -223,8 +226,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get account details
     let selected_file = opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"));
-    let cookie_content = prepare::read_cookie_file(&selected_file);
-    let cookie_data = prepare::create_cookie(&cookie_content);
+    let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&selected_file));
     println!("csrftoken: {}", cookie_data.csrftoken);
 
     let fp_folder = format!("./header/{}/af-ac-enc-sz-token.txt", selected_file);
@@ -246,8 +248,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let device_info = crypt::create_devices(&sz_token_content);
 	
+    if opt.test {
+        println!("Test mode enabled");
+        let _ = test(&cookie_data).await?;
+        process::exit(1);
+    }
     // Get target URL
-	let target_url = get_or_prompt(opt.url.as_deref(), "Masukkan URL:");
+	let mut target_url = get_or_prompt(opt.url.as_deref(), "Masukkan URL:");
+    let mut product_info = prepare::process_url(&target_url.trim());
+    if product_info.shop_id == 0 && product_info.item_id == 0 {
+        println!("Cek apakah redirect?.");
+        target_url = prepare::get_redirect_url(&target_url).await?.into();
+        product_info = prepare::process_url(&target_url);
+    }
 	
 	let mut promotionid = String::new();
 	let mut signature = String::new();
@@ -295,7 +308,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
-    let product_info = prepare::process_url(&target_url.trim());
     // Perform the main task
     let (info_result, address_result, product_result) = tokio::join!(
         prepare::info_akun(&cookie_data),
@@ -324,15 +336,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
-	println!("addressid  : {}", address_info.id);
+    println!("addressid  : {}", address_info.id);
 	println!("name             : {}", name);
     // println!("models           : \n{:#?}", model_info);
     println!("Official Shop ?  : {}", is_official_shop);
     let fs_item = if fs_info.promotionid != 0 {
         println!("promotionid  : {}", fs_info.promotionid);
-        println!("start_time   : {}", fs_info.start_time);
-        println!("end_time     : {}", fs_info.end_time);
-        let fs_items = prepare::get_flash_sale_batch_get_items(&cookie_data, &product_info, &fs_info).await?;
+        println!("start_time   : {}", human_readable_time(fs_info.start_time));
+        println!("end_time     : {}", human_readable_time(fs_info.end_time));
+        let fs_items = prepare::get_flash_sale_batch_get_items(&cookie_data, &[product_info.clone()], &fs_info).await?;
         fs_items
     }else {
         Vec::new()
@@ -382,8 +394,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     let token = get_or_prompt(opt.token.as_deref(), "Token Media: ");
 	
-    let payment_json_data = prepare::open_payment_file().await?;
-	let payment_info = prepare::get_payment(&payment_json_data).await?;
+	let payment_info = prepare::get_payment(&prepare::open_payment_file().await?).await?;
 
 	if let Some(payment) = choose_payment(&payment_info, &opt) {
 		chosen_payment = payment;
@@ -435,6 +446,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	clear_screen();
 	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
     println!("{:?}", chosen_payment);
+    let client = Arc::new(prepare::universal_client_skip_headers());
+    let shared_headers = Arc::new(task::headers_checkout(&cookie_data));
+    let vc_header = Arc::new(voucher::headers_checkout(&cookie_data));
     let cookie_data = Arc::new(cookie_data);
     let device_info = Arc::new(device_info);
     let product_info = Arc::new(product_info);
@@ -447,33 +461,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only || opt.shop_vouchers {
         if !voucher_collectionid.is_empty() {
-            let (promo_id, sig) = voucher::some_function(&voucher_collectionid, &cookie_data).await?;
+            let (promo_id, sig) = voucher::some_function(client.clone(), &voucher_collectionid, &cookie_data).await?;
             promotionid = promo_id;
             signature = sig;
         }
-        let cookie_data_clone = Arc::clone(&cookie_data);
+        let vc_header_clone = Arc::clone(&vc_header);
         let product_info_clone = Arc::clone(&product_info);
+        let client_clone = Arc::clone(&client);
         let shop_task = tokio::spawn(async move{
             if !voucher_code_shop.is_empty() {
-                voucher::save_shop_voucher_by_voucher_code(&voucher_code_shop, &cookie_data_clone, &product_info_clone).await
+                voucher::save_shop_voucher_by_voucher_code(client_clone, &voucher_code_shop, vc_header_clone, &product_info_clone).await
             } else {
                 Ok(None)
             }
         });
-        let cookie_data_clone = Arc::clone(&cookie_data);
+        let vc_header_clone = Arc::clone(&vc_header);
+        let client_clone = Arc::clone(&client);
         let platform_task = tokio::spawn(async move{
             if !promotionid.is_empty() && !signature.is_empty() {
                 if opt.no_claim_platform_vouchers {
-                    return voucher::get_voucher_data(&promotionid, &signature, &cookie_data_clone).await;
+                    return voucher::get_voucher_data(client_clone, &promotionid, &signature, vc_header_clone).await;
                 } else {
-                    return voucher::save_voucher(&promotionid, &signature, &cookie_data_clone).await;
+                    return voucher::save_voucher(client_clone, &promotionid, &signature, vc_header_clone).await;
                 }
             } else if !voucher_code_platform.is_empty() {
-                return voucher::save_platform_voucher_by_voucher_code(&voucher_code_platform, &cookie_data_clone).await;
+                return voucher::save_platform_voucher_by_voucher_code(client_clone, &voucher_code_platform, vc_header_clone).await;
             }    
             Ok(None)            
         });
-        let cookie_data_clone = Arc::clone(&cookie_data);
+        let client_clone = Arc::clone(&client);
+        let vc_header_clone = Arc::clone(&vc_header);
         let product_info_clone = Arc::clone(&product_info);
         let chosen_model_clone = Arc::clone(&chosen_model);
         let chosen_payment_clone = Arc::clone(&chosen_payment);
@@ -481,7 +498,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let recommend_task = tokio::spawn(async move{
             if !opt.no_fsv {
                 voucher::get_recommend_platform_vouchers(
-                    &cookie_data_clone,
+                    client_clone,
+                    vc_header_clone,
                     &product_info_clone,
                     quantity,
                     &chosen_model_clone,
@@ -508,15 +526,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("platform_voucher", &final_voucher).await;
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
 
-        let get_body = task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher)).await?;
-        let get_body = Arc::new(get_body);
+        let get_body = Arc::new(task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher)).await?);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
         let stop_flag = Arc::new(AtomicBool::new(false));
         for i in 0..max_threads {
             println!("Running on thread: {}", i);
             let tx = tx.clone();
+            let shared_headers = Arc::clone(&shared_headers);
+            let client = Arc::clone(&client);
             let stop_flag = Arc::clone(&stop_flag);
-            let cookie_data_clone = Arc::clone(&cookie_data);
             let device_info_clone = Arc::clone(&device_info);
             let chosen_payment_clone = Arc::clone(&chosen_payment);
             let get_body_clone = Arc::clone(&get_body);
@@ -528,7 +546,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if stop_flag.load(Ordering::Relaxed) {
                         break;
                     }
-                    let place_order_body = match task_ng::get_ng(&cookie_data_clone, &get_body_clone, &device_info_clone, &chosen_payment_clone).await
+                    let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone, &device_info_clone, &chosen_payment_clone).await
                     {
                         Ok(body) => body,
                         Err(err) => {
@@ -560,7 +578,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
-                    let mpp = match task_ng::place_order_ng(&cookie_data_clone, &place_order_body).await
+                    let mpp = match task_ng::place_order_ng(client.clone(), shared_headers.clone(), &place_order_body).await
                     {
                         Ok(response) => response,
                         Err(err) => {
@@ -737,11 +755,11 @@ fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Option
     println!("Variasi yang tersedia:");
 
     for (index, model) in models.iter().enumerate() {
-        let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.contains(&model.modelid)) {
+        let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.as_ref().expect("").contains(&model.modelid)) {
             format!(
                 "[FLASHSALE] - Est≉ {} - Hide: {} - fs-stok: {}",
                 format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
-                item.hidden_price_display,
+                item.hidden_price_display.as_deref().unwrap_or("N/A"),
                 item.stock
             )
         } else {
@@ -897,6 +915,30 @@ fn format_thousands(num: i64) -> String {
         formatted.push(c);
     }
     formatted
+}
+fn human_readable_time(epoch: i64) -> DateTime<Local> {
+    let utc = DateTime::<Utc>::from_timestamp(epoch, 0).expect("Invalid timestamp");
+    utc.with_timezone(&Local)
+}
+
+async fn test(cookie_data: &CookieData) -> Result<()> {
+    let fsid_current = product::get_current_fsid(&cookie_data).await?;
+    println!("Jumlah total fsid_current: {}", fsid_current.len());
+    for a in &fsid_current {
+        println!("fsid_current: {:?}", a);
+        let itemids = product::get_itemids_from_fsid(&a, &cookie_data).await?;
+        let chunk_count = (itemids.len() + 15) / 16;
+        println!("Jumlah itemids:{}\nJumlah chunk: {}", itemids.len(), chunk_count);
+        for chunk in itemids.chunks(16) {
+            let batch: Vec<ProductInfo> = chunk.to_vec();
+            let fs_items = prepare::get_flash_sale_batch_get_items(&cookie_data, &batch, &a).await?;
+            for item in fs_items {
+                let link = format!("https://shopee.co.id/product/{}/{}", item.shopid, item.itemid);
+                println!("item: {:?}\nLink:{}", item, link);
+            }    
+        }
+    }
+    Ok(())
 }
 
 fn args_checking(opt: &Opt){

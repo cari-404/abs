@@ -7,3 +7,4 @@ pub use voucher::Vouchers;
 pub mod crypt;
 pub mod login;
 pub mod telegram;
+pub mod product;

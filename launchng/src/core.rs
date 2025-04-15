@@ -4,7 +4,7 @@ use winsafe::{self as w,
 };
 use ::runtime::prepare::{self, AddressInfo};
 use tokio::{time::{timeout, Duration}};
-use chrono::prelude::*;
+use chrono::{Local, DateTime, Timelike};
 
 use crate::func_main;
 use crate::about;
@@ -55,8 +55,8 @@ impl MyWindow {
             accel_table: Some(accel_table),
             ..Default::default()
         });
-    
-        let status_bar = gui::StatusBar::new(
+        //let _ = manager::log_window(&wnd);
+        let _status_bar = gui::StatusBar::new(
             &wnd,
             &[
                 gui::SbPart::Fixed(200),      // 200 pixels, never resizes
@@ -66,7 +66,7 @@ impl MyWindow {
         );
     
         // Input URL
-        let lbl_url = gui::Label::new(&wnd, gui::LabelOpts {
+        let _lbl_url = gui::Label::new(&wnd, gui::LabelOpts {
             text: "URL".to_owned(),
             position: (10, 10),
             ..Default::default()
@@ -85,7 +85,7 @@ impl MyWindow {
         });
     
         // Payment ComboBox
-        let lbl_payment = gui::Label::new(&wnd, gui::LabelOpts {
+        let _lbl_payment = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Payment".to_owned(),
             position: (10, 50),
             ..Default::default()
@@ -100,7 +100,7 @@ impl MyWindow {
         });
     
         // File Picker
-        let lbl_file = gui::Label::new(&wnd, gui::LabelOpts {
+        let _lbl_file = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Pilih file".to_owned(),
             position: (310, 50),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
@@ -113,9 +113,8 @@ impl MyWindow {
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
             ..Default::default()
         });
-        let file_combo_clone = file_combo.clone();
         // Harga Max & Kuantiti
-        let lbl_harga = gui::Label::new(&wnd, gui::LabelOpts {
+        let _lbl_harga = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Harga Max".to_owned(),
             position: (10, 80),
             ..Default::default()
@@ -135,7 +134,7 @@ impl MyWindow {
             ..Default::default()
         });
     
-        let lbl_qty = gui::Label::new(&wnd, gui::LabelOpts {
+        let _lbl_qty = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Kuantiti".to_owned(),
             position: (10, 110),
             size: (60, 20),
@@ -150,7 +149,7 @@ impl MyWindow {
             ..Default::default()
         });
     
-        let lbl_kurir = gui::Label::new(&wnd, gui::LabelOpts {
+        let _lbl_kurir = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Kurir".to_owned(),
             position: (310, 110),
             size: (60, 20),
@@ -164,7 +163,7 @@ impl MyWindow {
             ..Default::default()
         });
     
-        let lbl_variasi = gui::Label::new(&wnd, gui::LabelOpts {
+        let _lbl_variasi = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Variasi".to_owned(),
             position: (310, 80),
             size: (60, 20),
@@ -180,7 +179,7 @@ impl MyWindow {
         });
     
         // Time
-        let time_label = gui::Label::new(&wnd, gui::LabelOpts {
+        let _time_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Time".to_owned(),
             position: (10, 160),
             size: (60, 20),
@@ -410,126 +409,136 @@ impl MyWindow {
                 self2.btn_cek.hwnd().ShowWindow(SW::SHOW);
                 self2.btn_cek.set_text("Cek");
             }else{
-                let start = self2.url_text.text();
-                let cookie_content = prepare::read_cookie_file(&file);
-                let cookie_data = prepare::create_cookie(&cookie_content);
-                let url_1 = start.trim();
-                println!("{}", url_1);
-                let product_info = prepare::process_url(url_1);
-                println!("{}, {}", product_info.shop_id, product_info.item_id);
-                if product_info.shop_id != 0 && product_info.item_id != 0 {
-                    println!("Ok URL");
-                    let variasi_combo_clone = self2.variasi_combo.clone();
-                    let kurir_combo_clone = self2.kurir_combo.clone();
-                    let btn_cek_cek = self2.btn_cek.clone();
-                    let wnd_clone_cek = self2.wnd.clone();
-                    let cookie_data_clone = cookie_data.clone();
-                    let product_info_clone = product_info.clone();
-                    tokio::spawn(async move {
-                        // Memanggil get_product dengan timeout
-                        match timeout(Duration::from_secs(10), prepare::get_product(&product_info_clone, &cookie_data_clone)).await {
-                            Ok(Ok((name, model_info, is_official_shop, fs_info, rcode))) => {
-                                if rcode == "200 OK" {
-                                    let fs_items = if fs_info.promotionid != 0 {
-                                        println!("promotionid  : {}", fs_info.promotionid);
-                                        println!("start_time   : {}", fs_info.start_time);
-                                        println!("end_time     : {}", fs_info.end_time);
-                                        match prepare::get_flash_sale_batch_get_items(&cookie_data_clone, &product_info_clone, &fs_info).await {
-                                            Ok(body) => body,
-                                            Err(e) => {
-                                                eprintln!("Error in get_flash_sale_batch_get_items: {:?}", e);
-                                                Vec::new() // Jika error, kembalikan array kosong
+                let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
+                let self2 = self2.clone();
+                tokio::spawn(async move {
+                    let mut product_info = prepare::process_url(&self2.url_text.text().trim());
+                    if product_info.shop_id == 0 && product_info.item_id == 0 {
+                        println!("Cek apakah redirect?");
+                        match prepare::get_redirect_url(&self2.url_text.text().trim()).await {
+                            Ok(redirect) => {
+                                product_info = prepare::process_url(&redirect);
+                            }
+                            Err(e) => {
+                                eprintln!("Gagal mendapatkan redirect: {:?}", e);
+                            }
+                        }
+                    }
+                    println!("{}, {}", product_info.shop_id, product_info.item_id);
+                    if product_info.shop_id != 0 && product_info.item_id != 0 {
+                        println!("Ok URL");
+                        let variasi_combo_clone = self2.variasi_combo.clone();
+                        let kurir_combo_clone = self2.kurir_combo.clone();
+                        let btn_cek_cek = self2.btn_cek.clone();
+                        let wnd_clone_cek = self2.wnd.clone();
+                        let cookie_data_clone = cookie_data.clone();
+                        let product_info_clone = product_info.clone();
+                        tokio::spawn(async move {
+                            // Memanggil get_product dengan timeout
+                            match timeout(Duration::from_secs(10), prepare::get_product(&product_info_clone, &cookie_data_clone)).await {
+                                Ok(Ok((name, model_info, is_official_shop, fs_info, rcode))) => {
+                                    if rcode == "200 OK" {
+                                        let fs_items = if fs_info.promotionid != 0 {
+                                            println!("promotionid  : {}", fs_info.promotionid);
+                                            println!("start_time   : {}", func_main::human_readable_time(fs_info.start_time));
+                                            println!("end_time     : {}", func_main::human_readable_time(fs_info.end_time));
+                                            match prepare::get_flash_sale_batch_get_items(&cookie_data_clone, &[product_info_clone.clone()], &fs_info).await {
+                                                Ok(body) => body,
+                                                Err(e) => {
+                                                    eprintln!("Error in get_flash_sale_batch_get_items: {:?}", e);
+                                                    Vec::new() // Jika error, kembalikan array kosong
+                                                }
                                             }
-                                        }
-                                    }else {
-                                        Vec::new()
-                                    };
-                                    for (index, model) in model_info.iter().enumerate() {
-                                        let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.contains(&model.modelid)) {
-                                            format!(
-                                                "[FLASHSALE] - Est≉  {} - Hide: {} - fs-stok: {}",
-                                                func_main::format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
-                                                item.hidden_price_display,
-                                                item.stock
-                                            )
-                                        } else {
-                                            String::new()
+                                        }else {
+                                            Vec::new()
                                         };
-                                        println!("{}. {} - Harga: {} - Stok: {} {}", index + 1, model.name, func_main::format_thousands(model.price / 100000), model.stock, flashsale);
+                                        for (index, model) in model_info.iter().enumerate() {
+                                            let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.as_ref().expect("").contains(&model.modelid)) {
+                                                format!(
+                                                    "[FLASHSALE] - Est≉  {} - Hide: {} - fs-stok: {}",
+                                                    func_main::format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
+                                                    item.hidden_price_display.as_deref().unwrap_or("N/A"),
+                                                    item.stock
+                                                )
+                                            } else {
+                                                String::new()
+                                            };
+                                            println!("{}. {} - Harga: {} - Stok: {} {}", index + 1, model.name, func_main::format_thousands(model.price / 100000), model.stock, flashsale);
+                                        }
+                                        let name_model_vec: Vec<String> = model_info.iter().map(|model| model.name.clone()).collect();
+                                        for name_model in &name_model_vec {
+                                            variasi_combo_clone.items().add(&[name_model]);
+                                            variasi_combo_clone.items().select(Some(0));
+                                        }
+                                    } else {
+                                        println!("Error: {}", rcode);
+                                        let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nError : {}", rcode);
+                                        let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
                                     }
-                                    let name_model_vec: Vec<String> = model_info.iter().map(|model| model.name.clone()).collect();
-                                    for name_model in &name_model_vec {
-                                        variasi_combo_clone.items().add(&[name_model]);
-                                        variasi_combo_clone.items().select(Some(0));
-                                    }
-                                } else {
-                                    println!("Error: {}", rcode);
-                                    let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nError : {}", rcode);
+                                },
+                                Ok(Err(e)) => {
+                                    println!("Error: {:?}", e);
+                                    let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nError : {:?}", e);
+                                    let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
+                                },
+                                Err(_) => {
+                                    eprintln!("Timeout occurred");
+                                    let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nTimeout : Timeout occurred");
                                     let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
                                 }
-                            },
-                            Ok(Err(e)) => {
-                                println!("Error: {:?}", e);
-                                let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nError : {:?}", e);
-                                let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
-                            },
-                            Err(_) => {
-                                eprintln!("Timeout occurred");
-                                let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nTimeout : Timeout occurred");
-                                let _ = func_main::error_cek(&wnd_clone_cek, "Error get Variation", &isi);
-                            }
-                        };
-                        btn_cek_cek.clone().hwnd().EnableWindow(true);
-                        btn_cek_cek.set_text("Cek");
-                        Ok::<(), ()>(())
-                    });
-                    let variasi_combo_clone = self2.variasi_combo.clone();
-                    let kurir_combo_clone = self2.kurir_combo.clone();
-                    let btn_cek_cek = self2.btn_cek.clone();
-                    let wnd_clone_cek = self2.wnd.clone();
-                    let cookie_data = cookie_data.clone();
-                    let product_info = product_info.clone();
-                    tokio::spawn(async move {
-                        // Memanggil get_kurir dengan timeout
-                        let address_info = match prepare::address(&cookie_data).await {
-                            Ok(address) => address,
-                            Err(e) => {
-                                // Handle the error case
-                                eprintln!("Failed to get address: {}", e);
-                                AddressInfo::default() // Early return or handle the error as needed
-                            }
-                        };
-                        match timeout(Duration::from_secs(10), prepare::kurir(&cookie_data, &product_info, &address_info)).await {
-                            Ok(Ok(kurirs)) => {
-                                let kurirs_iter: Vec<String> = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
-                                for name_kurir in &kurirs_iter {
-                                    println!("{}", name_kurir);
-                                    kurir_combo_clone.items().add(&[name_kurir]);
-                                    kurir_combo_clone.items().select(Some(0));
+                            };
+                            btn_cek_cek.clone().hwnd().EnableWindow(true);
+                            btn_cek_cek.set_text("Cek");
+                            Ok::<(), ()>(())
+                        });
+                        let variasi_combo_clone = self2.variasi_combo.clone();
+                        let kurir_combo_clone = self2.kurir_combo.clone();
+                        let btn_cek_cek = self2.btn_cek.clone();
+                        let wnd_clone_cek = self2.wnd.clone();
+                        let cookie_data = cookie_data.clone();
+                        let product_info = product_info.clone();
+                        tokio::spawn(async move {
+                            // Memanggil get_kurir dengan timeout
+                            let address_info = match prepare::address(&cookie_data).await {
+                                Ok(address) => address,
+                                Err(e) => {
+                                    // Handle the error case
+                                    eprintln!("Failed to get address: {}", e);
+                                    AddressInfo::default() // Early return or handle the error as needed
                                 }
-                            },
-                            Ok(Err(e)) => {
-                                println!("Error: {:?}", e);
-                                let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nError : {:?}", e);
-                                let _ = func_main::error_cek(&wnd_clone_cek, "Error get Shipping", &isi);
-                            },
-                            Err(e) => {
-                                println!("Timeout: {:?}", e);
-                                let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nTimeout : {:?}", e);
-                                let _ = func_main::error_cek(&wnd_clone_cek, "Error get Shipping", &isi);
-                            }
-                        };
-                        btn_cek_cek.clone().hwnd().EnableWindow(true);
-                        btn_cek_cek.set_text("Cek");
-                        Ok::<(), ()>(())
-                    });
-                }else{
-                    let _ = func_main::error_cek(&self2.wnd, "Error", "Invalid URL");
-                    println!("Invalid URL");
-                    self2.btn_cek.hwnd().EnableWindow(true);
-                    self2.btn_cek.set_text("Cek");
-                }
-            }
+                            };
+                            match timeout(Duration::from_secs(10), prepare::kurir(&cookie_data, &product_info, &address_info)).await {
+                                Ok(Ok(kurirs)) => {
+                                    let kurirs_iter: Vec<String> = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
+                                    for name_kurir in &kurirs_iter {
+                                        println!("{}", name_kurir);
+                                        kurir_combo_clone.items().add(&[name_kurir]);
+                                        kurir_combo_clone.items().select(Some(0));
+                                    }
+                                },
+                                Ok(Err(e)) => {
+                                    println!("Error: {:?}", e);
+                                    let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nError : {:?}", e);
+                                    let _ = func_main::error_cek(&wnd_clone_cek, "Error get Shipping", &isi);
+                                },
+                                Err(e) => {
+                                    println!("Timeout: {:?}", e);
+                                    let isi = format!("OH SNAP!!!\nSolution:\n1. Please Renew cookie!\n2. Disable Proxy\n3. Contact Administrator\n\nTimeout : {:?}", e);
+                                    let _ = func_main::error_cek(&wnd_clone_cek, "Error get Shipping", &isi);
+                                }
+                            };
+                            btn_cek_cek.clone().hwnd().EnableWindow(true);
+                            btn_cek_cek.set_text("Cek");
+                            Ok::<(), ()>(())
+                        });
+                    }else{
+                        let _ = func_main::error_cek(&self2.wnd, "Error", "Invalid URL");
+                        println!("Invalid URL");
+                        self2.btn_cek.hwnd().EnableWindow(true);
+                        self2.btn_cek.set_text("Cek");
+                    }
+                });
+            };
             Ok(())
         });
 		let self2 = self.clone();
@@ -660,7 +669,8 @@ impl MyWindow {
 		self.wnd.on().wm_command_accel_menu(102 as u16, move || {
             let command = self2.generate_cmd();
             if let Ok(Some(command))  = command {
-                let _ = self2.generate_struct(command);
+                let url = self2.generate_struct(command);
+                let _ = func_main::set_clipboard(&url);
             } else {
                 println!("No command generated.");
             }
@@ -706,6 +716,18 @@ impl MyWindow {
             let _ = about::about_window(&wnd);
 			Ok(())
 		});
+        let wnd = self.wnd.clone();
+		self.wnd.on().wm_command_accel_menu(9 as u16, move || {
+            println!("Menu clicked!");
+            let _ = manager::show_fs_window(&wnd);
+			Ok(())
+		});
+        let wnd = self.wnd.clone();
+		self.wnd.on().wm_command_accel_menu(10 as u16, move || {
+            println!("Menu clicked!");
+            let _ = manager::log_window(&wnd);
+			Ok(())
+		});
 	}
     fn generate_cmd(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
         let self2 = self.clone();
@@ -747,9 +769,21 @@ impl MyWindow {
         let promotionid_text = self2.promotionid_text.text();
         let signature_text = self2.signature_text.text();
         let collectionid = self2.cid_text.text();
-        let url_1 = url.trim();
+        let url_1 = url.clone();
         println!("{}", url_1);
-        let product_info = prepare::process_url(url_1);
+        let (tx, rx) = std::sync::mpsc::channel();
+        tokio::spawn(async move {
+            let url_1 = url_1.trim();
+            let mut product_info = prepare::process_url(&url_1);
+            if product_info.shop_id == 0 && product_info.item_id == 0 {
+                if let Ok(redirect) = prepare::get_redirect_url(&url_1).await {
+                    product_info = prepare::process_url(&redirect);
+                }
+            }
+        
+            let _ = tx.send(product_info);
+        });
+        let product_info = rx.recv().unwrap();
         let refe = format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id);
         // Menjalankan program abs.exe dengan argumen yang dibuat
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
@@ -915,7 +949,7 @@ impl MyWindow {
         }
         Ok(())
     }
-    fn generate_struct(&self, command: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
+    fn generate_struct(&self, command: Vec<String>) -> String {
         let command_str = command
             .iter()
             .map(|s| {
@@ -928,6 +962,6 @@ impl MyWindow {
             .collect::<Vec<String>>()
             .join(" ");
         println!("{}", &command_str);
-        Ok(())
+        command_str
     }
 }

@@ -1,7 +1,7 @@
 use rquest as reqwest;
 use reqwest::tls::Impersonate;
 use reqwest::{ClientBuilder, Version};
-use reqwest::header::HeaderValue;
+use reqwest::header::{HeaderValue, HeaderMap};
 use chrono::{Utc, Timelike};
 use anyhow::Result;
 use serde_json::{Value};
@@ -311,10 +311,9 @@ pub struct SelectedPlaceOrder {
     pub version: i64,
 }
 
-pub async fn place_order_ng(cookie_content: &CookieData, place_body: &PlaceOrderBody) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
-	let mut headers = headers_checkout(&cookie_content);
-	let data = crypt::random_hex_string(16);
-	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
+pub async fn place_order_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, place_body: &PlaceOrderBody) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let mut headers = (*base_headers).clone();
+    headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
     // Convert struct to JSON
 	//let body_str = serde_json::to_string(&place_body)?;
 	//println!("Status: Start Place_Order");
@@ -323,18 +322,8 @@ pub async fn place_order_ng(cookie_content: &CookieData, place_body: &PlaceOrder
 
 	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/place_order");
 	println!("{}", url2);
-	// Buat klien HTTP
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
     // Buat permintaan HTTP POST
-    let response = client
+    let response = (*client)
         .post(&url2)
         .headers(headers)
 		.json(&place_body)
@@ -522,26 +511,16 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     };
     Ok(body_json)
 }
-pub async fn get_ng(cookie_content: &CookieData, body_json: &GetBodyJson, device_info: &DeviceInfo, chosen_payment: &PaymentInfo) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
-	let mut headers = headers_checkout(&cookie_content);
-	let data = crypt::random_hex_string(16);
-	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
+pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, device_info: &DeviceInfo, chosen_payment: &PaymentInfo) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
+    let mut headers = (*base_headers).clone();
+    headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
 	//println!("Status: Start Checkout");
 
 	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
     //let body_str = serde_json::to_string(&body_json)?;
     //println!("{}", body_str);
 	println!("{}", url2);
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
-    let response = client
+    let response = (*client)
         .post(&url2)
         .headers(headers)
 		.json(&body_json)

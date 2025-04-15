@@ -1,6 +1,6 @@
 [package]
 name = "launchng"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 authors = ["Paijo"]
 description = "Launcher NG for ABS"
@@ -16,7 +16,7 @@ OriginalFilename = "launcher2ng.exe"
 CompanyName = "Paijo"
 
 [dependencies]
-winsafe = { version = "0.0.23", features = ["gui", "kernel"] }
+winsafe = { version = "0.0.23", features = ["gui", "kernel", "advapi", "shell"] }
 tokio = { version = "1", features = ["full"] }
 runtime = { path = "../runtime" }
 serde_json = "1"
@@ -24,3 +24,4 @@ chrono = "0.4"
 windows-version = "0.1.1"
 image = "0.25.5"
 base64 = "0.13"
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory"] }
