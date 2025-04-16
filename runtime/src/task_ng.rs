@@ -1,6 +1,5 @@
 use rquest as reqwest;
-use reqwest::tls::Impersonate;
-use reqwest::{ClientBuilder, Version};
+use reqwest::Version;
 use reqwest::header::{HeaderValue, HeaderMap};
 use chrono::{Utc, Timelike};
 use anyhow::Result;
@@ -10,9 +9,8 @@ use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
 
-use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
+use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::voucher::Vouchers;
-use crate::task::headers_checkout;
 use crate::crypt::{self, DeviceInfo};
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -25,7 +23,7 @@ pub struct PlaceOrderBody {
     dropshipping_info: Option<Value>,
     promotion_data: Option<Value>,
     selected_payment_channel_data: Option<Value>,
-    shoporders: Option<Value>,
+    pub shoporders: Option<Value>,
     shipping_orders: Option<Value>,
     display_meta_data: Option<Value>,
     fsv_selection_infos: Option<Value>,
@@ -156,7 +154,7 @@ struct Item {
     add_on_deal_id: i32,
     is_add_on_sub_item: bool,
     item_group_id: Option<i64>,
-    insurances: Vec<String>,
+    insurances: Vec<serde_json::Value>,
     channel_exclusive_info: ChannelExclusiveInfo,
     supports_free_returns: bool,
 }
@@ -342,7 +340,8 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     address_info: &AddressInfo, quantity: i32, 
     chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: Arc<Option<Vouchers>>, 
-    platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>, use_coins: bool) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
+    platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>, use_coins: bool,
+    insurances: &[serde_json::Value]) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -445,7 +444,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
                 add_on_deal_id: 0,
                 is_add_on_sub_item: false,
                 item_group_id: None,
-                insurances: vec![],
+                insurances: insurances.to_vec(),
                 channel_exclusive_info: ChannelExclusiveInfo {
                     source_id: 0,
                     token: "".to_owned(),
@@ -580,13 +579,13 @@ pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, 
         Err("Failed to get checkout data".into())
     }
 }
-pub async fn get_builder(cookie_content: &CookieData, 
+pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>,
     device_info: &DeviceInfo, 
     product_info: &ProductInfo, 
     address_info: &AddressInfo, quantity: i32, 
     chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: &Option<Vouchers>, 
-    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>, use_coins: bool) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
+    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>, use_coins: bool, insurances: &[serde_json::Value]) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -681,7 +680,7 @@ pub async fn get_builder(cookie_content: &CookieData,
                 add_on_deal_id: 0,
                 is_add_on_sub_item: false,
                 item_group_id: None,
-                insurances: vec![],
+                insurances: insurances.to_vec(),
                 channel_exclusive_info: ChannelExclusiveInfo {
                     source_id: 0,
                     token: "".to_owned(),
@@ -745,22 +744,12 @@ pub async fn get_builder(cookie_content: &CookieData,
         }],
         order_update_info: OrderUpdateInfo {},
     };
-	let mut headers = headers_checkout(&cookie_content);
-	let data = crypt::random_hex_string(16);
-	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
+	let mut headers = (*base_headers).clone();
+    headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
 	println!("Status: Start Checkout");
 
 	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
 	println!("{}", url2);
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
     let response = client
         .post(&url2)
         .headers(headers)
@@ -814,4 +803,26 @@ pub async fn get_builder(cookie_content: &CookieData,
     place_order_body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
 
 	Ok(place_order_body)
+}
+
+pub fn falsification_insurance(shoporders: &serde_json::Value) -> Vec<serde_json::Value> {
+    let mut asu = vec![];
+    if let Some(orders) = shoporders.as_array() {
+        for order in orders {
+            if let Some(items) = order.get("items").and_then(|v| v.as_array()) {
+                for item in items {
+                    if let Some(insurances) = item.get("insurances").and_then(|v| v.as_array()) {
+                        for insurance_item in insurances {
+                            let mut insurance_modified = insurance_item.clone();
+                            if let Some(obj) = insurance_modified.as_object_mut() {
+                                obj.insert("selected".to_string(), serde_json::Value::Bool(false));
+                            }
+                            asu.push(insurance_modified);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    asu
 }

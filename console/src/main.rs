@@ -1,4 +1,6 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.4 :
+    add rejected insurance
 Whats new in 1.0.3 :
     more cutting process
     Add no coins
@@ -6,10 +8,6 @@ Whats new in 1.0.2 :
     Add support get_redirect_url
     Add flashsale info
     try to cutting process
-Whats new in 1.0.1 :
-    memory management
-    reuse rayon par-iter
-    automatically set timer when empty
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -460,6 +458,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chosen_payment = Arc::new(chosen_payment);
     let chosen_shipping = Arc::new(chosen_shipping);
     let max_price_clone = Arc::new(max_price.clone());
+    let temp = task_ng::get_builder(client.clone(), shared_headers.clone(), &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, &None, &None, &None, use_coins, &Vec::new()).await?;
+    let asuransi = temp.shoporders
+        .as_ref()
+        .map(|shoporders| task_ng::falsification_insurance(shoporders))
+        .unwrap_or_default();
+    println!("asuransi: {:?}", asuransi);
     countdown_to_task(&task_time_dt).await;
 
     if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only || opt.shop_vouchers {
@@ -529,7 +533,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("platform_voucher", &final_voucher).await;
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
 
-        let get_body = Arc::new(task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher), use_coins).await?);
+        let get_body = Arc::new(task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher), use_coins, &asuransi).await?);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
         let stop_flag = Arc::new(AtomicBool::new(false));
         for i in 0..max_threads {
