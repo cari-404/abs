@@ -342,7 +342,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     address_info: &AddressInfo, quantity: i32, 
     chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: Arc<Option<Vouchers>>, 
-    platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
+    platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>, use_coins: bool) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -458,7 +458,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         }],
         selected_payment_channel_data: chosen_payment.selected_get.clone(),
         promotion_data: PromotionData {
-            use_coins: true,
+            use_coins,
             free_shipping_voucher_info,
             platform_vouchers,
             shop_vouchers,
@@ -586,7 +586,7 @@ pub async fn get_builder(cookie_content: &CookieData,
     address_info: &AddressInfo, quantity: i32, 
     chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: &Option<Vouchers>, 
-    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
+    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>, use_coins: bool) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -694,7 +694,7 @@ pub async fn get_builder(cookie_content: &CookieData,
         }],
         selected_payment_channel_data: chosen_payment.selected_get.clone(),
         promotion_data: PromotionData {
-            use_coins: true,
+            use_coins,
             free_shipping_voucher_info,
             platform_vouchers,
             shop_vouchers,

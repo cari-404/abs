@@ -336,9 +336,8 @@ pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, 
         signature_source: "0".to_string(),
     };
 	
-	let body_str = serde_json::to_string(&body_json)?;
-
-	println!("{}", body_str);
+	//let body_str = serde_json::to_string(&body_json)?;
+	//println!("{}", body_str);
 
 	//println!("");
 	//println!("header:{:#?}", headers);
@@ -394,19 +393,16 @@ pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, 
 }
 
 pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> Result<Option<Vouchers>>{
-	let start: i64 = start.trim().parse().expect("Input tidak valid");
-
 	let body_json = GetVoucherRequest{
-        promotionid: start as i64,
+        promotionid: start.trim().parse().expect("Input tidak valid"),
         voucher_code: "-".to_string(),
         signature: end.to_string(),
         need_basic_info: true,
         need_user_voucher_status: true,
     };
 	
-	let body_str = serde_json::to_string(&body_json)?;
-
-	println!("{}", body_str);
+	//let body_str = serde_json::to_string(&body_json)?;
+	//println!("{}", body_str);
 
 	//println!("");
 	//println!("header:{:#?}", headers);

@@ -5,6 +5,7 @@ use winsafe::{self as w,
 use ::runtime::prepare::{self, AddressInfo};
 use tokio::{time::{timeout, Duration}};
 use chrono::{Local, DateTime, Timelike};
+use std::sync::Arc;
 
 use crate::func_main;
 use crate::about;
@@ -40,6 +41,7 @@ pub struct MyWindow {
     signature_text: gui::Edit,
     cid_label: gui::Label,
     cid_text: gui::Edit,
+    coins_checkbox: gui::CheckBox,
 }
 
 impl MyWindow {
@@ -175,6 +177,13 @@ impl MyWindow {
             width: 210,
             window_style: co::WS::CHILD | co::WS::VISIBLE | co::WS::TABSTOP | co::WS::VSCROLL | co::WS::GROUP | co::CBS::AUTOHSCROLL.into() | co::CBS::DISABLENOSCROLL.into(),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
+            ..Default::default()
+        });
+        let coins_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
+            text: "Use Coins".to_owned(),
+            position: (380, 160),
+            size: (80, 20),
+            check_state: gui::CheckState::Checked,
             ..Default::default()
         });
     
@@ -367,6 +376,7 @@ impl MyWindow {
             signature_text,
             cid_label,
             cid_text,
+            coins_checkbox,
         };
         new_self.events(); // attach our events
 		new_self
@@ -412,6 +422,7 @@ impl MyWindow {
                 let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
                 let self2 = self2.clone();
                 tokio::spawn(async move {
+                    let client = Arc::new(prepare::universal_client_skip_headers());
                     let mut product_info = prepare::process_url(&self2.url_text.text().trim());
                     if product_info.shop_id == 0 && product_info.item_id == 0 {
                         println!("Cek apakah redirect?");
@@ -428,21 +439,20 @@ impl MyWindow {
                     if product_info.shop_id != 0 && product_info.item_id != 0 {
                         println!("Ok URL");
                         let variasi_combo_clone = self2.variasi_combo.clone();
-                        let kurir_combo_clone = self2.kurir_combo.clone();
                         let btn_cek_cek = self2.btn_cek.clone();
                         let wnd_clone_cek = self2.wnd.clone();
                         let cookie_data_clone = cookie_data.clone();
                         let product_info_clone = product_info.clone();
+                        let client_clone = Arc::clone(&client);
                         tokio::spawn(async move {
-                            // Memanggil get_product dengan timeout
-                            match timeout(Duration::from_secs(10), prepare::get_product(&product_info_clone, &cookie_data_clone)).await {
+                            match timeout(Duration::from_secs(10), prepare::get_product(client_clone.clone(), &product_info_clone, &cookie_data_clone)).await {
                                 Ok(Ok((name, model_info, is_official_shop, fs_info, rcode))) => {
                                     if rcode == "200 OK" {
                                         let fs_items = if fs_info.promotionid != 0 {
                                             println!("promotionid  : {}", fs_info.promotionid);
                                             println!("start_time   : {}", func_main::human_readable_time(fs_info.start_time));
                                             println!("end_time     : {}", func_main::human_readable_time(fs_info.end_time));
-                                            match prepare::get_flash_sale_batch_get_items(&cookie_data_clone, &[product_info_clone.clone()], &fs_info).await {
+                                            match prepare::get_flash_sale_batch_get_items(client_clone.clone(), &cookie_data_clone, &[product_info_clone.clone()], &fs_info).await {
                                                 Ok(body) => body,
                                                 Err(e) => {
                                                     eprintln!("Error in get_flash_sale_batch_get_items: {:?}", e);
@@ -491,15 +501,14 @@ impl MyWindow {
                             btn_cek_cek.set_text("Cek");
                             Ok::<(), ()>(())
                         });
-                        let variasi_combo_clone = self2.variasi_combo.clone();
                         let kurir_combo_clone = self2.kurir_combo.clone();
                         let btn_cek_cek = self2.btn_cek.clone();
                         let wnd_clone_cek = self2.wnd.clone();
-                        let cookie_data = cookie_data.clone();
                         let product_info = product_info.clone();
+                        let client_clone = Arc::clone(&client);
                         tokio::spawn(async move {
-                            // Memanggil get_kurir dengan timeout
-                            let address_info = match prepare::address(&cookie_data).await {
+                            let base_headers = Arc::new(prepare::create_headers(&cookie_data));
+                            let address_info = match prepare::address(client_clone.clone(), base_headers.clone()).await {
                                 Ok(address) => address,
                                 Err(e) => {
                                     // Handle the error case
@@ -507,7 +516,7 @@ impl MyWindow {
                                     AddressInfo::default() // Early return or handle the error as needed
                                 }
                             };
-                            match timeout(Duration::from_secs(10), prepare::kurir(&cookie_data, &product_info, &address_info)).await {
+                            match timeout(Duration::from_secs(10), prepare::kurir(client_clone.clone(), base_headers.clone(), &product_info, &address_info)).await {
                                 Ok(Ok(kurirs)) => {
                                     let kurirs_iter: Vec<String> = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
                                     for name_kurir in &kurirs_iter {
@@ -820,6 +829,9 @@ impl MyWindow {
 
         if self2.fsv_checkbox.check_state() == gui::CheckState::Checked {
             commands.push("--fsv-only".to_string());
+        }
+        if self2.coins_checkbox.check_state() == gui::CheckState::Unchecked {
+            commands.push("--no-coins".to_string());
         }
         if self2.platform_checkbox.check_state() == gui::CheckState::Checked {
             match self2.platform_combobox.items().selected_index() {

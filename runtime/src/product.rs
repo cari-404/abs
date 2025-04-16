@@ -1,9 +1,9 @@
 use rquest as reqwest;
-use reqwest::tls::Impersonate;
-use reqwest::{ClientBuilder, Version};
+use reqwest::Version;
 use serde::{Serialize, Deserialize};
 use crate::prepare::{self, CookieData, ProductInfo, FSInfo};
 use anyhow::Result;
+use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct GetFSDetail {
@@ -26,7 +26,7 @@ struct ItemId {
     itemid: i64,
 }
 
-pub async fn get_current_fsid(cookie_content: &CookieData) -> Result<Vec<FSInfo>, anyhow::Error>   {
+pub async fn get_current_fsid(client: Arc<reqwest::Client>, cookie_content: &CookieData) -> Result<Vec<FSInfo>, anyhow::Error>   {
     let url2 = format!("https://mall.shopee.co.id/api/v4/flash_sale/get_all_sessions");
     println!("{}", url2);
     println!("Get flash sale promotion_id...");
@@ -34,16 +34,6 @@ pub async fn get_current_fsid(cookie_content: &CookieData) -> Result<Vec<FSInfo>
     let mut headers = prepare::FS_BASE_HEADER.clone();
     headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
-
-    // Buat klien HTTP
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
 
     // Buat permintaan HTTP POST
     let response = client
@@ -62,7 +52,7 @@ pub async fn get_current_fsid(cookie_content: &CookieData) -> Result<Vec<FSInfo>
     Ok(sessions)
 }
 
-pub async fn get_itemids_from_fsid(fsid: &FSInfo, cookie_content: &CookieData) -> Result<Vec<ProductInfo>, anyhow::Error> {
+pub async fn get_itemids_from_fsid(client: Arc<reqwest::Client>, fsid: &FSInfo, cookie_content: &CookieData) -> Result<Vec<ProductInfo>, anyhow::Error> {
     let url2 = format!("https://shopee.co.id/api/v4/flash_sale/get_all_itemids?need_personalize=true&promotionid={}&sort_soldout=true", fsid.promotionid);
     println!("{}", url2);
     println!("Get itemids from flash sale promotion_id...");
@@ -71,17 +61,6 @@ pub async fn get_itemids_from_fsid(fsid: &FSInfo, cookie_content: &CookieData) -
     headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
 
-    // Buat klien HTTP
-    let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
-    // Buat permintaan HTTP POST
     let response = client
         .get(&url2)
         .headers(headers)

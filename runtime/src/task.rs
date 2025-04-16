@@ -6,6 +6,7 @@ use chrono::{Utc};
 use anyhow::Result;
 use serde_json::{Value, json};
 use once_cell::sync::Lazy;
+use std::sync::Arc;
 
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::voucher::Vouchers;
@@ -385,10 +386,9 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn checkout_get(cookie_content: &CookieData, body_json: &serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
-	let mut headers = headers_checkout(&cookie_content);
-	let data = crypt::random_hex_string(16);
-	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
+pub async fn checkout_get(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
+    let mut headers = (*base_headers).clone();
+    headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
     // Convert struct to JSON
     let body_str = serde_json::to_string(&body_json).unwrap();
 	let body = Body::from(body_str.clone());
@@ -398,16 +398,6 @@ pub async fn checkout_get(cookie_content: &CookieData, body_json: &serde_json::V
 
 	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
 	println!("{}", url2);
-	// Buat klien HTTP
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
     // Buat permintaan HTTP POST
     let response = client
         .post(&url2)

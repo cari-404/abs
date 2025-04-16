@@ -1,4 +1,7 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.3 :
+    more cutting process
+    Add no coins
 Whats new in 1.0.2 :
     Add support get_redirect_url
     Add flashsale info
@@ -7,21 +10,14 @@ Whats new in 1.0.1 :
     memory management
     reuse rayon par-iter
     automatically set timer when empty
-Whats new in 1.0.0 :
-    Introduce new version
-    Add detail info flashsale
-    Add detail time info
-    fix formating telegram messsage
-    memory management
 */
-use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems, CookieData, ProductInfo};
+use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
 use runtime::task::{self};
 use runtime::task_ng::{self};
 use runtime::voucher::{self};
 use runtime::crypt::{self};
 use runtime::telegram::{self};
-use runtime::product::{self};
 use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike, Utc};
 use std::io::{self, Write, Read};
 use std::process;
@@ -86,6 +82,8 @@ struct Opt {
     collectionid: Option<String>,
     #[structopt(short, long, help = "Set Custom Threads")]
     job: Option<String>,
+    #[structopt(short, long, help = "Set No Coins used")]
+    no_coins: bool,
     #[structopt(short, long, help = "Test mode")]
     test: bool,
 }
@@ -151,6 +149,7 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Arc::new(prepare::universal_client_skip_headers());
     let mut chosen_model = ModelInfo {
         name: String::from("NOT SET"),
         price: 0,
@@ -197,6 +196,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     };
+    let use_coins = if opt.no_coins{
+        false
+    }else{
+        true
+    };
     println!("Default Quantity: {}", quantity);
     let config = match telegram::open_config_file().await {
         Ok(config_content) => {
@@ -228,6 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let selected_file = opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"));
     let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&selected_file));
     println!("csrftoken: {}", cookie_data.csrftoken);
+    let base_headers = Arc::new(prepare::create_headers(&cookie_data));
 
     let fp_folder = format!("./header/{}/af-ac-enc-sz-token.txt", selected_file);
 	
@@ -250,7 +255,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	
     if opt.test {
         println!("Test mode enabled");
-        let _ = test(&cookie_data).await?;
+        println!("STUB!!!");
         process::exit(1);
     }
     // Get target URL
@@ -310,9 +315,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
     // Perform the main task
     let (info_result, address_result, product_result) = tokio::join!(
-        prepare::info_akun(&cookie_data),
-        prepare::address(&cookie_data),
-        prepare::get_product(&product_info, &cookie_data)
+        prepare::info_akun(client.clone(), base_headers.clone()),
+        prepare::address(client.clone(), base_headers.clone()),
+        prepare::get_product(client.clone(), &product_info, &cookie_data)
     );
     let userdata = info_result?;
     let address_info = address_result?;
@@ -344,7 +349,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("promotionid  : {}", fs_info.promotionid);
         println!("start_time   : {}", human_readable_time(fs_info.start_time));
         println!("end_time     : {}", human_readable_time(fs_info.end_time));
-        let fs_items = prepare::get_flash_sale_batch_get_items(&cookie_data, &[product_info.clone()], &fs_info).await?;
+        let fs_items = prepare::get_flash_sale_batch_get_items(client.clone(), &cookie_data, &[product_info.clone()], &fs_info).await?;
         fs_items
     }else {
         Vec::new()
@@ -362,8 +367,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("Anda memilih model: {}", chosen_model.name);
-
-    let shipping_info = kurir_ng::get_shipping_data(&cookie_data, &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
+    let shared_headers = Arc::new(task::headers_checkout(&cookie_data));
+    let shipping_info = kurir_ng::get_shipping_data(client.clone(), base_headers.clone(), shared_headers.clone(), &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
@@ -446,8 +451,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	clear_screen();
 	heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, &max_price, &chosen_model, &chosen_shipping, &chosen_payment).await;
     println!("{:?}", chosen_payment);
-    let client = Arc::new(prepare::universal_client_skip_headers());
-    let shared_headers = Arc::new(task::headers_checkout(&cookie_data));
     let vc_header = Arc::new(voucher::headers_checkout(&cookie_data));
     let cookie_data = Arc::new(cookie_data);
     let device_info = Arc::new(device_info);
@@ -526,7 +529,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("platform_voucher", &final_voucher).await;
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
 
-        let get_body = Arc::new(task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher)).await?);
+        let get_body = Arc::new(task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher), use_coins).await?);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
         let stop_flag = Arc::new(AtomicBool::new(false));
         for i in 0..max_threads {
@@ -637,7 +640,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     price_data, update_info, dropship_info, promo_data, payment_data, 
                     orders, shipping_orders_data, meta_data, fsv_infos, buyer_info_data, 
                     event_info, txn_fee_info, disabled_info, service_fee_info, iof_data
-                ) = task::checkout_get(&cookie_data, &get_body.clone()).await?;
+                ) = task::checkout_get(client.clone(), shared_headers.clone(), &get_body.clone()).await?;
                 // Cek apakah `merchandise_subtotal` sesuai dengan `max_price * 100000`
                 if let Some(merchandise_subtotal) = price_data["merchandise_subtotal"].as_i64() {
                     println!("merchandise_subtotal: {}", merchandise_subtotal);
@@ -691,7 +694,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }else {
         loop{
             let get_body = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
-            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, _selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(&cookie_data, &get_body).await?;
+            let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, _selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(client.clone(), shared_headers.clone(), &get_body).await?;
             let place_order_body = task::place_order_builder(&device_info, &checkout_price_data, &order_update_info, &dropshipping_info, &promotion_data, &chosen_payment, &shoporders, &shipping_orders, &display_meta_data, &fsv_selection_infos, &buyer_info, &client_event_info, &buyer_txn_fee_info, &disabled_checkout_info, &buyer_service_fee_info, &iof_info).await?;
             let mpp = task::place_order(&cookie_data, &place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
@@ -919,26 +922,6 @@ fn format_thousands(num: i64) -> String {
 fn human_readable_time(epoch: i64) -> DateTime<Local> {
     let utc = DateTime::<Utc>::from_timestamp(epoch, 0).expect("Invalid timestamp");
     utc.with_timezone(&Local)
-}
-
-async fn test(cookie_data: &CookieData) -> Result<()> {
-    let fsid_current = product::get_current_fsid(&cookie_data).await?;
-    println!("Jumlah total fsid_current: {}", fsid_current.len());
-    for a in &fsid_current {
-        println!("fsid_current: {:?}", a);
-        let itemids = product::get_itemids_from_fsid(&a, &cookie_data).await?;
-        let chunk_count = (itemids.len() + 15) / 16;
-        println!("Jumlah itemids:{}\nJumlah chunk: {}", itemids.len(), chunk_count);
-        for chunk in itemids.chunks(16) {
-            let batch: Vec<ProductInfo> = chunk.to_vec();
-            let fs_items = prepare::get_flash_sale_batch_get_items(&cookie_data, &batch, &a).await?;
-            for item in fs_items {
-                let link = format!("https://shopee.co.id/product/{}/{}", item.shopid, item.itemid);
-                println!("item: {:?}\nLink:{}", item, link);
-            }    
-        }
-    }
-    Ok(())
 }
 
 fn args_checking(opt: &Opt){

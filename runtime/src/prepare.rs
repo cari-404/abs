@@ -10,6 +10,7 @@ use anyhow::Result;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use std::io::Read;
+use std::sync::Arc;
 use urlencoding::encode as url_encode;
 use once_cell::sync::Lazy;
 
@@ -173,12 +174,12 @@ impl Default for AddressInfo {
 pub static BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-    headers.insert("sec-ch-ua", HeaderValue::from_static("\"Chromium\";v=\"127\", \"Not)A;Brand\";v=\"24\", \"Google Chrome\";v=\"127\""));
+    headers.insert("sec-ch-ua", HeaderValue::from_static("\"Chromium\";v=\"130\", \"Not)A;Brand\";v=\"24\", \"Google Chrome\";v=\"130\""));
     headers.insert("x-shopee-language", HeaderValue::from_static("id"));
     headers.insert("x-requested-with", HeaderValue::from_static("XMLHttpRequest"));
     headers.insert("sec-ch-ua-platform", HeaderValue::from_static("\"Windows\""));
     headers.insert("sec-ch-ua-mobile", HeaderValue::from_static("?0"));
-	headers.insert("user-agent", HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36"));
+	headers.insert("user-agent", HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"));
     headers.insert("x-api-source", HeaderValue::from_static("pc"));
     headers.insert("accept", HeaderValue::from_static("*/*"));
     headers.insert("origin", HeaderValue::from_static("https://shopee.co.id"));
@@ -273,8 +274,7 @@ pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn st
     // Handle the case where there is an error or no payment information is found
 	process::exit(1);
 }
-pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, address_info: &AddressInfo) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
-	let headers = create_headers(&cookie_content);
+pub async fn kurir(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, address_info: &AddressInfo) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
 	let city_encoded = url_encode(&address_info.city);
     let district_encoded = url_encode(&address_info.district);
     let state_encoded = url_encode(&address_info.state);
@@ -282,20 +282,10 @@ pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, addr
 
 	let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
 	println!("{}", url2);
-    // Buat klien HTTP
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Chrome127)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
     // Buat permintaan HTTP POST
     let response = client
         .get(&url2)
-        .headers(headers)
+        .headers((*headers).clone())
         .version(Version::HTTP_2) 
         .send()
         .await?;
@@ -327,7 +317,7 @@ pub async fn kurir(cookie_content: &CookieData, product_info: &ProductInfo, addr
     }
     Ok(shipping_info_vec)
 }
-pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product_info: &[ProductInfo], fs_info: &FSInfo) -> Result<Vec<FSItems>, anyhow::Error> {
+pub async fn get_flash_sale_batch_get_items(client: Arc<reqwest::Client>, cookie_content: &CookieData, product_info: &[ProductInfo], fs_info: &FSInfo) -> Result<Vec<FSItems>, anyhow::Error> {
     let itemids: Vec<i64> = product_info.iter().map(|p| p.item_id).collect();
     let refe = format!("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Ccutline%25252Cfood_order_status");
     let url2 = format!("https://mall.shopee.co.id/api/v4/flash_sale/flash_sale_batch_get_items");
@@ -346,13 +336,6 @@ pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product
         sort_soldout: true,
         with_dp_items: false,
     };
-    let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        .build()?;
 
     let response = client
         .post(&url2)
@@ -374,7 +357,7 @@ pub async fn get_flash_sale_batch_get_items(cookie_content: &CookieData, product
     };
     Ok(items)
 }
-pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, FSInfo, String), anyhow::Error> {
+pub async fn get_product(client: Arc<reqwest::Client>, product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, FSInfo, String), anyhow::Error> {
     let url2 = format!("https://shopee.co.id/api/v4/item/get?itemid={}&shopid={}", product_info.item_id, product_info.shop_id);
     println!("{}", url2);
     println!("sending Get Shopee request...");
@@ -383,17 +366,6 @@ pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData
     headers.insert("referer", reqwest::header::HeaderValue::from_str(&format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id))?);
     headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
     headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
-
-    // Buat klien HTTP
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
     // Buat permintaan HTTP POST
     let response = client
         .get(&url2)
@@ -434,23 +406,13 @@ pub async fn get_product(product_info: &ProductInfo, cookie_content: &CookieData
     };
 	Ok((name, models_info, is_official_shop, fs_info, status_code))
 }
-pub async fn address(cookie_content: &CookieData) -> Result<AddressInfo, Box<dyn std::error::Error>> {
-	let headers = create_headers(&cookie_content);
+pub async fn address(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) -> Result<AddressInfo, Box<dyn std::error::Error>> {
 	let url2 = format!("https://shopee.co.id/api/v4/account/address/get_user_address_list");
 	println!("{}", url2);
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Chrome127)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
     // Buat permintaan HTTP POST
     let response = client
         .get(&url2)
-        .headers(headers)
+        .headers((*headers).clone())
         .version(Version::HTTP_2) 
         .send()
         .await?;
@@ -472,23 +434,13 @@ pub async fn address(cookie_content: &CookieData) -> Result<AddressInfo, Box<dyn
         process::exit(1);
     }
 }
-pub async fn info_akun(cookie_content: &CookieData) -> Result<UserData, Box<dyn std::error::Error>> {
-	let headers = create_headers(&cookie_content);
+pub async fn info_akun(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) -> Result<UserData, Box<dyn std::error::Error>> {
 	let url2 = format!("https://shopee.co.id/api/v4/account/basic/get_account_info");
 	println!("{}", url2);
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Chrome127)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
-
     // Buat permintaan HTTP POST
     let response = client
         .get(&url2)
-        .headers(headers)
+        .headers((*headers).clone())
         .version(Version::HTTP_2) 
         .send()
         .await?;
@@ -553,7 +505,7 @@ pub fn process_url(url: &str) -> ProductInfo {
 
     ProductInfo { shop_id, item_id }
 }
-fn create_headers(cookie_content: &CookieData) -> HeaderMap {
+pub fn create_headers(cookie_content: &CookieData) -> HeaderMap {
     let mut headers = BASE_HEADER.clone();
     headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
     headers.insert("cookie", HeaderValue::from_str(&cookie_content.cookie_content).unwrap());

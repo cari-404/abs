@@ -1,6 +1,7 @@
 use winsafe::{self as w,
     gui, prelude::*
 };
+use rquest as reqwest;
 use runtime::telegram;
 use runtime::prepare;
 use runtime::product;
@@ -301,7 +302,7 @@ pub fn log_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     Ok(())
 }
 pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
-    // Task -> GUI
+    let client = Arc::new(prepare::universal_client_skip_headers());
     let (tx_msg, rx_msg) = mpsc::unbounded_channel::<String>();
     let _ = tx_msg.send("Stopped".to_string());
     let interrupt_flag = Arc::new(AtomicBool::new(false));
@@ -360,6 +361,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     let my_list_clone = my_list.clone();
     let file_combo_clone = file_combo.clone();
+    let client_clone = client.clone();
     wnd2.on().wm_command_accel_menu(203 as u16, move || {
         let file = file_combo_clone.text();
         if let Some(selected_item) = my_list_clone.items().focused() {
@@ -368,9 +370,10 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let v: Vec<i64> = serde_json::from_str(&selected_item.text(1 as u32))?;
             let selected_item_index = selected_item.index();
             let my_list_clone = my_list_clone.clone();
+            let client_clone = client_clone.clone();
             tokio::spawn(async move {
                 let mut variation = Vec::new();
-                match prepare::get_product(&product_info, &cookie_data).await {
+                match prepare::get_product(client_clone, &product_info, &cookie_data).await {
                     Ok((_, model_info, _, _, _)) => {
                         for model in model_info.iter() {
                             if v.contains(&model.modelid) {
@@ -444,20 +447,21 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let wnd2_clone = wnd2.clone();
     let fs_combo_clone = fs_combo.clone();
     let shared_fsid_clone = shared_fsid.clone();
+    let client_clone = client.clone();
     cek_button.on().bn_clicked(move || {
         let file = file_combo_clone.text();
         if file.is_empty() {
             let isi = format!("Please select a file before checking the fs");
             let _ = func_main::error_modal(&wnd2_clone, "Error check data", &isi);
         } else {
-            let cookie_content = prepare::read_cookie_file(&file);
-            let cookie_data = prepare::create_cookie(&cookie_content);
+            let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
             let fs_combo_clone = fs_combo_clone.clone();
             let wnd2_clone = wnd2_clone.clone();
             let shared_fsid_clone = shared_fsid_clone.clone();
+            let client_clone = client_clone.clone();
             tokio::spawn(async move {
                 fs_combo_clone.items().delete_all();
-                let fsid_current = product::get_current_fsid(&cookie_data).await;
+                let fsid_current = product::get_current_fsid(client_clone, &cookie_data).await;
                 match fsid_current {
                     Ok(fsid_current) => {
                         if fsid_current.is_empty() {
@@ -495,6 +499,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let progress_label_clone = progress_label.clone();
     let mode_label_clone = mode_label.clone();
     let count_label_clone = count_label.clone();
+    let client_clone = client.clone();
     single_button.on().bn_clicked(move || {
         let fsid = fs_combo_clone.text();
         if fsid.is_empty() {
@@ -524,7 +529,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             } else {
                 println!("Tidak ditemukan promotionid yang cocok");
             }
-            let _ = get_flashsale_products(&wnd2_clone, Arc::new(fsinfo), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
+            let _ = get_flashsale_products(client_clone.clone(), &wnd2_clone, Arc::new(fsinfo), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
         };
         Ok(())
     });
@@ -538,6 +543,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let progress_label_clone = progress_label.clone();
     let mode_label_clone = mode_label.clone();
     let count_label_clone = count_label.clone();
+    let client_clone = client.clone();
     all_button.on().bn_clicked(move || {
         let shared = shared_fsid_clone.lock().unwrap();
         if shared.is_empty() {
@@ -547,7 +553,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         } else {
             mode_label_clone.set_text("All");
             wnd2_clone.hwnd().ShowWindow(w::co::SW::SHOWMAXIMIZED);
-            let _ = get_flashsale_products(&wnd2_clone, Arc::new(shared.to_vec()), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
+            let _ = get_flashsale_products(client_clone.clone(), &wnd2_clone, Arc::new(shared.to_vec()), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
         }
         Ok(())
     });
@@ -583,7 +589,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     //wnd2.run_main(None);
     Ok(())
 }
-fn get_flashsale_products(wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, file_combo: &gui::ComboBox, my_list: &gui::ListView, progress: &gui::ProgressBar, interrupt_flag: &Arc<AtomicBool>, tx_msg: &mpsc::UnboundedSender<String>, progress_label: &gui::Label, count_label: &gui::Label) -> Result<(), ()> {
+fn get_flashsale_products(client: Arc<reqwest::Client>, wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, file_combo: &gui::ComboBox, my_list: &gui::ListView, progress: &gui::ProgressBar, interrupt_flag: &Arc<AtomicBool>, tx_msg: &mpsc::UnboundedSender<String>, progress_label: &gui::Label, count_label: &gui::Label) -> Result<(), ()> {
     let file = file_combo.text();
     if file.is_empty() {
         let isi = format!("Please select a file before checking the fs");
@@ -605,12 +611,13 @@ fn get_flashsale_products(wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, fil
         let progress_label_clone = progress_label.clone();
         let fsinfo_cloned = fsinfo.clone();
         let count_label = count_label.clone();
+        let client_clone = client.clone();
         tokio::spawn(async move {
             let mut count = 0;
             let mut max = 0;
             let mut potition = 0;
             for fsinfoiter in fsinfo_cloned.iter() {
-                let fsid_current = product::get_itemids_from_fsid(&fsinfoiter, &cookie_data).await;
+                let fsid_current = product::get_itemids_from_fsid(client_clone.clone(), &fsinfoiter, &cookie_data).await;
                 match fsid_current {
                     Ok(fsid_current) => {
                         max += (fsid_current.len() + 15) / 16;
@@ -623,7 +630,7 @@ fn get_flashsale_products(wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, fil
                                 break;
                             }
                             let batch: Vec<ProductInfo> = fsi.to_vec();
-                            let fs_items = prepare::get_flash_sale_batch_get_items(&cookie_data, &batch, &fsinfoiter).await;
+                            let fs_items = prepare::get_flash_sale_batch_get_items(client_clone.clone(), &cookie_data, &batch, &fsinfoiter).await;
                             match fs_items {
                                 Ok(fs_items) => {
                                     for item in fs_items {
