@@ -34,7 +34,15 @@ struct BodyGetFSItems {
     sort_soldout: bool,
     with_dp_items: bool,
 }
-
+// Struct to represent model information
+#[derive(Deserialize, Debug, Clone)]
+pub struct RawModelInfo {
+    pub name: String,
+    pub price: i64,
+    pub stock: i64,
+    pub modelid: i64,
+    pub promotionid: i64,
+}
 // Struct to represent model information
 #[derive(Deserialize, Debug, Clone)]
 pub struct ModelInfo {
@@ -43,6 +51,9 @@ pub struct ModelInfo {
     pub stock: i64,
     pub modelid: i64,
     pub promotionid: i64,
+    pub shop_id: i64, 
+    pub item_id: i64,
+    pub quantity: i32,
 }
 #[derive(Deserialize, Debug, Clone)]
 pub struct CookieData {
@@ -52,7 +63,7 @@ pub struct CookieData {
 #[derive(Deserialize, Debug)]
 struct ProductData {
     name: Option<String>,
-    models: Option<Vec<ModelInfo>>,
+    models: Option<Vec<RawModelInfo>>,
     is_official_shop: Option<bool>,
     upcoming_flash_sale: Option<FSInfo>,
 }
@@ -380,22 +391,17 @@ pub async fn get_product(client: Arc<reqwest::Client>, product_info: &ProductInf
     let hasil: GetProduct = response.json().await?;
     //println!("Body: {}", &body);
 
-    let (name, models_info, is_official_shop, fs_info) = if let Some(data) = hasil.data {
-        let name = data.name.unwrap_or("Unknown".to_string());
-        let models_info = data.models.unwrap_or_else(|| vec![ModelInfo {
-            name: "Unknown".to_string(),
-            price: 0,
-            stock: 0,
-            modelid: 0,
-            promotionid: 0,
-        }]);
-        let is_official_shop = data.is_official_shop.unwrap_or(false);
-        let fs_info = data.upcoming_flash_sale.unwrap_or(FSInfo {
-            promotionid: 0,
-            start_time: 0,
-            end_time: 0,
-        });
-        (name, models_info, is_official_shop, fs_info)
+    let (name, raw_models, is_official_shop, fs_info) = if let Some(data) = hasil.data {
+        (
+            data.name.unwrap_or_else(|| "Unknown".into()),
+            data.models.unwrap_or_default(),          // bisa kosong
+            data.is_official_shop.unwrap_or(false),
+            data.upcoming_flash_sale.unwrap_or(FSInfo {
+                promotionid: 0,
+                start_time: 0,
+                end_time: 0,
+            }),
+        )
     } else {
         println!("Status: {}", status_code);
         ("INVALID".to_string(), Vec::new(), false, FSInfo {
@@ -404,6 +410,19 @@ pub async fn get_product(client: Arc<reqwest::Client>, product_info: &ProductInf
             end_time: 0,
         })
     };
+    let models_info: Vec<ModelInfo> = raw_models
+        .into_iter()
+        .map(|m| ModelInfo {
+            name: m.name,
+            price: m.price,
+            stock: m.stock,
+            modelid: m.modelid,
+            promotionid: m.promotionid,
+            shop_id:   product_info.shop_id,   // override di *sini*
+            item_id:   product_info.item_id,
+            quantity:  1,
+        })
+        .collect();
 	Ok((name, models_info, is_official_shop, fs_info, status_code))
 }
 pub async fn address(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) -> Result<AddressInfo, Box<dyn std::error::Error>> {
@@ -543,7 +562,7 @@ pub fn read_cookie_file(file_name: &str) -> String {
         trimmed_content
     }
 }
-pub fn universal_client_skip_headers() -> reqwest::Client {
+pub async fn universal_client_skip_headers() -> reqwest::Client {
     ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate_skip_headers(Impersonate::Chrome130)
@@ -552,4 +571,20 @@ pub fn universal_client_skip_headers() -> reqwest::Client {
         .gzip(true)
         .build()
         .expect("Failed to create HTTP client")
+}
+pub fn url_to_voucher_data(url: &str) -> (String, String){
+    let mut promotion_id = String::new();
+    let mut signature = String::new();
+    if let Some(query_str) = url.split('?').nth(1) {
+        for param in query_str.split('&') {
+            if let Some((key, value)) = param.split_once('=') {
+                match key {
+                    "promotionId" | "promotionid" => promotion_id = value.to_string(),
+                    "signature" => signature = value.to_string(),
+                    _ => {}
+                }
+            }
+        }
+    }
+    (promotion_id, signature)
 }

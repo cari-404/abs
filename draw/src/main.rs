@@ -11,9 +11,11 @@ use std::process;
 use anyhow::Result;
 use serde_json::json;
 use chrono::{Local, NaiveDateTime};
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let client = Arc::new(prepare::universal_client_skip_headers().await);
     let version_info = env!("CARGO_PKG_VERSION");
     // Welcome Header
     let config = match telegram::open_config_file().await {
@@ -39,6 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cookie_content = prepare::read_cookie_file(&selected_file);
 	
     let cookie_data = prepare::create_cookie(&cookie_content);
+    let base_headers = Arc::new(prepare::create_headers(&cookie_data));
     println!("csrftoken: {}", cookie_data.csrftoken);
 
     let fp_folder = format!("./header/{}/af-ac-enc-sz-token.txt", selected_file);
@@ -59,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("sz-token:{}", sz_token_content);
 
     let device_info = crypt::create_devices(&sz_token_content);
-    let userdata = prepare::info_akun(&cookie_data).await?;
+    let userdata = prepare::info_akun(client, base_headers).await?;
     println!("Username  : {}", userdata.username);
 	println!("Email     : {}", userdata.email);
 	println!("Phone     : {}", userdata.phone);

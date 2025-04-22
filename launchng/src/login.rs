@@ -202,7 +202,6 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
                 };
             }
         }
-        let _ = tx_msg.send("Stopped".to_string());
     });
     Ok(())
 }

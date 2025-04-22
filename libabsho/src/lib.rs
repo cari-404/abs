@@ -8,6 +8,7 @@ use runtime::telegram::{self};
 use std::os::raw::c_char;
 use std::ffi::CString;
 use std::ffi::CStr;
+use std::sync::Arc;
 
 #[repr(C)]
 pub struct AccountInfo {
@@ -96,7 +97,9 @@ pub extern "C" fn address(cookie_content: &FFICookieData) -> FFIAddressInfo {
     };
     let result = tokio::runtime::Runtime::new().and_then(|rt| {
         Ok(rt.block_on(async {
-            prepare::address(&cookie_content).await
+            let client = Arc::new(prepare::universal_client_skip_headers().await);
+            let base_headers = Arc::new(prepare::create_headers(&cookie_content));
+            prepare::address(client, base_headers).await
         }))
     });
 
@@ -139,7 +142,9 @@ pub extern "C" fn info_akun(cookie_content: &FFICookieData) -> AccountInfo {
     };
     let result = tokio::runtime::Runtime::new().and_then(|rt| {
         Ok(rt.block_on(async {
-            prepare::info_akun(&cookie_content).await
+            let client = Arc::new(prepare::universal_client_skip_headers().await);
+            let base_headers = Arc::new(prepare::create_headers(&cookie_content));
+            prepare::info_akun(client, base_headers).await
         }))
     });
 

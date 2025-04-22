@@ -1,13 +1,12 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.5 :
+    experimental static data
+    reduce dynamic data
 Whats new in 1.0.4 :
     add rejected insurance
 Whats new in 1.0.3 :
     more cutting process
     Add no coins
-Whats new in 1.0.2 :
-    Add support get_redirect_url
-    Add flashsale info
-    try to cutting process
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -147,13 +146,16 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let client = Arc::new(prepare::universal_client_skip_headers());
+    let client = Arc::new(prepare::universal_client_skip_headers().await);
     let mut chosen_model = ModelInfo {
         name: String::from("NOT SET"),
         price: 0,
         stock: 0,
         modelid: 0,
         promotionid: 0,
+        shop_id: 0,
+        item_id: 0,
+        quantity: 0,
     };
     let mut chosen_shipping = ShippingInfo {
 		original_cost: i64::default(),
@@ -253,7 +255,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	
     if opt.test {
         println!("Test mode enabled");
-        println!("STUB!!!");
+        let _ = test().await;
         process::exit(1);
     }
     // Get target URL
@@ -457,13 +459,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chosen_model = Arc::new(chosen_model);
     let chosen_payment = Arc::new(chosen_payment);
     let chosen_shipping = Arc::new(chosen_shipping);
-    let max_price_clone = Arc::new(max_price.clone());
     let temp = task_ng::get_builder(client.clone(), shared_headers.clone(), &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, &None, &None, &None, use_coins, &Vec::new()).await?;
-    let asuransi = temp.shoporders
-        .as_ref()
-        .map(|shoporders| task_ng::falsification_insurance(shoporders))
-        .unwrap_or_default();
-    println!("asuransi: {:?}", asuransi);
+    let raw_shoporders = task_ng::falsification_insurance(&temp.shoporders);
+    println!("asuransi: {:?}", raw_shoporders);
     countdown_to_task(&task_time_dt).await;
 
     if opt.claim_platform_vouchers || opt.platform_vouchers || opt.collection_vouchers || opt.fsv_only || opt.shop_vouchers {
@@ -533,7 +531,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_voucher_info("platform_voucher", &final_voucher).await;
         print_voucher_info("shop_voucher", &selected_shop_voucher).await;
 
-        let get_body = Arc::new(task_ng::get_body_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher), use_coins, &asuransi).await?);
+        let raw_checkout_data = Arc::new(task_ng::get_body_builder(&device_info, &product_info, &chosen_payment, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher), use_coins, &raw_shoporders, &temp.shipping_orders).await?);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
         let stop_flag = Arc::new(AtomicBool::new(false));
         for i in 0..max_threads {
@@ -542,10 +540,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let shared_headers = Arc::clone(&shared_headers);
             let client = Arc::clone(&client);
             let stop_flag = Arc::clone(&stop_flag);
-            let device_info_clone = Arc::clone(&device_info);
             let chosen_payment_clone = Arc::clone(&chosen_payment);
-            let get_body_clone = Arc::clone(&get_body);
-            let max_price = Arc::clone(&max_price_clone);
+            let get_body_clone = Arc::clone(&raw_checkout_data);
     
             tokio::spawn(async move {
                 let mut try_count = 0;
@@ -553,7 +549,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if stop_flag.load(Ordering::Relaxed) {
                         break;
                     }
-                    let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone, &device_info_clone, &chosen_payment_clone).await
+                    let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone.0, &chosen_payment_clone, get_body_clone.1.clone(), adjusted_max_price).await
                     {
                         Ok(body) => body,
                         Err(err) => {
@@ -561,30 +557,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
                     };
-                    if !max_price.is_empty(){
-                        if let Some(adjusted_max_price) = adjusted_max_price {
-                            let data = match &place_order_body.checkout_price_data {
-                                Some(d) => d,
-                                None => {
-                                    println!("[{}]Gagal mendapatkan data checkout_price_data.", Local::now().format("%H:%M:%S.%3f"));
-                                    continue;
-                                }
-                            };
-                            let merchandise_subtotal = match data.get("merchandise_subtotal").and_then(|v| v.as_i64()) {
-                                Some(val) => val,
-                                None => {
-                                    println!("[{}]Gagal mendapatkan nilai merchandise_subtotal.", Local::now().format("%H:%M:%S.%3f"));
-                                    continue;
-                                }
-                            };
-                            if merchandise_subtotal <= adjusted_max_price {
-                                println!("[{}]Harga merchandise_subtotal sesuai dengan {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
-                            } else {
-                                println!("[{}]Harga merchandise_subtotal lebih besar dari {}", Local::now().format("%H:%M:%S.%3f"), adjusted_max_price);
-                                continue;
-                            }
-                        }
-                    }
                     let mpp = match task_ng::place_order_ng(client.clone(), shared_headers.clone(), &place_order_body).await
                     {
                         Ok(response) => response,
@@ -926,6 +898,55 @@ fn format_thousands(num: i64) -> String {
 fn human_readable_time(epoch: i64) -> DateTime<Local> {
     let utc = DateTime::<Utc>::from_timestamp(epoch, 0).expect("Invalid timestamp");
     utc.with_timezone(&Local)
+}
+async fn test() -> Result<()> {
+    let products = vec![
+        ModelInfo {
+            name: "1toko".to_string(),
+            price: 0,
+            stock: 0,
+            modelid: 101,
+            promotionid: 0,
+            shop_id: 1,
+            item_id: 1,
+            quantity: 111,
+        },
+        ModelInfo {
+            name: "1toko 1 barang".to_string(),
+            price: 0,
+            stock: 0,
+            modelid: 665,
+            promotionid: 0,
+            shop_id: 1,
+            item_id: 1,
+            quantity: 1,
+        },
+        ModelInfo {
+            name: "1toko beda".to_string(),
+            price: 0,
+            stock: 0,
+            modelid: 433,
+            promotionid: 0,
+            shop_id: 1,
+            item_id: 999,
+            quantity: 4,
+        },
+        ModelInfo {
+            name: "beda toko".to_string(),
+            price: 0,
+            stock: 0,
+            modelid: 433,
+            promotionid: 0,
+            shop_id: 81,
+            item_id: 999,
+            quantity: 4,
+        },
+    ];
+    for product in task_ng::multi_product(&products){
+        println!("{:?}", product);
+    }
+
+    Ok(())
 }
 
 fn args_checking(opt: &Opt){

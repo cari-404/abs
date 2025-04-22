@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  FINAL_VERSION: "1.0.4"
+  FINAL_VERSION: "1.0.5"
 
 permissions:
   contents: write

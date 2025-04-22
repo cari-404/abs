@@ -1,9 +1,4 @@
-use rquest as reqwest;
-use reqwest::Client;
-use reqwest::ClientBuilder;
-use reqwest::tls::Impersonate;
-use reqwest::redirect::Policy as RedirectPolicy;
-use serde_json::Value;
+use runtime::upgrade;
 use tokio::io::{self, BufWriter, AsyncWriteExt};
 use std::cmp::Ordering;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -12,14 +7,6 @@ use std::time::Instant;
 use std::path::Path;
 use once_cell::sync::Lazy;
 use std::env;
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE, USER_AGENT};
-
-pub static HEADER_TEST: Lazy<HeaderMap> = Lazy::new(|| {
-    let mut headers = HeaderMap::new();
-    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    headers.insert(USER_AGENT, HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
-    headers
-});
 
 const REPO_OWNER: &str = "cari-404";
 const REPO_NAME: &str = "ABS";
@@ -40,47 +27,10 @@ static OUTPUT_PATH: Lazy<&'static str> = Lazy::new(|| {
     }
 });
 
-fn compare_versions(local: &str, remote: &str) -> Ordering {
-    let parse = |s: &str| s.split('.').filter_map(|p| p.parse::<u32>().ok()).collect::<Vec<_>>();
-    let local_parts = parse(local);
-    let remote_parts = parse(remote);
-    local_parts.cmp(&remote_parts)
-}
-
-async fn get_latest_release() -> Option<String> {
-    let url = format!("https://api.github.com/repos/{}/{}/releases/latest", REPO_OWNER, REPO_NAME);
-    let client = Client::new();
-    let response = client.get(&url)
-        .header("User-Agent", "rust-updater")
-        .send()
-        .await
-        .ok()?;
-    
-    if response.status().is_success() {
-        let json: Value = response.json().await.ok()?;
-        json["tag_name"].as_str().map(|s| s.trim_start_matches('v').to_string())
-    } else {
-        None
-    }
-}
-
 async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
     use tokio::fs::OpenOptions;
     println!("URL unduhan: {}", url);
-    let client = ClientBuilder::new()
-        .gzip(true)
-        .redirect(RedirectPolicy::limited(10))
-        .build()
-        .expect("Failed to Create Client");
-    let response = client.get(url)
-        .send()
-        .await
-        .map_err(|e| {
-            eprintln!("Gagal mengunduh: {}", e);
-            io::Error::new(io::ErrorKind::Other, "Gagal mengunduh file")
-        })?;
-    println!("Status: {}", response.status());
-    let total_size = response.content_length().unwrap_or(0);
+    let (response, total_size) =  upgrade::fetch_download_response(url).await?;
     let pb = ProgressBar::new(total_size);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {bytes_per_sec}")
@@ -251,14 +201,16 @@ async fn main() {
             "force" => {
                 force = true;
             }
-            "test" => {
-                println!("Test mode aktif");
-                let mpp = match test("https://shp.ee/wtuna3t6555").await {
-                    Ok(response) => response,
-                    Err(e) => format!("Gagal: {}", e),
-                };
-                println!("Test URL: {}", mpp);
-                return;
+            "offline" => {
+                if let Err(e) = extract_archive(slim).await {
+                    println!("Gagal mengekstrak arsip: {}", e);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                }
+                println!("Ekstraksi selesai. Updater akan upgrade dengan versi terbaru.");
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                println!("Restarting..");
+                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                std::process::exit(0);
             }
             _ => {}
         }
@@ -277,12 +229,11 @@ async fn main() {
     } else {
         "tar.gz"
     };
-    if let Some(latest_version) = get_latest_release().await {
+    if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/{}/{}/releases/latest", REPO_OWNER, REPO_NAME)).await {
         println!("Versi terbaru: {}", latest_version);
-        if compare_versions(CURRENT_VERSION, &latest_version) == Ordering::Less || force {
+        if upgrade::compare_versions(CURRENT_VERSION, &latest_version) == Ordering::Less || force {
             println!("Versi baru tersedia! Mengunduh...");
-            let download_url = format!("https://github.com/{}/{}/releases/download/v{}/ABS_{}-{}-v{}.{}", REPO_OWNER, REPO_NAME, latest_version, os, arch, latest_version, archive);
-            if download_latest_release(&download_url).await.is_ok() {
+            if download_latest_release(&format!("https://github.com/{}/{}/releases/download/v{}/ABS_{}-{}-v{}.{}", REPO_OWNER, REPO_NAME, latest_version, os, arch, latest_version, archive)).await.is_ok() {
                 println!("Unduhan selesai. Simpan sebagai: {}", *OUTPUT_PATH);
                 if let Err(e) = extract_archive(slim).await {
                     println!("Gagal mengekstrak arsip: {}", e);
@@ -305,25 +256,6 @@ async fn main() {
         println!("Gagal mengecek versi terbaru.");
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
     }
-}
-
-async fn test(url: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let client = Client::builder()
-        .redirect(RedirectPolicy::limited(10))
-        .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        .build()?;
-
-    let res = client.get(url)
-        .send()
-        .await?;
-
-    let final_url = res.url().clone();
-    println!("Final URL: {}", final_url);
-    Ok(final_url.to_string())
 }
 
 fn run_updater() -> io::Result<()> {

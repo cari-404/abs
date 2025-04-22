@@ -1,11 +1,11 @@
 [package]
 name = "libabsho"
-version = "1.0.4"
+version = "1.0.5"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-runtime = { path = "../runtime" }
+runtime = { path = "../runtime", features = ["core", "checkout"] }
 tokio = { version = "1", features = ["full"] }

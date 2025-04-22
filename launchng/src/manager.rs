@@ -1,17 +1,154 @@
 use winsafe::{self as w,
     gui, prelude::*
 };
-use rquest as reqwest;
 use runtime::telegram;
 use runtime::prepare;
 use runtime::product;
 use runtime::prepare::{ProductInfo, FSInfo};
+use runtime::upgrade;
 use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use tokio::io::{self, BufWriter, AsyncWriteExt};
+use futures_util::StreamExt;
 
 use crate::func_main;
 use crate::login;
+const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const OS: &str = std::env::consts::OS;
+const ARCH: &str = std::env::consts::ARCH;
 
+pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
+    let check_version = Arc::new(Mutex::new(String::new()));
+    let dont_move = (gui::Horz::None, gui::Vert::None);
+    let wnd2 = gui::WindowModal::new_dlg(wnd, 100);
+    let info_label = gui::Label::new_dlg(&wnd2, 101, dont_move);
+    let progress = gui::ProgressBar::new_dlg(&wnd2, 102, dont_move);
+    let download_button = gui::Button::new_dlg(&wnd2, 103, dont_move);
+    let cancel_button = gui::Button::new_dlg(&wnd2, 104, dont_move);
+
+    let download_button_clone = download_button.clone();
+    let info_label_clone = info_label.clone();
+    let check_version_clone = check_version.clone();
+    wnd2.on().wm_init_dialog(move |_| {
+        download_button_clone.hwnd().EnableWindow(false);
+        let download_button_clone = download_button_clone.clone();
+        let check_version = check_version_clone.clone();
+        let info_label_clone = info_label_clone.clone();
+        tokio::spawn(async move {
+            if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/cari-404/abs/releases/latest")).await {
+                println!("Versi terbaru: {}", latest_version);
+                if upgrade::compare_versions(CURRENT_VERSION, &latest_version) == std::cmp::Ordering::Less {
+                    info_label_clone.set_text(&format!("Versi :{} tersedia!", latest_version));
+                    download_button_clone.hwnd().EnableWindow(true);
+                    let mut shared = check_version.lock().unwrap();
+                    shared.clear();
+                    *shared = latest_version;
+                }else {
+                    info_label_clone.set_text("Versi terbaru sudah terpasang.");
+                }
+            } else {
+                info_label_clone.set_text("Gagal mengecek versi terbaru.");
+            }
+        });
+        Ok(true)
+    });
+    let wnd2_clone = wnd2.clone();
+    cancel_button.on().bn_clicked(move || {
+        wnd2_clone.close();
+        Ok(())
+    });
+    let wnd2_clone = wnd2.clone();
+    let download_button_clone = download_button.clone();
+    let info_label_clone = info_label.clone();
+    let check_version_clone = check_version.clone();
+    let progress_clone = progress.clone();
+    download_button.on().bn_clicked(move || {
+        let download_button_clone = download_button_clone.clone();
+        let shared =  {
+            let guard = check_version_clone.lock().unwrap();
+            guard.clone()
+        };
+        let info_label_clone = info_label_clone.clone();
+        let progress_clone = progress_clone.clone();
+        let wnd2_clone = wnd2_clone.clone();
+        if download_button_clone.text() == "Install" {
+            let _ = std::process::Command::new("cmd")
+                .arg("/C")
+                .arg("updater.exe offline")
+                .spawn();
+            std::process::exit(0);
+        }else{
+            tokio::spawn(async move {
+                let arch = if ARCH == "x86"{
+                    "i686"
+                }else{
+                    ARCH
+                };
+                use windows_version::OsVersion;
+                let version = OsVersion::current();
+                let os = if version >= OsVersion::new(10, 0, 0, 10240) {
+                    OS
+                } else if version >= OsVersion::new(6, 1, 0, 7600) {
+                    "windows7"
+                } else if version >= OsVersion::new(5, 1, 0, 2600) {
+                    "windowsxp"
+                } else {
+                    OS
+                };
+                use tokio::fs::OpenOptions;
+                let url = format!("https://github.com/cari-404/abs/releases/download/v{}/ABS_{}-{}-v{}.zip", shared, os, arch, shared);
+                println!("URL unduhan: {}", url);
+                let resp =  upgrade::fetch_download_response(&url).await;
+                match resp {
+                    Ok((response, total_size)) => {
+                        let file = OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .truncate(true) // Hindari data lama tertinggal
+                            .open("update.zip")
+                            .await
+                            .expect("Failed to create file");
+                        let mut file = BufWriter::new(file);
+                        let mut stream = response.bytes_stream();
+                        let mut downloaded: u64 = 0;
+                        progress_clone.set_range(0, total_size as u32);
+                        progress_clone.set_position(0);
+                        let start = std::time::Instant::now();
+                        while let Some(chunk) = stream.next().await {
+                            let chunk = chunk.map_err(|e| {
+                                eprintln!("Error saat mengunduh chunk: {}", e);
+                                io::Error::new(io::ErrorKind::Other, "Error saat menerima data")
+                            }).expect("Langkah Kocak");
+                            file.write_all(&chunk).await.expect("failed to write");
+                            downloaded += chunk.len() as u64;
+                            progress_clone.set_position(downloaded as u32);
+                            let elapsed = start.elapsed().as_secs_f64();
+                            let speed_kb = (downloaded as f64 / elapsed) / 1024.0;
+                            info_label_clone.set_text(&format!("{:.2} KB/s", speed_kb));
+                        }
+                        file.flush().await.expect("failed to flush data");
+                        let actual_size = tokio::fs::metadata("update.zip").await.expect("failed to calculate").len();
+                        if actual_size != total_size {
+                            let isi = format!("File mungkin corrupt! Ukuran seharusnya {} bytes, tetapi hanya {} bytes.", total_size, actual_size);
+                            eprintln!("{}", isi);
+                            let _ = func_main::error_modal(&wnd2_clone, "Error", &isi);
+                        }else{
+                            info_label_clone.set_text("Click to install(restart the app)");
+                            download_button_clone.set_text("Install");
+                        }
+                    }
+                    Err(e) => {
+                        let isi = format!("Error: {}", e);
+                        let _ = func_main::error_modal(&wnd2_clone, "Error", &isi);
+                    }
+                }
+            });
+        }
+        Ok(())
+    });
+    let _ = wnd2.show_modal();
+    Ok(())
+}
 pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let dont_move = (gui::Horz::None, gui::Vert::None);
     let wnd2 = gui::WindowModal::new_dlg(wnd, 500);
@@ -302,7 +439,6 @@ pub fn log_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     Ok(())
 }
 pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
-    let client = Arc::new(prepare::universal_client_skip_headers());
     let (tx_msg, rx_msg) = mpsc::unbounded_channel::<String>();
     let _ = tx_msg.send("Stopped".to_string());
     let interrupt_flag = Arc::new(AtomicBool::new(false));
@@ -361,7 +497,6 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     let my_list_clone = my_list.clone();
     let file_combo_clone = file_combo.clone();
-    let client_clone = client.clone();
     wnd2.on().wm_command_accel_menu(203 as u16, move || {
         let file = file_combo_clone.text();
         if let Some(selected_item) = my_list_clone.items().focused() {
@@ -370,8 +505,8 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let v: Vec<i64> = serde_json::from_str(&selected_item.text(1 as u32))?;
             let selected_item_index = selected_item.index();
             let my_list_clone = my_list_clone.clone();
-            let client_clone = client_clone.clone();
             tokio::spawn(async move {
+                let client_clone = Arc::new(prepare::universal_client_skip_headers().await);
                 let mut variation = Vec::new();
                 match prepare::get_product(client_clone, &product_info, &cookie_data).await {
                     Ok((_, model_info, _, _, _)) => {
@@ -447,7 +582,6 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let wnd2_clone = wnd2.clone();
     let fs_combo_clone = fs_combo.clone();
     let shared_fsid_clone = shared_fsid.clone();
-    let client_clone = client.clone();
     cek_button.on().bn_clicked(move || {
         let file = file_combo_clone.text();
         if file.is_empty() {
@@ -458,8 +592,8 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let fs_combo_clone = fs_combo_clone.clone();
             let wnd2_clone = wnd2_clone.clone();
             let shared_fsid_clone = shared_fsid_clone.clone();
-            let client_clone = client_clone.clone();
             tokio::spawn(async move {
+                let client_clone = Arc::new(prepare::universal_client_skip_headers().await);
                 fs_combo_clone.items().delete_all();
                 let fsid_current = product::get_current_fsid(client_clone, &cookie_data).await;
                 match fsid_current {
@@ -499,7 +633,6 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let progress_label_clone = progress_label.clone();
     let mode_label_clone = mode_label.clone();
     let count_label_clone = count_label.clone();
-    let client_clone = client.clone();
     single_button.on().bn_clicked(move || {
         let fsid = fs_combo_clone.text();
         if fsid.is_empty() {
@@ -529,7 +662,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             } else {
                 println!("Tidak ditemukan promotionid yang cocok");
             }
-            let _ = get_flashsale_products(client_clone.clone(), &wnd2_clone, Arc::new(fsinfo), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
+            let _ = get_flashsale_products(&wnd2_clone, Arc::new(fsinfo), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
         };
         Ok(())
     });
@@ -543,7 +676,6 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let progress_label_clone = progress_label.clone();
     let mode_label_clone = mode_label.clone();
     let count_label_clone = count_label.clone();
-    let client_clone = client.clone();
     all_button.on().bn_clicked(move || {
         let shared = shared_fsid_clone.lock().unwrap();
         if shared.is_empty() {
@@ -553,7 +685,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         } else {
             mode_label_clone.set_text("All");
             wnd2_clone.hwnd().ShowWindow(w::co::SW::SHOWMAXIMIZED);
-            let _ = get_flashsale_products(client_clone.clone(), &wnd2_clone, Arc::new(shared.to_vec()), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
+            let _ = get_flashsale_products(&wnd2_clone, Arc::new(shared.to_vec()), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
         }
         Ok(())
     });
@@ -568,6 +700,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let interrupt_flag_clone = interrupt_flag.clone();
     let rx_msg = Arc::new(Mutex::new(rx_msg));
     let rx_msg_clone = rx_msg.clone();
+    let my_list_clone = my_list.clone();
     wnd2.on().wm_destroy(move || {
         interrupt_flag_clone.store(true, Ordering::SeqCst);
         interrupt_flag_clone.store(true, Ordering::Relaxed);
@@ -581,6 +714,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 }
             }
         }
+        my_list_clone.items().delete_all();
         println!("Window is gone, goodbye!");
         Ok(())
     });
@@ -589,7 +723,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     //wnd2.run_main(None);
     Ok(())
 }
-fn get_flashsale_products(client: Arc<reqwest::Client>, wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, file_combo: &gui::ComboBox, my_list: &gui::ListView, progress: &gui::ProgressBar, interrupt_flag: &Arc<AtomicBool>, tx_msg: &mpsc::UnboundedSender<String>, progress_label: &gui::Label, count_label: &gui::Label) -> Result<(), ()> {
+fn get_flashsale_products(wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, file_combo: &gui::ComboBox, my_list: &gui::ListView, progress: &gui::ProgressBar, interrupt_flag: &Arc<AtomicBool>, tx_msg: &mpsc::UnboundedSender<String>, progress_label: &gui::Label, count_label: &gui::Label) -> Result<(), ()> {
     let file = file_combo.text();
     if file.is_empty() {
         let isi = format!("Please select a file before checking the fs");
@@ -611,8 +745,8 @@ fn get_flashsale_products(client: Arc<reqwest::Client>, wnd2: &gui::WindowModal,
         let progress_label_clone = progress_label.clone();
         let fsinfo_cloned = fsinfo.clone();
         let count_label = count_label.clone();
-        let client_clone = client.clone();
         tokio::spawn(async move {
+            let client_clone = Arc::new(prepare::universal_client_skip_headers().await);
             let mut count = 0;
             let mut max = 0;
             let mut potition = 0;

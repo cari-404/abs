@@ -17,7 +17,7 @@ OriginalFilename = "claimshopee.exe"
 CompanyName = "Paijo"
 
 [dependencies]
-runtime = { path = "../runtime" }
+runtime = { path = "../runtime", features = ["core"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1.0"
 chrono = "0.4"

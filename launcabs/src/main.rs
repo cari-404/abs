@@ -621,7 +621,7 @@ impl App {
         }
     }
     async fn cek_async(product_info: &ProductInfo, cookie_data: &CookieData, shared_data: Arc<RwLock<SharedData>>) {
-        let client = Arc::new(prepare::universal_client_skip_headers());
+        let client = Arc::new(prepare::universal_client_skip_headers().await);
         let base_headers = Arc::new(prepare::create_headers(&cookie_data));
         match timeout(Duration::from_secs(10), prepare::get_product(client.clone(), &product_info, cookie_data)).await {
             Ok(Ok((name, model_info, is_official_shop, _fs_info, rcode))) => {

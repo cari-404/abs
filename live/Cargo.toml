@@ -1,10 +1,10 @@
 [package]
 name = "live"
-version = "1.0.4"
+version = "1.0.5"
 edition = "2021"
 
 [dependencies]
-runtime = { path = "../runtime" }
+runtime = { path = "../runtime", features = ["core"] }
 tokio = { version = "1", features = ["full"] }
 chrono = "0.4"
 anyhow = "1.0"

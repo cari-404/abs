@@ -41,6 +41,8 @@ pub struct MyWindow {
     signature_text: gui::Edit,
     cid_label: gui::Label,
     cid_text: gui::Edit,
+    link_label: gui::Label,
+    link_text: gui::Edit,
     coins_checkbox: gui::CheckBox,
 }
 
@@ -287,7 +289,7 @@ impl MyWindow {
         let platform_combobox = gui::ComboBox::new(&wnd, gui::ComboBoxOpts {
             position: (130, 270),
             width: 210,
-            items: vec!["Claim".to_owned(), "Code".to_owned(), "Collection id".to_owned()],
+            items: vec!["Claim".to_owned(), "Code".to_owned(), "Collection id".to_owned(), "Link".to_owned()],
             selected_item: Some(0),
             ..Default::default()
         });
@@ -324,6 +326,18 @@ impl MyWindow {
         });
 
         let cid_text = gui::Edit::new(&wnd, gui::EditOpts {
+            position: (130, 300),
+            width: 210,
+            ..Default::default()
+        });
+
+        let link_label = gui::Label::new(&wnd, gui::LabelOpts {
+            text: "Link Voucher".to_owned(),
+            position: (35, 300),
+            ..Default::default()
+        });
+
+        let link_text = gui::Edit::new(&wnd, gui::EditOpts {
             position: (130, 300),
             width: 210,
             ..Default::default()
@@ -370,12 +384,10 @@ impl MyWindow {
             shop_checkbox, 
             platform_checkbox, platform_combobox,
             code_label, code_platform_text, code_shop_text,
-            promotionid_label,
-            promotionid_text,
-            signature_label,
-            signature_text,
-            cid_label,
-            cid_text,
+            promotionid_label, promotionid_text,
+            signature_label, signature_text,
+            cid_label, cid_text,
+            link_label, link_text,
             coins_checkbox,
         };
         new_self.events(); // attach our events
@@ -422,7 +434,7 @@ impl MyWindow {
                 let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
                 let self2 = self2.clone();
                 tokio::spawn(async move {
-                    let client = Arc::new(prepare::universal_client_skip_headers());
+                    let client = Arc::new(prepare::universal_client_skip_headers().await);
                     let mut product_info = prepare::process_url(&self2.url_text.text().trim());
                     if product_info.shop_id == 0 && product_info.item_id == 0 {
                         println!("Cek apakah redirect?");
@@ -579,6 +591,7 @@ impl MyWindow {
             func_main::set_visibility(&self2.signature_label, &self2.signature_text, false);
             func_main::set_visibility(&self2.code_label, &self2.code_platform_text, false);
             func_main::set_visibility(&self2.cid_label, &self2.cid_text, false);
+            func_main::set_visibility(&self2.link_label, &self2.link_text, false);
             // Panggil fungsi untuk mengisi ComboBox dengan file di folder "akun"
             func_main::populate_combobox_with_files(&self2.file_combo, "akun");
             func_main::populate_payment_combo(&self2.payment_combo);
@@ -663,7 +676,6 @@ impl MyWindow {
             }
             Ok(())
         });
-
 		self.wnd.on().wm_command_accel_menu(101 as u16, move || {
             let command = vec!["start","abs.exe",];
             let _status = std::process::Command::new("cmd")
@@ -737,6 +749,11 @@ impl MyWindow {
             let _ = manager::log_window(&wnd);
 			Ok(())
 		});
+        let wnd = self.wnd.clone();
+		self.wnd.on().wm_command_accel_menu(11 as u16, move || {
+            let _ = manager::updater_window(&wnd);
+			Ok(())
+		});
 	}
     fn generate_cmd(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
         let self2 = self.clone();
@@ -771,13 +788,7 @@ impl MyWindow {
         let detik = self2.detik_text.text();
         let mili = self2.mili_text.text();
         let kuan = self2.kuan_text.text();
-        let time_arg = format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili);
         //let token = self2.token_text.text();
-        let code_platform_text = self2.code_platform_text.text();
-        let code_shop_text = self2.code_shop_text.text();
-        let promotionid_text = self2.promotionid_text.text();
-        let signature_text = self2.signature_text.text();
-        let collectionid = self2.cid_text.text();
         let url_1 = url.clone();
         println!("{}", url_1);
         let (tx, rx) = std::sync::mpsc::channel();
@@ -801,7 +812,7 @@ impl MyWindow {
                 "abs.exe".to_string(),
                 "--file".to_string(), file,
                 "--url".to_string(), refe,
-                "--time".to_string(), time_arg,
+                "--time".to_string(), format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili),
                 "--kurir".to_string(), kurir,
                 "--payment".to_string(), payment,
                 "--harga".to_string(), harga,
@@ -838,19 +849,27 @@ impl MyWindow {
                 Some(0) => {
                     commands.push("--claim-platform-vouchers".to_string());
                     commands.push("--pro-id".to_string());
-                    commands.push(promotionid_text);
+                    commands.push(self2.promotionid_text.text());
                     commands.push("--sign".to_string());
-                    commands.push(signature_text);
+                    commands.push(self2.signature_text.text());
                 }
                 Some(1) => {
                     commands.push("--platform-vouchers".to_string());
                     commands.push("--code-platform".to_string());
-                    commands.push(code_platform_text);
+                    commands.push(self2.code_platform_text.text());
                 }
                 Some(2) => {
                     commands.push("--collection-vouchers".to_string());
                     commands.push("--collectionid".to_string());
-                    commands.push(collectionid);
+                    commands.push(self2.cid_text.text());
+                }
+                Some(3) => {
+                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text());
+                    commands.push("--claim-platform-vouchers".to_string());
+                    commands.push("--pro-id".to_string());
+                    commands.push(proid);
+                    commands.push("--sign".to_string());
+                    commands.push(sign);
                 }
                 _ => {}
             }
@@ -858,7 +877,7 @@ impl MyWindow {
         if self2.shop_checkbox.check_state() == gui::CheckState::Checked {
             commands.push("--shop-vouchers".to_string());
             commands.push("--code-shop".to_string());
-            commands.push(code_shop_text);
+            commands.push(self2.code_shop_text.text());
         }
         Ok(Some(create_command(commands)))
     }
@@ -874,15 +893,25 @@ impl MyWindow {
                 func_main::set_visibility(&self.signature_label, &self.signature_text, true);
                 func_main::set_visibility(&self.code_label, &self.code_platform_text, false);
                 func_main::set_visibility(&self.cid_label, &self.cid_text, false);
+                func_main::set_visibility(&self.link_label, &self.link_text, false);
             },
             Some(1) => {
                 func_main::set_visibility(&self.code_label, &self.code_platform_text, true);
                 func_main::set_visibility(&self.promotionid_label, &self.promotionid_text, false);
                 func_main::set_visibility(&self.signature_label, &self.signature_text, false);
                 func_main::set_visibility(&self.cid_label, &self.cid_text, false);
+                func_main::set_visibility(&self.link_label, &self.link_text, false);
             },
             Some(2) => {
                 func_main::set_visibility(&self.cid_label, &self.cid_text, true);
+                func_main::set_visibility(&self.promotionid_label, &self.promotionid_text, false);
+                func_main::set_visibility(&self.signature_label, &self.signature_text, false);
+                func_main::set_visibility(&self.code_label, &self.code_platform_text, false);
+                func_main::set_visibility(&self.link_label, &self.link_text, false);
+            },
+            Some(3) => {
+                func_main::set_visibility(&self.link_label, &self.link_text, true);
+                func_main::set_visibility(&self.cid_label, &self.cid_text, false);
                 func_main::set_visibility(&self.promotionid_label, &self.promotionid_text, false);
                 func_main::set_visibility(&self.signature_label, &self.signature_text, false);
                 func_main::set_visibility(&self.code_label, &self.code_platform_text, false);
@@ -905,16 +934,12 @@ impl MyWindow {
         let menit = self2.menit_text.text();
         let detik = self2.detik_text.text();
         let mili = self2.mili_text.text();
-        let time_arg = format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili);
-        let promotionid_text = self2.promotionid_text.text();
-        let signature_text = self2.signature_text.text();
-        let collectionid = self2.cid_text.text();
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
             let mut command = vec![
                 "start".to_string(),
                 "savevoucher.exe".to_string(),
                 "--file".to_string(), file,
-                "--time".to_string(), time_arg,
+                "--time".to_string(), format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili),
             ];
             command.extend(extra_args);
             command
@@ -927,9 +952,9 @@ impl MyWindow {
                     commands.push("--mode".to_string());
                     commands.push("1".to_string());                    
                     commands.push("--pro-id".to_string());
-                    commands.push(promotionid_text);
+                    commands.push(self2.promotionid_text.text());
                     commands.push("--sign".to_string());
-                    commands.push(signature_text);
+                    commands.push(self2.signature_text.text());
                 }
                 //future code
                 /*Some(1) => {
@@ -941,7 +966,16 @@ impl MyWindow {
                     commands.push("--mode".to_string());
                     commands.push("2".to_string());
                     commands.push("--collectionid".to_string());
-                    commands.push(collectionid);
+                    commands.push(self2.cid_text.text());
+                }
+                Some(3) => {
+                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text());
+                    commands.push("--mode".to_string());
+                    commands.push("1".to_string());                    
+                    commands.push("--pro-id".to_string());
+                    commands.push(proid);
+                    commands.push("--sign".to_string());
+                    commands.push(sign);
                 }
                 _ => {}
             }

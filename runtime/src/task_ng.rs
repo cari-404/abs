@@ -6,36 +6,37 @@ use anyhow::Result;
 use serde_json::{Value};
 use std::collections::HashMap;
 use rayon::prelude::*;
-use std::sync::{Arc, Mutex};
+use dashmap::DashMap;
+use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
 use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::voucher::Vouchers;
 use crate::crypt::{self, DeviceInfo};
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PlaceOrderBody {
-    client_id: i64,
-    cart_type: i64,
+    client_id: i32,
+    cart_type: i32,
     timestamp: i64,
-    pub checkout_price_data: Option<Value>, // Define more specific types if known
-    order_update_info: Option<Value>,
-    dropshipping_info: Option<Value>,
-    promotion_data: Option<Value>,
+    pub checkout_price_data: Option<Value>,
+    order_update_info: OrderUpdateInfo,
+    dropshipping_info: DropshippingInfo,
+    promotion_data: PromotionData,
     selected_payment_channel_data: Option<Value>,
-    pub shoporders: Option<Value>,
-    shipping_orders: Option<Value>,
+    pub shoporders: Vec<ShopOrder>,
+    pub shipping_orders: Vec<ShippingOrder>,
     display_meta_data: Option<Value>,
-    fsv_selection_infos: Option<Value>,
-    buyer_info: Option<Value>,
-    client_event_info: Option<Value>,
+    fsv_selection_infos: Vec<Option<FsvSelectionInfo>>,
+    buyer_info: BuyerInfo,
+    client_event_info: ClientEventInfo,
     captcha_id: String,
     buyer_txn_fee_info: Option<Value>,
     disabled_checkout_info: Option<Value>,
     can_checkout: bool,
     buyer_service_fee_info: Option<Value>,
     iof_info: Option<Value>,
-    add_to_cart_info: HashMap<String, serde_json::Value>,
+    add_to_cart_info: AddToCartInfo,
     ignored_errors: Vec<i64>,
     ignore_warnings: bool,
     captcha_version: i64,
@@ -48,57 +49,11 @@ pub struct PlaceOrderBody {
 }
 
 impl PlaceOrderBody {
-    fn new(device_info: &DeviceInfo, checkout_session_id: &str) -> Self {
-        let current_time = Utc::now();
-        PlaceOrderBody {
-            client_id: 5,
-            cart_type: 1,
-            timestamp: current_time.timestamp(),
-            checkout_price_data: None,
-            order_update_info: None,
-            dropshipping_info: None,
-            promotion_data: None,
-            selected_payment_channel_data: None,
-            shoporders: None,
-            shipping_orders: None,
-            display_meta_data: None,
-            fsv_selection_infos: None,
-            buyer_info: None,
-            client_event_info: None,
-            buyer_txn_fee_info: None,
-            disabled_checkout_info: None,
-            buyer_service_fee_info: None,
-            iof_info: None,
-            add_to_cart_info: HashMap::new(), // Empty HashMap for now
-            ignored_errors: vec![0],
-            can_checkout: true,
-            ignore_warnings: false,
-            captcha_id: "".to_owned(),
-            captcha_version: 1,
-            captcha_signature: "".to_owned(),
-            extra_data: ExtraData {
-                snack_click_id: None,
-            },
-            checkout_session_id: checkout_session_id.to_string(),
-            device_info: device_info.clone(),
-            device_type: "mobile".to_owned(),
-            _cft: vec![4227792767, 36961919],
-        }
-    }
-
     fn insert(&mut self, key: &str, value: Option<Value>) {
         match key {
             "checkout_price_data" => self.checkout_price_data = value,
-            "order_update_info" => self.order_update_info = value,
-            "dropshipping_info" => self.dropshipping_info = value,
-            "promotion_data" => self.promotion_data = value,
             "selected_payment_channel_data" => self.selected_payment_channel_data = value,
-            "shoporders" => self.shoporders = value,
-            "shipping_orders" => self.shipping_orders = value,
             "display_meta_data" => self.display_meta_data = value,
-            "fsv_selection_infos" => self.fsv_selection_infos = value,
-            "buyer_info" => self.buyer_info = value,
-            "client_event_info" => self.client_event_info = value,
             "buyer_txn_fee_info" => self.buyer_txn_fee_info = value,
             "disabled_checkout_info" => self.disabled_checkout_info = value,
             "buyer_service_fee_info" => self.buyer_service_fee_info = value,
@@ -108,12 +63,12 @@ impl PlaceOrderBody {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ExtraData {
     snack_click_id: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetBodyJson {
     timestamp: i64,
     shoporders: Vec<ShopOrder>,
@@ -134,40 +89,40 @@ pub struct GetBodyJson {
     order_update_info: OrderUpdateInfo,
 }
 
-#[derive(Serialize, Deserialize)]
-struct ShopOrder {
-    shop: Shop,
-    items: Vec<Item>,
-    shipping_id: i32,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ShopOrder {
+    pub shop: Shop,
+    pub items: Vec<Item>,
+    pub shipping_id: i32,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Shop {
-    shopid: i64,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Shop {
+    pub shopid: i64,
 }
 
-#[derive(Serialize, Deserialize)]
-struct Item {
-    itemid: i64,
-    modelid: i64,
-    quantity: i32,
-    add_on_deal_id: i32,
-    is_add_on_sub_item: bool,
-    item_group_id: Option<i64>,
-    insurances: Vec<serde_json::Value>,
-    channel_exclusive_info: ChannelExclusiveInfo,
-    supports_free_returns: bool,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Item {
+    pub itemid: i64,
+    pub modelid: i64,
+    pub quantity: i32,
+    pub add_on_deal_id: i32,
+    pub is_add_on_sub_item: bool,
+    pub item_group_id: Option<i64>,
+    pub insurances: Vec<serde_json::Value>,
+    pub channel_exclusive_info: ChannelExclusiveInfo,
+    pub supports_free_returns: bool,
 }
 
-#[derive(Serialize, Deserialize)]
-struct ChannelExclusiveInfo {
-    source_id: i32,
-    token: String,
-    is_live_stream: bool,
-    is_short_video: bool,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ChannelExclusiveInfo {
+    pub source_id: i32,
+    pub token: String,
+    pub is_live_stream: bool,
+    pub is_short_video: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct PromotionData {
     use_coins: bool,
     free_shipping_voucher_info: FreeShippingVoucherInfo,
@@ -177,75 +132,83 @@ struct PromotionData {
     auto_apply_shop_voucher: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct BuyerInfo {
     kyc_info: Option<String>,
     checkout_email: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct TaxInfo {
     tax_id: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ClientEventInfo {
     is_fsv_changed: bool,
     is_platform_voucher_changed: bool,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct AddToCartInfo {}
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct DropshippingInfo {}
 
-#[derive(Serialize, Deserialize)]
-struct ShippingOrder {
-    sync: bool,
-    buyer_address_data: BuyerAddressData,
-    selected_logistic_channelid: i64,
-    shipping_id: i32,
-    shoporder_indexes: Vec<i32>,
-    selected_preferred_delivery_time_option_id: i32,
-    prescription_info: PrescriptionInfo,
-    fulfillment_info: FulfillmentInfo,
-    selected_logistic_channel_data: SelectedLogisticChannelData,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ShippingOrder {
+    #[serde(default = "default_sync")]
+    pub sync: bool,
+    pub buyer_address_data: BuyerAddressData,
+    pub selected_logistic_channelid: i64,
+    pub shipping_id: i32,
+    pub shoporder_indexes: Vec<i32>,
+    #[serde(default = "selected_preferred_delivery_time_option_id")]
+    pub selected_preferred_delivery_time_option_id: i32,
+    pub prescription_info: PrescriptionInfo,
+    pub fulfillment_info: FulfillmentInfo,
+    pub selected_logistic_channel_data: SelectedLogisticChannelData,
+}
+fn selected_preferred_delivery_time_option_id() -> i32 {
+    0
+}
+fn default_sync() -> bool {
+    true
 }
 
-#[derive(Serialize, Deserialize)]
-struct BuyerAddressData {
-    addressid: i64,
-    address_type: i32,
-    tax_address: String,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct BuyerAddressData {
+    pub addressid: i64,
+    pub address_type: i32,
+    pub tax_address: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct PrescriptionInfo {
-    images: Vec<String>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct PrescriptionInfo {
+    pub images: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-struct FulfillmentInfo {
-    fulfillment_flag: i32,
-    fulfillment_source: String,
-    managed_by_sbs: bool,
-    order_fulfillment_type: i32,
-    warehouse_address_id: i64,
-    is_from_overseas: bool,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct FulfillmentInfo {
+    pub fulfillment_flag: i32,
+    pub fulfillment_source: String,
+    pub managed_by_sbs: bool,
+    pub order_fulfillment_type: i32,
+    pub warehouse_address_id: i64,
+    pub is_from_overseas: bool,
 }
 
-#[derive(Serialize, Deserialize)]
-struct SelectedLogisticChannelData {
-    support_advance_booking: bool,
-    selected_from: i32,
-    fulfillment_shipping_order_channel_data: Option<String>,
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct SelectedLogisticChannelData {
+    pub support_advance_booking: bool,
+    pub selected_from: i32,
+    pub fulfillment_shipping_order_channel_data: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct OrderUpdateInfo {}
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct ShopVoucher {
     shopid: i64,
     promotionid: i64,
@@ -256,13 +219,13 @@ struct ShopVoucher {
     shipping_order_distributions: Vec<()>, // Jika tipe ini kosong, bisa gunakan Vec<()>, atau tipe lain jika ada data
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct PlatformVoucher {
     voucher_code: String,
     promotionid: i64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct FreeShippingVoucherInfo {
     free_shipping_voucher_id: i64,
     free_shipping_voucher_code: Option<String>,
@@ -273,14 +236,14 @@ struct FreeShippingVoucherInfo {
     required_spm_channels: Option<Vec<String>>,  // Optional, will be included only if Some
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct BannerInfo {
     banner_type: i64,
     learn_more_msg: String,
     msg: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct FsvSelectionInfo {
     fsv_id: i64,
     selected_shipping_ids: Vec<i64>,
@@ -307,6 +270,44 @@ pub struct SelectedPlaceOrder {
     pub channel_id: i64,
     pub channel_item_option_info: ChannelItemOptionInfo,
     pub version: i64,
+}
+impl From<GetBodyJson> for PlaceOrderBody {
+    fn from(get: GetBodyJson) -> Self {
+        PlaceOrderBody {
+            client_id: get.client_id,
+            cart_type: get.cart_type,
+            timestamp: get.timestamp,
+            checkout_price_data: None,
+            order_update_info: get.order_update_info,
+            dropshipping_info: get.dropshipping_info,
+            promotion_data: get.promotion_data,
+            selected_payment_channel_data: Some(get.selected_payment_channel_data), // ubah tipe di struct jika perlu
+            shoporders: get.shoporders,
+            shipping_orders: get.shipping_orders,
+            display_meta_data: None,
+            fsv_selection_infos: get.fsv_selection_infos,
+            buyer_info: get.buyer_info,
+            client_event_info: get.client_event_info,
+            captcha_id: String::new(),
+            buyer_txn_fee_info: None,
+            disabled_checkout_info: None,
+            can_checkout: true,
+            buyer_service_fee_info: None,
+            iof_info: None,
+            add_to_cart_info: get.add_to_cart_info,
+            ignored_errors: vec![],
+            ignore_warnings: false,
+            captcha_version: 1,
+            captcha_signature: String::new(),
+            extra_data:  ExtraData {
+                snack_click_id: None,
+            },
+            checkout_session_id: get.checkout_session_id,
+            device_info: get.device_info,
+            device_type: "mobile".into(),
+            _cft: get._cft,
+        }
+    }
 }
 
 pub async fn place_order_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, place_body: &PlaceOrderBody) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
@@ -337,11 +338,10 @@ pub async fn place_order_ng(client: Arc<reqwest::Client>, base_headers: Arc<Head
 }
 pub async fn get_body_builder(device_info: &DeviceInfo, 
     product_info: &ProductInfo, 
-    address_info: &AddressInfo, quantity: i32, 
-    chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
-    chosen_shipping: &ShippingInfo, freeshipping_voucher: Arc<Option<Vouchers>>, 
+    chosen_payment: &PaymentInfo, 
+    freeshipping_voucher: Arc<Option<Vouchers>>, 
     platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>, use_coins: bool,
-    insurances: &[serde_json::Value]) -> Result<GetBodyJson, Box<dyn std::error::Error>> {
+    shoporders: &[ShopOrder], shipping_orders: &[ShippingOrder]) -> Result<(GetBodyJson, PlaceOrderBody), Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -433,28 +433,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
 
     let body_json = GetBodyJson {
         timestamp: current_time.timestamp(),
-        shoporders: vec![ShopOrder {
-            shop: Shop {
-                shopid: product_info.shop_id,
-            },
-            items: vec![Item {
-                itemid: product_info.item_id,
-                modelid: chosen_model.modelid,
-                quantity: quantity,
-                add_on_deal_id: 0,
-                is_add_on_sub_item: false,
-                item_group_id: None,
-                insurances: insurances.to_vec(),
-                channel_exclusive_info: ChannelExclusiveInfo {
-                    source_id: 0,
-                    token: "".to_owned(),
-                    is_live_stream: false,
-                    is_short_video: false,
-                },
-                supports_free_returns: false,
-            }],
-            shipping_id: 1,
-        }],
+        shoporders: shoporders.to_vec(),
         selected_payment_channel_data: chosen_payment.selected_get.clone(),
         promotion_data: PromotionData {
             use_coins,
@@ -478,105 +457,107 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         _cft: vec![4227792767, 36961919],
         checkout_session_id,
         dropshipping_info: DropshippingInfo {},
-        shipping_orders: vec![ShippingOrder {
-            sync: true,
-            buyer_address_data: BuyerAddressData {
-                addressid: address_info.id,
-                address_type: 0,
-                tax_address: "".to_owned(),
-            },
-            selected_logistic_channelid: chosen_shipping.channelid,
-            shipping_id: 1,
-            shoporder_indexes: vec![0],
-            selected_preferred_delivery_time_option_id: 0,
-            prescription_info: PrescriptionInfo {
-                images: vec![],
-            },
-            fulfillment_info: FulfillmentInfo {
-                fulfillment_flag: 18,
-                fulfillment_source: "IDE".to_owned(),
-                managed_by_sbs: false,
-                order_fulfillment_type: 1,
-                warehouse_address_id: 0,
-                is_from_overseas: false,
-            },
-            selected_logistic_channel_data: SelectedLogisticChannelData{
-                support_advance_booking: false,
-                selected_from: 1,
-                fulfillment_shipping_order_channel_data: None,
-            },
-        }],
+        shipping_orders: shipping_orders.to_vec(),
         order_update_info: OrderUpdateInfo {},
     };
-    Ok(body_json)
+    let place_order: PlaceOrderBody = body_json.clone().into();
+    Ok((body_json, place_order))
 }
-pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, device_info: &DeviceInfo, chosen_payment: &PaymentInfo) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
+pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, chosen_payment: &PaymentInfo, mut place_order_body: PlaceOrderBody, adjusted_max_price: Option<i64>) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
     let mut headers = (*base_headers).clone();
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
-	//println!("Status: Start Checkout");
+    loop{
+        //println!("Status: Start Checkout");
 
-	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
-    //let body_str = serde_json::to_string(&body_json)?;
-    //println!("{}", body_str);
-	println!("{}", url2);
-    let response = (*client)
-        .post(&url2)
-        .headers(headers)
-		.json(&body_json)
-        .version(Version::HTTP_2) 
-        .send()
-        .await?;
+        let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
+        //let body_str = serde_json::to_string(&body_json)?;
+        //println!("{}", body_str);
+        println!("{}", url2);
+        let response = (*client)
+            .post(&url2)
+            .headers(headers.clone())
+            .json(&body_json)
+            .version(Version::HTTP_2) 
+            .send()
+            .await?;
 
-	//println!("Status: Done Checkout");
-	let status = response.status();
-    if status == reqwest::StatusCode::OK {
-        let v: Value = response.json().await?;
-        let v = Arc::new(v);
-        let keys = [
-            "checkout_price_data",
-            "order_update_info",
-            "dropshipping_info",
-            "promotion_data",
-            "shoporders",
-            "shipping_orders",
-            "display_meta_data",
-            "fsv_selection_infos",
-            "buyer_info",
-            "client_event_info",
-            "buyer_txn_fee_info",
-            "disabled_checkout_info",
-            "buyer_service_fee_info",
-            "iof_info",
-        ];
+        //println!("Status: Done Checkout");
+        let status = response.status();
+        if status == reqwest::StatusCode::OK {
+            let v: Value = response.json().await?;
+            let v = Arc::new(v);
+            if let Some(limit) = adjusted_max_price {
+                let price_opt = v.get("checkout_price_data")
+                    .and_then(|d| d.get("merchandise_subtotal"))
+                    .and_then(|v| v.as_i64());
 
-        let place_order_body = Arc::new(Mutex::new(
-            PlaceOrderBody::new(&device_info, &body_json.checkout_session_id),
-        ));
-        
-        keys.par_iter().for_each(|&key| {
-            let value = v.get(key).cloned();
-        
-            if let Ok(mut body) = place_order_body.lock() {
-                body.insert(key, value);
-            } else {
-                eprintln!("Failed to lock place_order_body for key: {}", key);
+                match price_opt {
+                    Some(price) if price > limit => {
+                        println!(
+                            "[{}]Harga terlalu tinggi ({} > {}). Coba ulang...",
+                            chrono::Local::now().format("%H:%M:%S.%3f"),
+                            price, limit
+                        );
+                        // Retry
+                        continue;
+                    }
+                    Some(price) => {
+                        println!(
+                            "[{}]Harga cocok ({} <= {}).",
+                            chrono::Local::now().format("%H:%M:%S.%3f"),
+                            price, limit
+                        );
+                        // Lanjut proses
+                    }
+                    None => {
+                        println!(
+                            "[{}]Gagal membaca merchandise_subtotal, ulangi...",
+                            chrono::Local::now().format("%H:%M:%S.%3f")
+                        );
+                        continue; // Retry
+                    }
+                }
             }
-        });
-        
-        if let Ok(mut body) = place_order_body.lock() {
-            body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
-        } else {
-            eprintln!("Failed to lock place_order_body for selected_payment_channel_data");
-        }
-        let final_body = Arc::try_unwrap(place_order_body)
-            .map_err(|_| "Masih ada Arc yang nge-refer ke PlaceOrderBody")?
-            .into_inner()
-            .map_err(|_| "Gagal unlock Mutex")?;
 
-        Ok(final_body)
-    } else {
-        eprintln!("Failed to get checkout data: {}", status);
-        Err("Failed to get checkout data".into())
+            let keys = [
+                "checkout_price_data",
+                "display_meta_data",
+                "buyer_txn_fee_info",
+                "disabled_checkout_info",
+                "buyer_service_fee_info",
+                "iof_info",
+            ];
+
+            let dash_body: Arc<DashMap<String, Option<Value>>> = Arc::new(DashMap::new());
+
+            keys.par_iter().for_each(|&key| {
+                let value = v.get(key).cloned();
+                dash_body.insert(key.to_string(), value);
+            });
+
+            dash_body.insert(
+                "selected_payment_channel_data".to_string(),
+                Some(chosen_payment.place_order.clone()),
+            );
+
+            // Langkah 5: Transfer nilai dari DashMap ke PlaceOrderBody
+            for entry in dash_body.iter() {
+                match entry.key().as_str() {
+                    "checkout_price_data" => place_order_body.checkout_price_data = entry.value().clone(),
+                    "display_meta_data" => place_order_body.display_meta_data = entry.value().clone(),
+                    "buyer_txn_fee_info" => place_order_body.buyer_txn_fee_info = entry.value().clone(),
+                    "disabled_checkout_info" => place_order_body.disabled_checkout_info = entry.value().clone(),
+                    "buyer_service_fee_info" => place_order_body.buyer_service_fee_info = entry.value().clone(),
+                    "iof_info" => place_order_body.iof_info = entry.value().clone(),
+                    "selected_payment_channel_data" => place_order_body.selected_payment_channel_data = entry.value().clone(),
+                    _ => {}
+                }
+            }
+            return Ok(place_order_body)
+        } else {
+            eprintln!("Failed to get checkout data: {}", status);
+            return Err("Failed to get checkout data".into());
+        };
     }
 }
 pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>,
@@ -763,23 +744,21 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
 	let v: Value = response.json().await?;
     let keys = vec![
         "checkout_price_data",
-        "order_update_info",
-        "dropshipping_info",
-        "promotion_data",
-        "shoporders",
-        "shipping_orders",
         "display_meta_data",
-        "fsv_selection_infos",
-        "buyer_info",
-        "client_event_info",
         "buyer_txn_fee_info",
         "disabled_checkout_info",
         "buyer_service_fee_info",
         "iof_info",
     ];
 
-    let mut place_order_body = PlaceOrderBody::new(&device_info, &body_json.checkout_session_id);
-
+    let mut place_order_body: PlaceOrderBody = body_json.clone().into();
+    if let Some(shoporders) = v.get("shoporders") {
+        place_order_body.shoporders = serde_json::from_value(shoporders.clone())?;
+    }
+    if let Some(shipping_orders) = v.get("shipping_orders") {
+        place_order_body.shipping_orders = serde_json::from_value(shipping_orders.clone())?;
+    }
+    place_order_body.selected_payment_channel_data = Some(chosen_payment.place_order.clone()); 
     let handles = keys.iter().map(|key| {
         let v_clone = v.clone();
         let key = key.to_string();
@@ -805,24 +784,67 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
 	Ok(place_order_body)
 }
 
-pub fn falsification_insurance(shoporders: &serde_json::Value) -> Vec<serde_json::Value> {
-    let mut asu = vec![];
-    if let Some(orders) = shoporders.as_array() {
-        for order in orders {
-            if let Some(items) = order.get("items").and_then(|v| v.as_array()) {
-                for item in items {
-                    if let Some(insurances) = item.get("insurances").and_then(|v| v.as_array()) {
-                        for insurance_item in insurances {
-                            let mut insurance_modified = insurance_item.clone();
-                            if let Some(obj) = insurance_modified.as_object_mut() {
-                                obj.insert("selected".to_string(), serde_json::Value::Bool(false));
-                            }
-                            asu.push(insurance_modified);
+pub fn falsification_insurance(shoporders: &[ShopOrder]) -> Vec<ShopOrder> {
+    shoporders
+        .iter()
+        .cloned()
+        .map(|mut shoporder| {
+            for item in &mut shoporder.items {
+                for insurance in &mut item.insurances {
+                    if insurance.is_object() {
+                        if let Some(obj) = insurance.as_object_mut() {
+                            obj.insert("selected".to_string(), serde_json::Value::Bool(false));
                         }
                     }
                 }
             }
-        }
-    }
-    asu
+            shoporder
+        })
+        .collect()
 }
+pub fn multi_product(products: &[ModelInfo]) -> Vec<ShopOrder> {
+    let mut grouped: HashMap<i64, Vec<&ModelInfo>> = HashMap::new();
+
+    // Kelompokkan berdasarkan shop_id
+    for product in products {
+        grouped.entry(product.shop_id).or_default().push(product);
+    }
+
+    // Sortir shop_id biar urut
+    let mut shop_ids: Vec<_> = grouped.keys().cloned().collect();
+    shop_ids.sort_unstable();
+
+    // Buat ShopOrder dengan shipping_id urut berdasarkan index
+    shop_ids
+        .into_iter()
+        .enumerate()
+        .map(|(idx, shop_id)| {
+            let items = grouped.remove(&shop_id).unwrap_or_default();
+
+            ShopOrder {
+                shop: Shop { shopid: shop_id },
+                items: items
+                    .iter()
+                    .map(|p| Item {
+                        itemid: p.item_id,
+                        modelid: p.modelid,
+                        quantity: p.quantity,
+                        add_on_deal_id: 0,
+                        is_add_on_sub_item: false,
+                        item_group_id: None,
+                        insurances: vec![],
+                        channel_exclusive_info: ChannelExclusiveInfo {
+                            source_id: 0,
+                            token: "".to_string(),
+                            is_live_stream: false,
+                            is_short_video: false,
+                        },
+                        supports_free_returns: false,
+                    })
+                    .collect(),
+                shipping_id: (idx + 1) as i32,
+            }
+        })
+        .collect()
+}
+//pub fn precognition_value()

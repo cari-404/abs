@@ -100,7 +100,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("-------------------------------------------");
 	let opt = Opt::from_args();
 	let mode = select_mode(&opt);
-	let client = Arc::new(prepare::universal_client_skip_headers());
+	let client = Arc::new(prepare::universal_client_skip_headers().await);
 	let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"))));
 	let base_headers = Arc::new(prepare::create_headers(&cookie_data));
 	let userdata = prepare::info_akun(client.clone(), base_headers).await?;
