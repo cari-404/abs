@@ -544,10 +544,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
             tokio::spawn(async move {
                 let mut try_count = 0;
-                loop{
-                    if stop_flag.load(Ordering::Relaxed) {
-                        break;
-                    }
+                while try_count < 3 && !stop_flag.load(Ordering::Relaxed) {
                     let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone.0, &chosen_payment_clone, get_body_clone.1.clone(), adjusted_max_price).await
                     {
                         Ok(body) => body,
@@ -556,6 +553,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
                     };
+                    if stop_flag.load(Ordering::Relaxed) {
+                        return;
+                    }
                     let mpp = match task_ng::place_order_ng(client.clone(), shared_headers.clone(), &place_order_body).await
                     {
                         Ok(response) => response,
@@ -567,14 +567,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Mengecek apakah `mpp` memiliki field `checkoutid`
                     println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
                     if let Some(error) = mpp.get("error") {
-                        if error == "error_fraud" {
-                            println!("[{}]Gagal checkout, error_fraud", Local::now().format("%H:%M:%S.%3f"));
-                            stop_flag.store(true, Ordering::Relaxed);
-                            break;
-                        }else if error == "error_freeze" {
-                            println!("[{}]Gagal checkout, error_freeze", Local::now().format("%H:%M:%S.%3f"));
-                            stop_flag.store(true, Ordering::Relaxed);
-                            break;
+                        match error.as_str().unwrap_or_default() {
+                            "error_fraud" => {
+                                println!("[{}]Gagal: error_fraud", Local::now().format("%H:%M:%S.%3f"));
+                                stop_flag.store(true, Ordering::Relaxed);
+                                return;
+                            }
+                            "error_freeze" => {
+                                println!("[{}]Gagal: error_freeze", Local::now().format("%H:%M:%S.%3f"));
+                                stop_flag.store(true, Ordering::Relaxed);
+                                return;
+                            }
+                            _ => {}
                         }
                     }
                     if let Some(checkout_id) = mpp.get("checkoutid") {
@@ -583,15 +587,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
                         let _ = tx.send(url).await;
                         stop_flag.store(true, Ordering::Relaxed);
-                        break;
-                    }
-                    if try_count == 3 {
-                        eprintln!("[{}]Gagal mendapatkan checkoutid setelah 3 kali percobaan.", Local::now().format("%H:%M:%S.%3f"));
-                        stop_flag.store(true, Ordering::Relaxed);
-                        break;
+                        return;
                     }
                     try_count += 1;
                 }
+                eprintln!("[{}]Gagal 3x percobaan", Local::now().format("%H:%M:%S.%3f"));
+                stop_flag.store(true, Ordering::Relaxed);
             });
         }
         drop(tx); // Tutup pengirim setelah semua tugas selesai
