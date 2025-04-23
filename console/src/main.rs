@@ -1,12 +1,11 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.6 :
+    Security Update
 Whats new in 1.0.5 :
     experimental static data
     reduce dynamic data
 Whats new in 1.0.4 :
     add rejected insurance
-Whats new in 1.0.3 :
-    more cutting process
-    Add no coins
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -567,6 +566,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     // Mengecek apakah `mpp` memiliki field `checkoutid`
                     println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+                    if let Some(error) = mpp.get("error") {
+                        if error == "error_fraud" {
+                            println!("[{}]Gagal checkout, error_fraud", Local::now().format("%H:%M:%S.%3f"));
+                            stop_flag.store(true, Ordering::Relaxed);
+                            break;
+                        }else if error == "error_freeze" {
+                            println!("[{}]Gagal checkout, error_freeze", Local::now().format("%H:%M:%S.%3f"));
+                            stop_flag.store(true, Ordering::Relaxed);
+                            break;
+                        }
+                    }
                     if let Some(checkout_id) = mpp.get("checkoutid") {
                         let checkout_id = checkout_id.as_i64().unwrap();
                         let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
