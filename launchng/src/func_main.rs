@@ -3,8 +3,8 @@ use winsafe::{self as w,
     gui, path, prelude::*, co::{self, SW, SEE_MASK},
 };
 use ::runtime::prepare::{self};
-use serde_json::{Value};
 use std::{ffi::CStr, ptr, io::{self, Error}};
+use std::sync::{Arc, Mutex};
 use chrono::{Local, DateTime, Utc};
 use windows_sys::Win32::System::DataExchange::*;
 use windows_sys::Win32::System::Memory::*;
@@ -22,6 +22,34 @@ pub fn error_cek(wnd: &gui::WindowMain, title: &str, message: &str) -> Result<()
     wnd.hwnd().MessageBox(message, title, co::MB::OK | co::MB::ICONSTOP).ok();
     Ok(())
 }
+pub fn get_fp_data(file: &str) -> String {
+    let mut sz_token_content = String::new();
+    let header_dir = format!("./header/{}", file);
+    let fp_folder = format!("{}/af-ac-enc-sz-token.txt", &header_dir);
+    if path::exists(&header_dir) == false {
+        if let Err(e) = fs::create_dir_all(&header_dir) {
+            eprintln!("Failed to create directory: {}", e);
+            return Default::default();
+        }
+    }
+    if fs::File::open(&fp_folder).is_err() {
+        if let Err(e) = fs::File::create(&fp_folder) {
+            eprintln!("Failed to create file: {}", e);
+            return Default::default();
+        }
+    }
+    if let Ok(mut file) = fs::File::open(&fp_folder) {
+        if let Err(e) = file.read_to_string(&mut sz_token_content) {
+            eprintln!("Failed to read file: {}", e);
+            return Default::default();
+        }
+    } else {
+        eprintln!("Failed to open file: {}", fp_folder);
+        return Default::default();
+    }
+    println!("sz-token:{}", sz_token_content);
+    sz_token_content
+}
 pub fn handle_file_selection(file_combo: &gui::ComboBox, cookie_edit: &gui::Edit, sz_edit: &gui::Edit, my_list: &gui::ListView) {
     if let Some(file) = file_combo.items().selected_text() {
         println!("selected file: {}", file);
@@ -29,31 +57,7 @@ pub fn handle_file_selection(file_combo: &gui::ComboBox, cookie_edit: &gui::Edit
             my_list.items().delete_all();
             let cookie_content = prepare::read_cookie_file(&file);
             let cookie_data = prepare::create_cookie(&cookie_content);
-            let header_dir = format!("./header/{}", file);
-            let fp_folder = format!("{}/af-ac-enc-sz-token.txt", &header_dir);
-            if path::exists(&header_dir) == false {
-                if let Err(e) = fs::create_dir_all(&header_dir) {
-                    eprintln!("Failed to create directory: {}", e);
-                    return;
-                }
-            }
-            if fs::File::open(&fp_folder).is_err() {
-                if let Err(e) = fs::File::create(&fp_folder) {
-                    eprintln!("Failed to create file: {}", e);
-                    return;
-                }
-            }
-            let mut sz_token_content = String::new();
-            if let Ok(mut file) = fs::File::open(&fp_folder) {
-                if let Err(e) = file.read_to_string(&mut sz_token_content) {
-                    eprintln!("Failed to read file: {}", e);
-                    return;
-                }
-            } else {
-                eprintln!("Failed to open file: {}", fp_folder);
-                return;
-            }
-            println!("sz-token:{}", sz_token_content);
+            let sz_token_content = get_fp_data(&file);
             sz_edit.set_text(&sz_token_content);
             cookie_edit.set_text(&cookie_content);
             my_list.items().add(
@@ -112,31 +116,30 @@ pub fn get_file_names(dir: &str) -> Result<Vec<String>, co::ERROR> {
 
     Ok(files)
 }
-pub fn populate_payment_combo(combo: &gui::ComboBox) {
+pub fn populate_payment_combo(combo: &gui::ComboBox, shared_variation_clone: Arc<Mutex<Vec<prepare::PaymentInfo>>>) {
     combo.items().delete_all();
     // Buka file "payment.txt"
     if let Ok(mut file) = fs::File::open("payment.txt") {
         let mut json_data = String::new();
         let _ = file.read_to_string(&mut json_data);
-        let hasil: Value = serde_json::from_str(&json_data).expect("REASON");
-        if let Some(data) = hasil.get("data").and_then(|data| data.as_array()) {
-            for data_value in data {
-                if let Some(payment_array) = data_value.get("payment").and_then(|payment| payment.as_array()) {
-                    for payment_value in payment_array {
-                        if let Some(payment_obj) = payment_value.as_object() {
-                            if let Some(name) = payment_obj.get("name").and_then(|v| v.as_str()) {
-                                combo.items().add(&[name.to_string()]);
-                                if combo.items().count() > 0 {
-                                    combo.items().select(Some(0));
-                                }
-                            }
-                        }
+        match prepare::get_payment(&json_data) {
+            Ok(payment_info_list) => {
+                let mut shared = shared_variation_clone.lock().unwrap();
+                shared.clear();
+                *shared = payment_info_list.clone(); 
+                for payment_info in payment_info_list {
+                    combo.items().add(&[payment_info.name.to_string()]);
+                    if combo.items().count() > 0 {
+                        combo.items().select(Some(0));
                     }
                 }
             }
+            Err(e) => {
+                println!("Error parsing payment info: {}", e);
+            }
         }
     } else {
-        println!("Failed to read the folder contents");
+        println!("Failed to read the file contents");
     }
 }
 pub fn detect_wine() -> Result<String, Box<dyn std::error::Error>> {

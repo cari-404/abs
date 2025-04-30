@@ -1,14 +1,16 @@
 [package]
 name = "runtime"
-version = "1.0.6"
+version = "1.0.7"
 edition = "2021"
 
 [lib]
 crate-type = ["rlib"]
 
 [features]
+prepare-ext = ["checkout", "futures"]
 core = ["rand", "uuid"]
-checkout = ["futures", "rayon", "dashmap"]
+checkout = []
+checkout_ng = ["futures", "rayon", "dashmap"]
 flashsale = []
 food = []
 upgrade = []

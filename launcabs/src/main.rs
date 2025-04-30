@@ -940,7 +940,7 @@ impl App {
             println!("start opem");
             thread::spawn(move || {
                 rt.block_on(async {
-                    match prepare::get_payment(&json_data).await {
+                    match prepare::get_payment(&json_data) {
                         Ok(payment_info) => {
                             let mut data = shared_data.write().unwrap();
                             data.name_payment = payment_info.iter().map(|payment| payment.name.clone()).collect();

@@ -1,46 +1,12 @@
 use rquest as reqwest;
-use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
-use runtime::crypt::DeviceInfo;
-use runtime::task::{self};
 use std::sync::Arc;
 use std::mem::drop;
 
-use crate::get_user_input;
-use crate::Opt;
+use crate::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
+use crate::crypt::DeviceInfo;
+use crate::task::{self};
 
-pub fn choose_shipping(shippings: &[ShippingInfo], opt: &Opt) -> Option<ShippingInfo> {
-    println!("shipping yang tersedia:");
-
-    for (index, shipping) in shippings.iter().enumerate() {
-        println!("{}. {} - Harga: {} - Id: {}", index + 1, shipping.channel_name, shipping.original_cost / 100000, shipping.channelid);
-    }
-
-    if let Some(kurir) = &opt.kurir {
-        // If opt.kurir is present, find the shipping with a matching channel_name
-        if let Some(selected_shipping) = shippings.iter().find(|shipping| shipping.channel_name == *kurir) {
-            println!("{:?}", selected_shipping);
-            return Some(selected_shipping.clone());
-        } else {
-            println!("Tidak ada shipping dengan nama '{}'", kurir);
-            return None;
-        }
-    }
-
-	let user_input = get_user_input("Pilih Shipping yang disediakan: ");
-
-    // Convert user input to a number
-    if let Ok(choice_index) = user_input.trim().parse::<usize>() {
-        // Return the selected shipping based on the index
-        println!("{:?}", shippings.get(choice_index - 1).cloned());
-        return shippings.get(choice_index - 1).cloned();
-    } else if user_input.trim().to_uppercase() == "N" {
-        println!("Menampilkan lebih banyak pilihan...");
-    }
-
-    None
-}
-
-pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwest::header::HeaderMap>, shared_headers: Arc<reqwest::header::HeaderMap>, device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32,  chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
+pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwest::header::HeaderMap>, shared_headers: Arc<reqwest::header::HeaderMap>, device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32,  chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> anyhow::Result<Vec<ShippingInfo>> {
     let get_body_ship = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
     let (shipping_info_result, shipping_orders_result) = tokio::join!(
         prepare::kurir(client.clone(), headers.clone(), &product_info, &address_info),

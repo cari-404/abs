@@ -1,13 +1,14 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.0.7 :
+    Add detail courier on launcher NG
+    support new timer
 Whats new in 1.0.6 :
     Security Update
 Whats new in 1.0.5 :
     experimental static data
     reduce dynamic data
-Whats new in 1.0.4 :
-    add rejected insurance
 */
-use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, FSItems};
+use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
 use runtime::task::{self};
 use runtime::task_ng::{self};
@@ -26,7 +27,7 @@ use serde_json::json;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-mod kurir_ng;
+mod collective;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "Auto Buy Shopee", about = "Make fast buy from shopee.co.id")]
@@ -355,7 +356,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 	
 	//std::thread::sleep(std::time::Duration::from_secs(2));
-    if let Some(model) = choose_model(&model_info, &opt, &fs_item) {
+    if let Some(model) = collective::choose_model(&model_info, &opt, &fs_item) {
         chosen_model = model;
         println!("Anda memilih model: {:#?}", chosen_model);
         // Lanjutkan dengan logika berikutnya
@@ -367,12 +368,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Anda memilih model: {}", chosen_model.name);
     let shared_headers = Arc::new(task::headers_checkout(&cookie_data));
-    let shipping_info = kurir_ng::get_shipping_data(client.clone(), base_headers.clone(), shared_headers.clone(), &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
+    let shipping_info = runtime::prepare_ext::get_shipping_data(client.clone(), base_headers.clone(), shared_headers.clone(), &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, &name, "",&chosen_model, &chosen_shipping, &chosen_payment).await;
 
-	if let Some(shipping) = kurir_ng::choose_shipping(&shipping_info, &opt) {
+	if let Some(shipping) = collective::choose_shipping(&shipping_info, &opt) {
 		chosen_shipping = shipping;
 		println!("Anda memilih shipping: {:#?}", chosen_shipping);
 		// Continue with the next logic
@@ -398,9 +399,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     let token = get_or_prompt(opt.token.as_deref(), "Token Media: ");
 	
-	let payment_info = prepare::get_payment(&prepare::open_payment_file().await?).await?;
+	let payment_info = prepare::get_payment(&prepare::open_payment_file().await?)?;
 
-	if let Some(payment) = choose_payment(&payment_info, &opt) {
+	if let Some(payment) = collective::choose_payment(&payment_info, &opt) {
 		chosen_payment = payment;
 		println!("Anda memilih payment: {:#?}", chosen_payment);
 		// Continue with the next logic
@@ -713,98 +714,38 @@ async fn print_voucher_info(voucher_type: &str, voucher: &Option<voucher::Vouche
         None => println!("[{}]{} is None", Local::now().format("%H:%M:%S.%3f"), voucher_type),
     }
 }
-fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo> {
-	println!("payment yang tersedia:");
 
-    for (index, payment) in payments.iter().enumerate() {
-        println!("{}. {} - Services: {} - Id: {}", index + 1, payment.name, payment.txn_fee / 100000, payment.channel_id);
-    }
+async fn check_and_adjust_time(task_time_dt: &NaiveDateTime) -> NaiveDateTime {
+	let mut updated_task_time_dt = *task_time_dt;
+	let current_time = Local::now().naive_local();
 
-    if let Some(bayar) = &opt.payment {
-        // If opt.payment is present, find the payment with a matching name
-        if let Some(selected_payment) = payments.iter().find(|payment| payment.name == *bayar) {
-            println!("{:?}", selected_payment);
-            return Some(selected_payment.clone());
-        } else {
-            println!("Tidak ada payment dengan nama '{}'", bayar);
-            return None;
-        }
-    }
-
-    // Convert user input to a number
-    if let Ok(choice_index) = get_user_input("Pilih payment yang disediakan: ").trim().parse::<usize>() {
-        // Return the selected payment based on the index
-        println!("{:?}", payments.get(choice_index - 1).cloned());
-        return payments.get(choice_index - 1).cloned();
-    }
-
-    None
+	if updated_task_time_dt.signed_duration_since(current_time) < Duration::zero() {
+		println!("Waktu yang dimasukkan telah berlalu.");
+		let input = get_user_input("Apakah Anda ingin menyetel waktu untuk besok? (yes/no): ");
+		match input.trim().to_lowercase().as_str() {
+			"yes" | "y" => {
+				updated_task_time_dt += Duration::days(1);
+				println!("Waktu telah disesuaikan untuk hari berikutnya: {}", updated_task_time_dt);
+			}
+			_ => println!("Pengaturan waktu tidak diubah."),
+		}
+	}
+	updated_task_time_dt
 }
-
-fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Option<ModelInfo> {
-    println!("Variasi yang tersedia:");
-
-    for (index, model) in models.iter().enumerate() {
-        let flashsale = if let Some(item) = fs_items.iter().find(|item| item.modelids.as_ref().expect("").contains(&model.modelid)) {
-            format!(
-                "[FLASHSALE] - Est≉ {} - Hide: {} - fs-stok: {}",
-                format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),
-                item.hidden_price_display.as_deref().unwrap_or("N/A"),
-                item.stock
-            )
-        } else {
-            String::new()
-        };
-        println!("{}. {} - Harga: {} - Stok: {} {}", index + 1, model.name, format_thousands(model.price / 100000), model.stock, flashsale);
-    }
-    // Check if there is only one model
-    if models.len() == 1 {
-        println!("Hanya satu variasi tersedia. Memilih secara otomatis.");
-        return Some(models[0].clone());
-    }
-
-    if let Some(product) = &opt.product {
-        // If opt.product is present, find the model with a matching name
-        if let Some(selected_model) = models.iter().find(|model| model.name == *product) {
-            println!("{:?}", selected_model);
-            return Some(selected_model.clone());
-        } else {
-            println!("Tidak ada model dengan nama '{}'", product);
-            return None;
-        }
-    }
-
-    // Mengubah input pengguna ke dalam bentuk angka
-    if let Ok(choice_index) = get_user_input("Pilih Variasi yang disediakan: ").trim().parse::<usize>() {
-        // If opt.product is not present, proceed with user input logic
-        if let Some(selected_model) = models.get(choice_index - 1) {
-            println!("{:?}", selected_model);
-            return Some(selected_model.clone());
-        }
-    }
-
-    None
-}
-
 async fn countdown_to_task(task_time_dt: &NaiveDateTime) {
-    loop {
-        let current_time = Local::now().naive_local();
-        let task_time_naive = task_time_dt.time();
-        let time_until_task = task_time_naive.signed_duration_since(current_time.time());
-
-        if time_until_task < Duration::zero() {
-            println!("\nTask completed! Current time: {}", current_time.format("%H:%M:%S.%3f"));
-            break;
-        }
-
-        let formatted_time = format_duration(time_until_task);
-        print!("\r{}", formatted_time);
-        io::stdout().flush().unwrap();
-
-        tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-    }
+	let task_time_dt = check_and_adjust_time(&task_time_dt).await;
+	loop {
+		let current_time = Local::now().naive_local();
+		let time_until_task = task_time_dt.signed_duration_since(current_time);
+		if time_until_task <= Duration::zero() {
+			println!("\nTask completed! Current time: {}", current_time.format("%H:%M:%S.%3f"));
+			break;
+		}
+		print!("\r{}", format_duration(time_until_task));
+		io::stdout().flush().unwrap();
+		tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+	}
 }
-
 fn format_duration(duration: Duration) -> String {
     let hours = duration.num_hours();
     let minutes = duration.num_minutes() % 60;
@@ -812,6 +753,11 @@ fn format_duration(duration: Duration) -> String {
     let milliseconds = duration.num_milliseconds() % 1_000;
 
     format!("{:02}:{:02}:{:02}.{:03}", &hours, &minutes, &seconds, &milliseconds)
+}
+fn parse_task_time(task_time_str: &str) -> Result<NaiveDateTime, Box<dyn std::error::Error>> {
+	let today = Local::now().date_naive();
+	let dt = NaiveDateTime::parse_from_str(&format!("{} {}", today.format("%Y-%m-%d"), task_time_str), "%Y-%m-%d %H:%M:%S%.f")?;
+	Ok(dt)
 }
 
 fn get_or_prompt<'a>(opt: Option<&'a str>, prompt: &str) -> Cow<'a, str> {
@@ -857,13 +803,6 @@ fn get_user_input(prompt: &str) -> String {
         }
         let input = String::from_utf16_lossy(&buffer[..chars_read as usize]);
         input.trim().to_string()
-    }
-}
-
-fn parse_task_time(task_time_str: &str) -> Result<NaiveDateTime> {
-    match NaiveDateTime::parse_from_str(&format!("2023-01-01 {}", task_time_str), "%Y-%m-%d %H:%M:%S%.f") {
-        Ok(dt) => Ok(dt),
-        Err(e) => Err(e.into()),
     }
 }
 

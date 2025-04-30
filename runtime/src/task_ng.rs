@@ -468,7 +468,7 @@ pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, 
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
     loop{
         //println!("Status: Start Checkout");
-
+        let t1 = std::time::Instant::now();
         let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
         //let body_str = serde_json::to_string(&body_json)?;
         //println!("{}", body_str);
@@ -480,11 +480,12 @@ pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, 
             .version(Version::HTTP_2) 
             .send()
             .await?;
-
+        println!("[{:?}] setelah .send()", t1.elapsed());
         //println!("Status: Done Checkout");
         let status = response.status();
         if status == reqwest::StatusCode::OK {
             let v: Value = response.json().await?;
+            println!("[{:?}] setelah .json()", t1.elapsed());
             let v = Arc::new(v);
             if let Some(limit) = adjusted_max_price {
                 let price_opt = v.get("checkout_price_data")

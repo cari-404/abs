@@ -253,7 +253,7 @@ pub async fn open_payment_file() -> Result<String, Box<dyn std::error::Error>> {
     file.read_to_string(&mut json_data).await?;
     Ok(json_data)
 }
-pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error>> {
+pub fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn std::error::Error>> {
     let response: PaymentData = serde_json::from_str(&json_data)?;
 
     if let Some(data) = response.data {
@@ -280,12 +280,12 @@ pub async fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn st
                 }
             })
             .collect();
-        return Ok(payment_info_vec);
+        Ok(payment_info_vec)
+    } else {
+        Ok(Vec::new()) // Kalau tidak ada data, kembalikan vektor kosong
     }
-    // Handle the case where there is an error or no payment information is found
-	process::exit(1);
 }
-pub async fn kurir(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, address_info: &AddressInfo) -> Result<Vec<ShippingInfo>, Box<dyn std::error::Error>> {
+pub async fn kurir(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, address_info: &AddressInfo) -> anyhow::Result<Vec<ShippingInfo>> {
 	let city_encoded = url_encode(&address_info.city);
     let district_encoded = url_encode(&address_info.district);
     let state_encoded = url_encode(&address_info.state);

@@ -219,7 +219,7 @@ pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_i
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, anyhow::Error> {
 	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
 	let selected_payment_channel_data = if chosen_payment.selected_get.is_null(){
@@ -386,7 +386,7 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn checkout_get(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), Box<dyn std::error::Error>> {
+pub async fn checkout_get(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &serde_json::Value) -> Result<(serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value, serde_json::Value), anyhow::Error> {
     let mut headers = (*base_headers).clone();
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
     // Convert struct to JSON

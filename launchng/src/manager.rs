@@ -29,11 +29,14 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let download_button_clone = download_button.clone();
     let info_label_clone = info_label.clone();
     let check_version_clone = check_version.clone();
+    let progress_clone = progress.clone();
     wnd2.on().wm_init_dialog(move |_| {
+        progress_clone.set_marquee(true);
         download_button_clone.hwnd().EnableWindow(false);
         let download_button_clone = download_button_clone.clone();
         let check_version = check_version_clone.clone();
         let info_label_clone = info_label_clone.clone();
+        let progress_clone = progress_clone.clone();
         tokio::spawn(async move {
             if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/cari-404/abs/releases/latest")).await {
                 println!("Versi terbaru: {}", latest_version);
@@ -49,6 +52,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             } else {
                 info_label_clone.set_text("Gagal mengecek versi terbaru.");
             }
+            progress_clone.set_marquee(false);
         });
         Ok(true)
     });
@@ -124,7 +128,25 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                             progress_clone.set_position(downloaded as u32);
                             let elapsed = start.elapsed().as_secs_f64();
                             let speed_kb = (downloaded as f64 / elapsed) / 1024.0;
-                            info_label_clone.set_text(&format!("{:.2} KB/s", speed_kb));
+                            let downloaded_mb = downloaded as f64 / 1024.0 / 1024.0;
+                            let total_mb = total_size as f64 / 1024.0 / 1024.0;
+                            let percentage = (downloaded as f64 / total_size as f64) * 100.0;
+                        
+                            let remaining = total_size.saturating_sub(downloaded);
+                            let eta_secs = if speed_kb > 0.0 {
+                                (remaining as f64 / 1024.0) / speed_kb
+                            } else {
+                                0.0
+                            };
+                        
+                            info_label_clone.set_text(&format!(
+                                "Kecepatan: {:.2} KB/s | Diunduh: {:.2}/{:.2} MB ({:.1}%) | ETA: {}",
+                                speed_kb,
+                                downloaded_mb,
+                                total_mb,
+                                percentage,
+                                format_eta(eta_secs)
+                            ));
                         }
                         file.flush().await.expect("failed to flush data");
                         let actual_size = tokio::fs::metadata("update.zip").await.expect("failed to calculate").len();
@@ -689,6 +711,10 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         }
         Ok(())
     });
+    my_list.on().lvn_column_click(move |_| {
+        println!("Column clicked!");
+        Ok(())
+    });
     let wnd2_clone = wnd2.clone();
     let interrupt_flag_clone = interrupt_flag.clone();
     stop_button.on().bn_clicked(move || {
@@ -810,4 +836,16 @@ fn get_flashsale_products(wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, fil
         });
     };
     Ok(())
+}
+fn format_eta(seconds: f64) -> String {
+    let total_secs = seconds.round() as u64;
+    let hours = total_secs / 3600;
+    let minutes = (total_secs % 3600) / 60;
+    let secs = total_secs % 60;
+
+    match (hours, minutes, secs) {
+        (0, 0, s) => format!("{}s", s),
+        (0, m, s) => format!("{}m {}s", m, s),
+        (h, m, s) => format!("{}h {}m {}s", h, m, s),
+    }
 }
