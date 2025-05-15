@@ -6,8 +6,14 @@ use crate::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, Ad
 use crate::crypt::DeviceInfo;
 use crate::task::{self};
 
-pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwest::header::HeaderMap>, shared_headers: Arc<reqwest::header::HeaderMap>, device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32,  chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> anyhow::Result<Vec<ShippingInfo>> {
-    let get_body_ship = task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await?;
+pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwest::header::HeaderMap>, shared_headers: Arc<reqwest::header::HeaderMap>, device_info: &DeviceInfo, product_info: Option<&ProductInfo>, address_info: &AddressInfo, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> anyhow::Result<Vec<ShippingInfo>> {
+    let product_info = match product_info {
+        Some(info) => info.clone(),
+        None => {
+            ProductInfo::from(chosen_model)
+        }
+    };      
+    let get_body_ship = task::get_builder(&device_info, &address_info, &[chosen_model.clone()], &chosen_payment, &chosen_shipping, None, None, None).await?;
     let (shipping_info_result, shipping_orders_result) = tokio::join!(
         prepare::kurir(client.clone(), headers.clone(), &product_info, &address_info),
         task::checkout_get(client.clone(), shared_headers.clone(), &get_body_ship)
@@ -18,7 +24,6 @@ pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwes
 
     let mut tasks = Vec::new();
     let device_info = Arc::new(device_info.clone());
-    let product_info = Arc::new(product_info.clone());
     let address_info = Arc::new(address_info.clone());
     let chosen_model = Arc::new(chosen_model.clone());
     let chosen_payment = Arc::new(chosen_payment.clone());
@@ -34,7 +39,6 @@ pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwes
             });
             let integrated = Arc::new(integrated.clone());
             let device_info = Arc::clone(&device_info);
-            let product_info = Arc::clone(&product_info);
             let address_info = Arc::clone(&address_info);
             let chosen_model = Arc::clone(&chosen_model);
             let chosen_payment = Arc::clone(&chosen_payment);
@@ -48,7 +52,7 @@ pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwes
                     let mut shipping_info = Vec::new();
                     chosen_shipping.channelid = integrated.as_i64().unwrap_or(0);
                     println!("integrated_special: {:?}", chosen_shipping);  
-                    let get_body_shipl = match task::get_builder(&device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping, None, None, None).await
+                    let get_body_shipl = match task::get_builder(&device_info, &address_info, &[(*chosen_model).clone()], &chosen_payment, &chosen_shipping, None, None, None).await
                     {
                         Ok(body) => body,
                         Err(err) => {

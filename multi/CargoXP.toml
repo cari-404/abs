@@ -1,9 +1,9 @@
 [package]
-name = "abs"
+name = "multi"
 version = "1.0.8"
 edition = "2021"
 authors = ["Paijo"]
-description = "Auto Buy from Shopee.co.id"
+description = "Multi Auto Buy from Shopee.co.id(experimental)"
 build = "build.rs"
 
 [build-dependencies]
@@ -11,7 +11,7 @@ thunk = { git = "https://github.com/cari-404/thunk.git", package = "thunk-rs" }
 winresource = "0.1"
 
 [package.metadata.winresource]
-FileDescription = "Auto Buy from Shopee.co.id"
+FileDescription = "Multi Auto Buy from Shopee.co.id(experimental)"
 LegalCopyright = "By Paijo"
 OriginalFilename = "abs.exe"
 CompanyName = "Paijo"

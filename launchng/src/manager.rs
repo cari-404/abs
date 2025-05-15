@@ -382,6 +382,7 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 "True",
             ], None, (),
         );
+        my_list_clone.set_extended_style(true, w::co::LVS_EX::FULLROWSELECT);
         func_main::populate_combobox_with_files(&file_combo_clone, "akun");
         func_main::handle_file_selection(&file_combo_clone, &cookie_edit_clone, &sz_edit_clone, &my_list_clone);
         Ok(true)
@@ -576,6 +577,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             None, // no icon; requires a previous set_image_list()
             (),   // no object data; requires specifying the generic `ListView` type
         );
+        my_list_clone.set_extended_style(true, w::co::LVS_EX::FULLROWSELECT);
         func_main::populate_combobox_with_files(&file_combo_clone, "akun");
         Ok(true)
     });
@@ -604,16 +606,20 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let wnd2_clone = wnd2.clone();
     let fs_combo_clone = fs_combo.clone();
     let shared_fsid_clone = shared_fsid.clone();
+    let progress_clone = progress.clone();
     cek_button.on().bn_clicked(move || {
+        progress_clone.set_marquee(true);
         let file = file_combo_clone.text();
         if file.is_empty() {
             let isi = format!("Please select a file before checking the fs");
             let _ = func_main::error_modal(&wnd2_clone, "Error check data", &isi);
+            progress_clone.set_marquee(false);
         } else {
             let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
             let fs_combo_clone = fs_combo_clone.clone();
             let wnd2_clone = wnd2_clone.clone();
             let shared_fsid_clone = shared_fsid_clone.clone();
+            let progress_clone = progress_clone.clone();
             tokio::spawn(async move {
                 let client_clone = Arc::new(prepare::universal_client_skip_headers().await);
                 fs_combo_clone.items().delete_all();
@@ -633,11 +639,13 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                         }
                         let mut shared = shared_fsid_clone.lock().unwrap();
                         shared.clear();
-                        *shared = fsid_current.clone(); 
+                        *shared = fsid_current.clone();
+                        progress_clone.set_marquee(false);
                     }
                     Err(e) => {
                         let isi = format!("Error: {}", e);
                         let _ = func_main::error_modal(&wnd2_clone, "Error", &isi);
+                        progress_clone.set_marquee(false);
                     }
                 };
             });
@@ -656,6 +664,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let mode_label_clone = mode_label.clone();
     let count_label_clone = count_label.clone();
     single_button.on().bn_clicked(move || {
+        progress_clone.set_state(w::co::PBST::NORMAL);
         let fsid = fs_combo_clone.text();
         if fsid.is_empty() {
             let isi = format!("Please select a fs id before checking the fs");
@@ -699,6 +708,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let mode_label_clone = mode_label.clone();
     let count_label_clone = count_label.clone();
     all_button.on().bn_clicked(move || {
+        progress_clone.set_state(w::co::PBST::NORMAL);
         let shared = shared_fsid_clone.lock().unwrap();
         if shared.is_empty() {
             println!("empty shared!");
@@ -717,10 +727,12 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     let wnd2_clone = wnd2.clone();
     let interrupt_flag_clone = interrupt_flag.clone();
+    let progress_clone = progress.clone();
     stop_button.on().bn_clicked(move || {
         interrupt_flag_clone.store(true, Ordering::Relaxed);
         let isi = format!("Scan was stopped by user");
         let _ = func_main::info_modal(&wnd2_clone, "Info", &isi);
+        progress_clone.set_state(w::co::PBST::PAUSED);
         Ok(())
     });
     let interrupt_flag_clone = interrupt_flag.clone();

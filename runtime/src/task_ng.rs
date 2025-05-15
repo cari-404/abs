@@ -10,7 +10,7 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
-use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
+use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, AddressInfo};
 use crate::voucher::Vouchers;
 use crate::crypt::{self, DeviceInfo};
 
@@ -70,7 +70,8 @@ struct ExtraData {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetBodyJson {
-    timestamp: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timestamp: Option<i64>,
     shoporders: Vec<ShopOrder>,
     selected_payment_channel_data: serde_json::Value,
     promotion_data: PromotionData,
@@ -106,9 +107,9 @@ pub struct Item {
     pub itemid: i64,
     pub modelid: i64,
     pub quantity: i32,
-    pub add_on_deal_id: i32,
+    pub add_on_deal_id: i64,
     pub is_add_on_sub_item: bool,
-    pub item_group_id: Option<i64>,
+    pub item_group_id: Option<String>,
     pub insurances: Vec<serde_json::Value>,
     pub channel_exclusive_info: ChannelExclusiveInfo,
     pub supports_free_returns: bool,
@@ -276,7 +277,7 @@ impl From<GetBodyJson> for PlaceOrderBody {
         PlaceOrderBody {
             client_id: get.client_id,
             cart_type: get.cart_type,
-            timestamp: get.timestamp,
+            timestamp: get.timestamp.unwrap_or(0),
             checkout_price_data: None,
             order_update_info: get.order_update_info,
             dropshipping_info: get.dropshipping_info,
@@ -337,11 +338,10 @@ pub async fn place_order_ng(client: Arc<reqwest::Client>, base_headers: Arc<Head
 	Ok(v)
 }
 pub async fn get_body_builder(device_info: &DeviceInfo, 
-    product_info: &ProductInfo, 
     chosen_payment: &PaymentInfo, 
     freeshipping_voucher: Arc<Option<Vouchers>>, 
     platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>, use_coins: bool,
-    shoporders: &[ShopOrder], shipping_orders: &[ShippingOrder]) -> Result<(GetBodyJson, PlaceOrderBody), Box<dyn std::error::Error>> {
+    place_order: &mut PlaceOrderBody) -> Result<(GetBodyJson, PlaceOrderBody), Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -349,7 +349,6 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         "{}:{}:{}{}",
         device_info.device_id, timestamp_millis, timestamp_millis, timestamp_specific
     );
-    let shop_id = product_info.shop_id;
 
     let free_shipping_thread = {
         let freeshipping_voucher = Arc::clone(&freeshipping_voucher);
@@ -386,7 +385,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         tokio::spawn(async move{
             match &*shop_vouchers_target {
                 Some(shop) => vec![Some(ShopVoucher {
-                    shopid: shop_id,
+                    shopid: shop.shop_id.unwrap_or(0),
                     promotionid: shop.promotionid,
                     voucher_code: shop.voucher_code.clone(),
                     applied_voucher_code: shop.voucher_code.clone(),
@@ -432,8 +431,8 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     let fsv_selection_infos = fsv_selection_thread.await?;
 
     let body_json = GetBodyJson {
-        timestamp: current_time.timestamp(),
-        shoporders: shoporders.to_vec(),
+        timestamp: Some(current_time.timestamp()),
+        shoporders: place_order.shoporders.to_vec(),
         selected_payment_channel_data: chosen_payment.selected_get.clone(),
         promotion_data: PromotionData {
             use_coins,
@@ -457,35 +456,36 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
         _cft: vec![4227792767, 36961919],
         checkout_session_id,
         dropshipping_info: DropshippingInfo {},
-        shipping_orders: shipping_orders.to_vec(),
+        shipping_orders: place_order.shipping_orders.to_vec(),
         order_update_info: OrderUpdateInfo {},
     };
-    let place_order: PlaceOrderBody = body_json.clone().into();
-    Ok((body_json, place_order))
+    *place_order = body_json.clone().into();
+    Ok((body_json, (*place_order).clone()))
 }
 pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, chosen_payment: &PaymentInfo, mut place_order_body: PlaceOrderBody, adjusted_max_price: Option<i64>) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
     let mut headers = (*base_headers).clone();
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
     loop{
         //println!("Status: Start Checkout");
-        let t1 = std::time::Instant::now();
+        //let t1 = std::time::Instant::now();
         let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
         //let body_str = serde_json::to_string(&body_json)?;
         //println!("{}", body_str);
         println!("{}", url2);
+
         let response = (*client)
             .post(&url2)
             .headers(headers.clone())
+            .version(Version::HTTP_2)
             .json(&body_json)
-            .version(Version::HTTP_2) 
             .send()
             .await?;
-        println!("[{:?}] setelah .send()", t1.elapsed());
+        //println!("[{:?}] Setelah .send()", t1.elapsed());
         //println!("Status: Done Checkout");
         let status = response.status();
         if status == reqwest::StatusCode::OK {
             let v: Value = response.json().await?;
-            println!("[{:?}] setelah .json()", t1.elapsed());
+            //println!("[{:?}] setelah .json()", t1.elapsed());
             let v = Arc::new(v);
             if let Some(limit) = adjusted_max_price {
                 let price_opt = v.get("checkout_price_data")
@@ -563,12 +563,12 @@ pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, 
 }
 pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>,
     device_info: &DeviceInfo, 
-    product_info: &ProductInfo, 
-    address_info: &AddressInfo, quantity: i32, 
-    chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, 
+    address_info: &AddressInfo,
+    chosen_model: &[ModelInfo], chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: &Option<Vouchers>, 
-    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>, use_coins: bool, insurances: &[serde_json::Value]) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
-	let current_time = Utc::now();
+    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>, use_coins: bool) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
+    let shoporders = multi_product(&chosen_model);
+    let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
     let checkout_session_id = format!(
@@ -576,7 +576,6 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
         device_info.device_id, timestamp_millis, timestamp_millis, timestamp_specific
     );
     let freeshipping_voucher_clone = freeshipping_voucher.clone();
-    let shop_id = product_info.shop_id;
 
     let free_shipping_thread = tokio::spawn(async move{
         match freeshipping_voucher_clone {
@@ -609,7 +608,7 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
     let shop_vouchers_thread = tokio::spawn(async move{
         match shop_vouchers_target_clone {
             Some(shop) => vec![Some(ShopVoucher {
-                shopid: shop_id,
+                shopid: shop.shop_id.unwrap_or(0),
                 promotionid: shop.promotionid,
                 voucher_code: shop.voucher_code.clone(),
                 applied_voucher_code: shop.voucher_code.clone(),
@@ -648,55 +647,10 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
     let shop_vouchers = shop_vouchers_thread.await?;
     let platform_vouchers = platform_vouchers_thread.await?;
     let fsv_selection_infos = fsv_selection_thread.await?;
-
-    let body_json = GetBodyJson {
-        timestamp: current_time.timestamp(),
-        shoporders: vec![ShopOrder {
-            shop: Shop {
-                shopid: product_info.shop_id,
-            },
-            items: vec![Item {
-                itemid: product_info.item_id,
-                modelid: chosen_model.modelid,
-                quantity: quantity,
-                add_on_deal_id: 0,
-                is_add_on_sub_item: false,
-                item_group_id: None,
-                insurances: insurances.to_vec(),
-                channel_exclusive_info: ChannelExclusiveInfo {
-                    source_id: 0,
-                    token: "".to_owned(),
-                    is_live_stream: false,
-                    is_short_video: false,
-                },
-                supports_free_returns: false,
-            }],
-            shipping_id: 1,
-        }],
-        selected_payment_channel_data: chosen_payment.selected_get.clone(),
-        promotion_data: PromotionData {
-            use_coins,
-            free_shipping_voucher_info,
-            platform_vouchers,
-            shop_vouchers,
-            check_shop_voucher_entrances: true,
-            auto_apply_shop_voucher: false,
-        },
-        fsv_selection_infos,
-        device_info: device_info.clone(),
-        buyer_info: BuyerInfo {
-            kyc_info: None,
-            checkout_email: "".to_owned(),
-        },
-        cart_type: 1,
-        client_id: 5,
-        tax_info: TaxInfo { tax_id: "".to_owned() },
-        client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
-        add_to_cart_info: AddToCartInfo {},
-        _cft: vec![4227792767, 36961919],
-        checkout_session_id,
-        dropshipping_info: DropshippingInfo {},
-        shipping_orders: vec![ShippingOrder {
+    let shipping_orders = if chosen_shipping.channelid == 0 {
+        vec![]
+    } else {
+        vec![ShippingOrder {
             sync: true,
             buyer_address_data: BuyerAddressData {
                 addressid: address_info.id,
@@ -723,7 +677,36 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
                 selected_from: 1,
                 fulfillment_shipping_order_channel_data: None,
             },
-        }],
+        }]
+    };
+
+    let body_json = GetBodyJson {
+        timestamp: None,
+        shoporders,
+        selected_payment_channel_data: chosen_payment.selected_get.clone(),
+        promotion_data: PromotionData {
+            use_coins,
+            free_shipping_voucher_info,
+            platform_vouchers,
+            shop_vouchers,
+            check_shop_voucher_entrances: true,
+            auto_apply_shop_voucher: false,
+        },
+        fsv_selection_infos,
+        device_info: device_info.clone(),
+        buyer_info: BuyerInfo {
+            kyc_info: None,
+            checkout_email: "".to_owned(),
+        },
+        cart_type: 1,
+        client_id: 5,
+        tax_info: TaxInfo { tax_id: "".to_owned() },
+        client_event_info: ClientEventInfo { is_fsv_changed: false, is_platform_voucher_changed: false },
+        add_to_cart_info: AddToCartInfo {},
+        _cft: vec![4227792767, 36961919],
+        checkout_session_id,
+        dropshipping_info: DropshippingInfo {},
+        shipping_orders,
         order_update_info: OrderUpdateInfo {},
     };
 	let mut headers = (*base_headers).clone();
@@ -752,14 +735,17 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
         "iof_info",
     ];
 
+    //println!("Copying shoporders");
     let mut place_order_body: PlaceOrderBody = body_json.clone().into();
     if let Some(shoporders) = v.get("shoporders") {
         place_order_body.shoporders = serde_json::from_value(shoporders.clone())?;
     }
+    //println!("Copying shipping_orders");
     if let Some(shipping_orders) = v.get("shipping_orders") {
         place_order_body.shipping_orders = serde_json::from_value(shipping_orders.clone())?;
     }
     place_order_body.selected_payment_channel_data = Some(chosen_payment.place_order.clone()); 
+    //println!("Copying essential keys");
     let handles = keys.iter().map(|key| {
         let v_clone = v.clone();
         let key = key.to_string();
@@ -785,24 +771,16 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
 	Ok(place_order_body)
 }
 
-pub fn falsification_insurance(shoporders: &[ShopOrder]) -> Vec<ShopOrder> {
-    shoporders
-        .iter()
-        .cloned()
-        .map(|mut shoporder| {
-            for item in &mut shoporder.items {
-                for insurance in &mut item.insurances {
-                    if insurance.is_object() {
-                        if let Some(obj) = insurance.as_object_mut() {
-                            obj.insert("selected".to_string(), serde_json::Value::Bool(false));
-                        }
-                    }
-                }
+pub fn force_deselect_insurance(shoporders: &mut [ShopOrder]) {
+    for item in shoporders.iter_mut().flat_map(|s| &mut s.items) {
+        for insurance in &mut item.insurances {
+            if let Some(obj) = insurance.as_object_mut() {
+                obj.insert("selected".into(), serde_json::Value::Bool(false));
             }
-            shoporder
-        })
-        .collect()
+        }
+    }
 }
+
 pub fn multi_product(products: &[ModelInfo]) -> Vec<ShopOrder> {
     let mut grouped: HashMap<i64, Vec<&ModelInfo>> = HashMap::new();
 

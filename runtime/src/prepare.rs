@@ -47,6 +47,7 @@ pub struct RawModelInfo {
 #[derive(Deserialize, Debug, Clone)]
 pub struct ModelInfo {
     pub name: String,
+    pub product_name: String,
     pub price: i64,
     pub stock: i64,
     pub modelid: i64,
@@ -54,6 +55,7 @@ pub struct ModelInfo {
     pub shop_id: i64, 
     pub item_id: i64,
     pub quantity: i32,
+    pub voucher_code: Option<String>,
 }
 #[derive(Deserialize, Debug, Clone)]
 pub struct CookieData {
@@ -181,6 +183,15 @@ impl Default for AddressInfo {
         }
     }
 }
+impl From<&ModelInfo> for ProductInfo {
+    fn from(model: &ModelInfo) -> Self {
+        Self {
+            shop_id: model.shop_id,
+            item_id: model.item_id,
+        }
+    }
+}
+
 
 pub static BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
@@ -414,6 +425,7 @@ pub async fn get_product(client: Arc<reqwest::Client>, product_info: &ProductInf
         .into_iter()
         .map(|m| ModelInfo {
             name: m.name,
+            product_name: name.clone(),
             price: m.price,
             stock: m.stock,
             modelid: m.modelid,
@@ -421,6 +433,7 @@ pub async fn get_product(client: Arc<reqwest::Client>, product_info: &ProductInf
             shop_id:   product_info.shop_id,   // override di *sini*
             item_id:   product_info.item_id,
             quantity:  1,
+            voucher_code: None,
         })
         .collect();
 	Ok((name, models_info, is_official_shop, fs_info, status_code))
@@ -566,9 +579,8 @@ pub async fn universal_client_skip_headers() -> reqwest::Client {
     ClientBuilder::new()
         .danger_accept_invalid_certs(true)
         .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
         .gzip(true)
+        .tcp_keepalive(Some(tokio::time::Duration::from_secs(60)))
         .build()
         .expect("Failed to create HTTP client")
 }

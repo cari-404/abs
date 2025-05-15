@@ -204,7 +204,7 @@ impl MyWindow {
             size: (60, 20),
             ..Default::default()
         });
-        let jam_label = gui::Label::new(&wnd, gui::LabelOpts {
+        let _jam_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Jam".to_owned(),
             position: (80, 160),
             size: (60, 20),
@@ -218,7 +218,7 @@ impl MyWindow {
             edit_style: ES::NUMBER,
             ..Default::default()
         });
-        let menit_label = gui::Label::new(&wnd, gui::LabelOpts {
+        let _menit_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Menit".to_owned(),
             position: (150, 160),
             size: (60, 20),
@@ -232,7 +232,7 @@ impl MyWindow {
             edit_style: ES::NUMBER,
             ..Default::default()
         });
-        let detik_label = gui::Label::new(&wnd, gui::LabelOpts {
+        let _detik_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Detik".to_owned(),
             position: (220, 160),
             size: (60, 20),
@@ -246,7 +246,7 @@ impl MyWindow {
             edit_style: ES::NUMBER,
             ..Default::default()
         });
-        let mili_label = gui::Label::new(&wnd, gui::LabelOpts {
+        let _mili_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Mili".to_owned(),
             position: (290, 160),
             size: (60, 20),
@@ -462,6 +462,7 @@ impl MyWindow {
                         println!("Ok URL");
                         let shared_variation_clone = self2.shared_variation_data.clone();
                         let shared_payment_data_clone = self2.shared_payment_data.clone();
+                        let shared_kurir_data_clone = self2.shared_kurir_data.clone();
                         match timeout(Duration::from_secs(10), prepare::get_product(client.clone(), &product_info, &cookie_data)).await {
                             Ok(Ok((name, model_info, is_official_shop, fs_info, rcode))) => {
                                 if rcode == "200 OK" {
@@ -527,7 +528,7 @@ impl MyWindow {
                                 AddressInfo::default() // Early return or handle the error as needed
                             }
                         };
-                        let chosen_model = {
+                        let mut chosen_model = {
                             let shared_v = shared_variation_clone.lock().unwrap();
                             shared_v.get(0).unwrap().clone()
                         };
@@ -541,8 +542,12 @@ impl MyWindow {
                             let shared_p = shared_payment_data_clone.lock().unwrap();
                             shared_p.get(0).unwrap().clone()
                         };
-                        match timeout(Duration::from_secs(10), runtime::prepare_ext::get_shipping_data(client.clone(), base_headers.clone(), shared_headers.clone(), &device_info, &product_info, &address_info, 1, &chosen_model, &chosen_payment, &chosen_shipping)).await {
+                        chosen_model.quantity = self2.kuan_text.text().parse::<i32>().unwrap_or(1);
+                        match timeout(Duration::from_secs(10), runtime::prepare_ext::get_shipping_data(client.clone(), base_headers.clone(), shared_headers.clone(), &device_info, Some(&product_info), &address_info, &chosen_model, &chosen_payment, &chosen_shipping)).await {
                             Ok(Ok(kurirs)) => {
+                                let mut shared = shared_kurir_data_clone.lock().unwrap();
+                                shared.clear();
+                                *shared = kurirs.clone(); 
                                 let kurirs_iter: Vec<String> = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
                                 for name_kurir in &kurirs_iter {
                                     println!("{}", name_kurir);
@@ -717,7 +722,7 @@ impl MyWindow {
             }
 			Ok(())
 		});
-        let self2 = self.clone();
+        
 		self.wnd.on().wm_command_accel_menu(1 as u16, move || {
             println!("Menu clicked!");
 			Ok(())

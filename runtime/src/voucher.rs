@@ -11,11 +11,13 @@ use once_cell::sync::Lazy;
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
 use crate::crypt::random_hex_string;
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Vouchers {
     pub promotionid: i64,
     pub voucher_code: String,
     pub signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shop_id: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -244,6 +246,7 @@ pub async fn save_shop_voucher_by_voucher_code(client: Arc<reqwest::Client>, cod
                         promotionid,
                         voucher_code,
                         signature,
+                        shop_id: Some(product_info.shop_id),
                     });
                 }
             }
@@ -312,6 +315,7 @@ pub async fn save_platform_voucher_by_voucher_code(client: Arc<reqwest::Client>,
                         promotionid,
                         voucher_code,
                         signature,
+                        shop_id: None,
                     });
                 }
             }
@@ -376,6 +380,7 @@ pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, 
                         promotionid,
                         voucher_code,
                         signature,
+                        shop_id: None,
                     });
                 }
             }
@@ -440,6 +445,7 @@ pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &s
                         promotionid,
                         voucher_code,
                         signature,
+                        shop_id: None,
                     });
                 }
             }
@@ -549,6 +555,7 @@ pub async fn get_recommend_platform_vouchers(client: Arc<reqwest::Client>, heade
                     promotionid : voucher.promotionid,
                     voucher_code : voucher.voucher_code.clone(),
                     signature : voucher.signature.clone(),
+                    shop_id: None,
                 });
             }
         }
@@ -560,6 +567,7 @@ pub async fn get_recommend_platform_vouchers(client: Arc<reqwest::Client>, heade
                     promotionid : voucher.promotionid,
                     voucher_code : voucher.voucher_code.clone(),
                     signature : voucher.signature.clone(),
+                    shop_id: None,
                 });
             }
         }
@@ -900,6 +908,7 @@ pub async fn claim_food_voucher(client: Arc<reqwest::Client>, cookie_content: &C
                             promotionid: start,
                             voucher_code: code.to_string(),
                             signature: "".to_string(),
+                            shop_id: None,
                         });
                     } else {
                         println!("Error: {} - {}", claim_error, data.get("debug_msg").unwrap_or(&serde_json::Value::Null));

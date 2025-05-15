@@ -24,3 +24,6 @@ pub mod food;
 
 #[cfg(feature = "upgrade")]
 pub mod upgrade;
+
+#[cfg(feature = "multi")]
+pub mod multi;

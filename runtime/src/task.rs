@@ -7,6 +7,7 @@ use anyhow::Result;
 use serde_json::{Value, json};
 use once_cell::sync::Lazy;
 use std::sync::Arc;
+use std::collections::HashMap;
 
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::voucher::Vouchers;
@@ -219,9 +220,43 @@ pub async fn get_wtoken_builder(token: &str, device_info: &DeviceInfo, product_i
 	//println!("{body_json}");
 	Ok(body_json)
 }
-pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, address_info: &AddressInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, anyhow::Error> {
+pub async fn get_builder(device_info: &DeviceInfo, address_info: &AddressInfo, chosen_model: &[ModelInfo], chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo, freeshipping_voucher: Option<Vouchers>, platform_vouchers_target: Option<Vouchers>, shop_vouchers_target: Option<Vouchers>) -> Result<serde_json::Value, anyhow::Error> {
 	let optioninfo: String = chosen_payment.option_info.clone();
 	let current_time = Utc::now();
+	let mut grouped: HashMap<i64, Vec<Value>> = HashMap::new();
+	for chosen in chosen_model {
+		let item = json!({
+			"itemid": chosen.item_id,
+			"modelid": chosen.modelid as i64,
+			"quantity": chosen.quantity as i32,
+			"add_on_deal_id": 0,
+			"is_add_on_sub_item": false,
+			"item_group_id": Value::Null,
+			"insurances": [],
+			"channel_exclusive_info": {
+				"source_id": 0,
+				"token": "",
+				"is_live_stream": false,
+				"is_short_video": false
+			},
+			"supports_free_returns": false
+		});
+
+		grouped.entry(chosen.shop_id).or_default().push(item);
+	}
+	let mut raw_shoporders = Vec::new();
+	for (index, (shop_id, items)) in grouped.into_iter().enumerate() {
+		let shoporder = json!({
+			"shop": {
+				"shopid": shop_id
+			},
+			"items": items,
+			"shipping_id": index + 1
+		});
+		raw_shoporders.push(shoporder);
+	}
+
+	let shoporders = Value::Array(raw_shoporders);
 	let selected_payment_channel_data = if chosen_payment.selected_get.is_null(){
 		json!({
 			"page": "OPC_PAYMENT_SELECTION",
@@ -243,7 +278,7 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 	let shop_vouchers = if let Some(shop) = shop_vouchers_target {
 		json!([
 			{
-			  "shopid": product_info.shop_id,
+			  "shopid": shop.shop_id,
 			  "promotionid": shop.promotionid,
 			  "voucher_code": shop.voucher_code,
 			  "applied_voucher_code": shop.voucher_code,
@@ -294,34 +329,39 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 	} else {
 		json!([])
 	};
+
+	let shipping_orders = if chosen_shipping.channelid == 0 {
+        vec![]
+    } else {
+        vec![
+			json!({
+				"sync": true,
+				"buyer_address_data": {
+					"addressid": address_info.id,
+					"address_type": 0,
+					"tax_address": ""
+				},
+				"selected_logistic_channelid": chosen_shipping.channelid,
+				"shipping_id": 1,
+				"shoporder_indexes": [0],
+				"selected_preferred_delivery_time_option_id": 0,
+				"prescription_info": {
+					"images": []
+				},
+				"fulfillment_info": {
+					"fulfillment_flag": 18,
+					"fulfillment_source": "IDE",
+					"managed_by_sbs": false,
+					"order_fulfillment_type": 1,
+					"warehouse_address_id": 0,
+					"is_from_overseas": false
+				}
+			})
+		]
+    };
 	let body_json = json!({
 	  "timestamp": current_time.timestamp(),
-	  "shoporders": [
-		{
-		  "shop": {
-			"shopid": product_info.shop_id
-		  },
-		  "items": [
-			{
-			  "itemid": product_info.item_id,
-			  "modelid": chosen_model.modelid as i64,
-			  "quantity": quantity as i32,
-			  "add_on_deal_id": 0,
-			  "is_add_on_sub_item": false,
-			  "item_group_id": null,
-			  "insurances": [],
-			  "channel_exclusive_info": {
-				"source_id": 0,
-				"token": "",
-				"is_live_stream": false,
-				"is_short_video": false
-			  },
-			  "supports_free_returns": false
-			}
-		  ],
-		  "shipping_id": 1
-		}
-	  ],
+	  "shoporders": shoporders,
 	  "selected_payment_channel_data": selected_payment_channel_data,
 	  "promotion_data": {
 		"use_coins": true,
@@ -349,38 +389,7 @@ pub async fn get_builder(device_info: &DeviceInfo, product_info: &ProductInfo, a
 	  "add_to_cart_info": {},
 	  "_cft": vec![4227792767 as i64, 36961919],
 	  "dropshipping_info": {},
-	  "shipping_orders": [
-		{
-		  "sync": true,
-		  "buyer_address_data": {
-			"addressid": address_info.id,
-			"address_type": 0,
-			"tax_address": ""
-		  },
-		  "selected_logistic_channelid": chosen_shipping.channelid,
-		  "shipping_id": 1,
-		  "shoporder_indexes": [
-			0
-		  ],
-		  "selected_preferred_delivery_time_option_id": 0,
-		  "prescription_info": {
-			"images": []
-		  },
-		  "fulfillment_info": {
-			"fulfillment_flag": 18,
-			"fulfillment_source": "IDE",
-			"managed_by_sbs": false,
-			"order_fulfillment_type": 1,
-			"warehouse_address_id": 0,
-			"is_from_overseas": false
-		  },
-		  "selected_logistic_channel_data": {
-			"support_advance_booking": false,
-			"selected_from": 1,
-			"fulfillment_shipping_order_channel_data": null,
-		  },
-		}
-	  ],
+	  "shipping_orders": shipping_orders,
 	  "order_update_info": {}
 	});
 	//println!("{body_json}");

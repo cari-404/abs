@@ -1,6 +1,6 @@
 [package]
 name = "runtime"
-version = "1.0.7"
+version = "1.0.8"
 edition = "2021"
 
 [lib]
@@ -14,6 +14,7 @@ checkout_ng = ["futures", "rayon", "dashmap"]
 flashsale = []
 food = []
 upgrade = []
+multi = ["checkout_ng"]
 
 [dependencies]
 futures = { version = "0.3", optional = true }
