@@ -21,20 +21,20 @@ pub struct Vouchers {
 }
 
 #[derive(Debug, Deserialize)]
-struct RecomendPlatformResponse {
-    data: Option<DataOnRecomendPlatform>,
+pub struct RecomendPlatformResponse {
+    pub data: Option<DataOnRecomendPlatform>,
 }
 #[derive(Debug, Deserialize)]
-struct DataOnRecomendPlatform {
-    freeshipping_vouchers: Option<Vec<VoucherOnRecomendPlatform>>,
-    vouchers: Option<Vec<VoucherOnRecomendPlatform>>,
+pub struct DataOnRecomendPlatform {
+    pub freeshipping_vouchers: Option<Vec<VoucherOnRecomendPlatform>>,
+    pub vouchers: Option<Vec<VoucherOnRecomendPlatform>>,
 }
 #[derive(Debug, Deserialize, Clone)]
-struct VoucherOnRecomendPlatform {
-    promotionid: i64,
-    voucher_code: String,
-    signature: String,
-    fsv_error_message: Option<String>,
+pub struct VoucherOnRecomendPlatform {
+    pub promotionid: i64,
+    pub voucher_code: String,
+    pub signature: String,
+    pub fsv_error_message: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -70,88 +70,88 @@ struct VoucherCollectionRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Orders {
-    shopid: i64,
-    carrier_ids: Vec<i64>,
-    shop_vouchers: Vec<ShopVoucher>,
-    auto_apply: bool,
-    iteminfos: Vec<ItemInfo>,
-    selected_carrier_id: i64,
+pub struct Orders {
+    pub shopid: i64,
+    pub carrier_ids: Vec<i64>,
+    pub shop_vouchers: Vec<ShopVoucher>,
+    pub auto_apply: bool,
+    pub iteminfos: Vec<ItemInfo>,
+    pub selected_carrier_id: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ShopVoucher;
+pub struct ShopVoucher;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct ItemInfo {
-    itemid: i64,
-    modelid: i64,
-    quantity: i32,
-    item_group_id: Option<i64>,
-    insurances: Vec<Insurance>,
-    shopid: i64,
-    shippable: bool,
-    non_shippable_err: String,
-    none_shippable_reason: String,
-    none_shippable_full_reason: String,
-    add_on_deal_id: i64,
-    is_add_on_sub_item: bool,
-    is_pre_order: bool,
-    is_streaming_price: bool,
-    checkout: bool,
-    categories: Vec<Category>,
-    is_spl_zero_interest: bool,
-    is_prescription: bool,
-    offerid: i64,
-    supports_free_returns: bool,
-    user_path: i64,
-    models: Option<Models>,
-    tier_variations: Option<TierVariations>,
+pub struct ItemInfo {
+    pub itemid: i64,
+    pub modelid: i64,
+    pub quantity: i32,
+    pub item_group_id: Option<i64>,
+    pub insurances: Vec<Insurance>,
+    pub shopid: i64,
+    pub shippable: bool,
+    pub non_shippable_err: String,
+    pub none_shippable_reason: String,
+    pub none_shippable_full_reason: String,
+    pub add_on_deal_id: i64,
+    pub is_add_on_sub_item: bool,
+    pub is_pre_order: bool,
+    pub is_streaming_price: bool,
+    pub checkout: bool,
+    pub categories: Vec<Category>,
+    pub is_spl_zero_interest: bool,
+    pub is_prescription: bool,
+    pub offerid: i64,
+    pub supports_free_returns: bool,
+    pub user_path: i64,
+    pub models: Option<Models>,
+    pub tier_variations: Option<TierVariations>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Category {
-    catids: Vec<i64>,
+pub struct Category {
+    pub catids: Vec<i64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Insurance;
+pub struct Insurance;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Models;
+pub struct Models;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct TierVariations;
+pub struct TierVariations;
 
 #[derive(Serialize)]
-struct SelectedPaymentChannelDataOnRecommendPlatform {
-    version: i64,
-    option_info: String,
-    channel_id: i64,
-    channel_item_option_info: ChannelItemOptionInfoOnRecommendPlatform,
-    text_info: TextInfo,
-}
-
-#[derive(Serialize)]
-struct ChannelItemOptionInfoOnRecommendPlatform {
-    option_info: String,
+pub struct SelectedPaymentChannelDataOnRecommendPlatform {
+    pub version: i64,
+    pub option_info: String,
+    pub channel_id: i64,
+    pub channel_item_option_info: ChannelItemOptionInfoOnRecommendPlatform,
+    pub text_info: TextInfo,
 }
 
 #[derive(Serialize)]
-struct TextInfo {}
+pub struct ChannelItemOptionInfoOnRecommendPlatform {
+   pub option_info: String,
+}
 
 #[derive(Serialize)]
-struct RecommendPlatform {
-    orders: String,
-    voucher_market_type: i64,
-    check_voucher_payment_criteria: bool,
-    selected_payment_channel_data: SelectedPaymentChannelDataOnRecommendPlatform,
-    spm_channel_id: i64,
-    need_wallet_active_info: bool,
-    sorting_flag: i64,
-    priority_promotion_ids: Vec<i64>,
-    has_redeem_coins: bool,
-    payment_manual_change: bool,
+pub struct TextInfo {}
+
+#[derive(Serialize)]
+pub struct RecommendPlatform {
+    pub orders: String,
+    pub voucher_market_type: i64,
+    pub check_voucher_payment_criteria: bool,
+    pub selected_payment_channel_data: SelectedPaymentChannelDataOnRecommendPlatform,
+    pub spm_channel_id: i64,
+    pub need_wallet_active_info: bool,
+    pub sorting_flag: i64,
+    pub priority_promotion_ids: Vec<i64>,
+    pub has_redeem_coins: bool,
+    pub payment_manual_change: bool,
 }
 
 pub struct VoucherInfo {
@@ -193,7 +193,7 @@ pub static VC_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
     headers
 });
 
-pub async fn save_shop_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>, product_info: &ProductInfo) -> Result<Option<Vouchers>>{
+pub async fn save_shop_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>, product_info: ProductInfo) -> Result<Option<Vouchers>>{
     let body_json = json!({
         "voucher_code": code.to_string(),
         "shopid": product_info.shop_id,

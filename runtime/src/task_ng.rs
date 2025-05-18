@@ -3,7 +3,7 @@ use reqwest::Version;
 use reqwest::header::{HeaderValue, HeaderMap};
 use chrono::{Utc, Timelike};
 use anyhow::Result;
-use serde_json::{Value};
+use serde_json::{Value, to_string};
 use std::collections::HashMap;
 use rayon::prelude::*;
 use dashmap::DashMap;
@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
 use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, AddressInfo};
-use crate::voucher::Vouchers;
+use crate::voucher::{Vouchers, Orders, ItemInfo, RecommendPlatform, SelectedPaymentChannelDataOnRecommendPlatform, ChannelItemOptionInfoOnRecommendPlatform, TextInfo, Category, RecomendPlatformResponse, };
 use crate::crypt::{self, DeviceInfo};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -340,7 +340,7 @@ pub async fn place_order_ng(client: Arc<reqwest::Client>, base_headers: Arc<Head
 pub async fn get_body_builder(device_info: &DeviceInfo, 
     chosen_payment: &PaymentInfo, 
     freeshipping_voucher: Arc<Option<Vouchers>>, 
-    platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vouchers>>, use_coins: bool,
+    platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vec<Vouchers>>>, use_coins: bool,
     place_order: &mut PlaceOrderBody) -> Result<(GetBodyJson, PlaceOrderBody), Box<dyn std::error::Error>> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
@@ -382,19 +382,22 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
 
     let shop_vouchers_thread = {
         let shop_vouchers_target = Arc::clone(&shop_vouchers_target);
-        tokio::spawn(async move{
-            match &*shop_vouchers_target {
-                Some(shop) => vec![Some(ShopVoucher {
-                    shopid: shop.shop_id.unwrap_or(0),
-                    promotionid: shop.promotionid,
-                    voucher_code: shop.voucher_code.clone(),
-                    applied_voucher_code: shop.voucher_code.clone(),
-                    invalid_message_code: 0,
-                    reward_type: 0,
-                    shipping_order_distributions: vec![],
-                })],
-                None => vec![],
+        tokio::spawn(async move {
+            let mut shop_vouchers = Vec::new();
+            if let Some(shop_list) = &*shop_vouchers_target {
+                for specific_shop in shop_list {
+                    shop_vouchers.push(Some(ShopVoucher {
+                        shopid: specific_shop.shop_id.unwrap_or(0),
+                        promotionid: specific_shop.promotionid,
+                        voucher_code: specific_shop.voucher_code.clone(),
+                        applied_voucher_code: specific_shop.voucher_code.clone(),
+                        invalid_message_code: 0,
+                        reward_type: 0,
+                        shipping_order_distributions: vec![],
+                    }));
+                }
             }
+            shop_vouchers
         })
     };
 
@@ -486,6 +489,7 @@ pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, 
         if status == reqwest::StatusCode::OK {
             let v: Value = response.json().await?;
             //println!("[{:?}] setelah .json()", t1.elapsed());
+            //println!("body: {}", v);
             let v = Arc::new(v);
             if let Some(limit) = adjusted_max_price {
                 let price_opt = v.get("checkout_price_data")
@@ -566,7 +570,7 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
     address_info: &AddressInfo,
     chosen_model: &[ModelInfo], chosen_payment: &PaymentInfo, 
     chosen_shipping: &ShippingInfo, freeshipping_voucher: &Option<Vouchers>, 
-    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vouchers>, use_coins: bool) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
+    platform_vouchers_target: &Option<Vouchers>, shop_vouchers_target: &Option<Vec<Vouchers>>, use_coins: bool) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
     let shoporders = multi_product(&chosen_model);
     let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
@@ -604,21 +608,25 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
         }
     });
 
-    let shop_vouchers_target_clone = shop_vouchers_target.clone();
-    let shop_vouchers_thread = tokio::spawn(async move{
-        match shop_vouchers_target_clone {
-            Some(shop) => vec![Some(ShopVoucher {
-                shopid: shop.shop_id.unwrap_or(0),
-                promotionid: shop.promotionid,
-                voucher_code: shop.voucher_code.clone(),
-                applied_voucher_code: shop.voucher_code.clone(),
-                invalid_message_code: 0,
-                reward_type: 0,
-                shipping_order_distributions: vec![],
-            })],
-            None => vec![],
-        }
-    });
+    let shop_vouchers_thread = {
+        let shop_vouchers_target_clone = shop_vouchers_target.clone();
+        tokio::spawn(async move {
+            match shop_vouchers_target_clone.as_ref() {
+                Some(shop_list) => shop_list.iter().map(|specific_shop| {
+                    Some(ShopVoucher {
+                        shopid: specific_shop.shop_id.unwrap_or(0),
+                        promotionid: specific_shop.promotionid,
+                        voucher_code: specific_shop.voucher_code.clone(),
+                        applied_voucher_code: specific_shop.voucher_code.clone(),
+                        invalid_message_code: 0,
+                        reward_type: 0,
+                        shipping_order_distributions: vec![],
+                    })
+                }).collect(),
+                None => Vec::new(),
+            }
+        })
+    };
 
     let platform_vouchers_target_clone = platform_vouchers_target.clone();
     let platform_vouchers_thread = tokio::spawn(async move{
@@ -788,10 +796,7 @@ pub fn multi_product(products: &[ModelInfo]) -> Vec<ShopOrder> {
     for product in products {
         grouped.entry(product.shop_id).or_default().push(product);
     }
-
-    // Sortir shop_id biar urut
-    let mut shop_ids: Vec<_> = grouped.keys().cloned().collect();
-    shop_ids.sort_unstable();
+    let shop_ids: Vec<_> = grouped.keys().cloned().collect();
 
     // Buat ShopOrder dengan shipping_id urut berdasarkan index
     shop_ids
@@ -826,4 +831,154 @@ pub fn multi_product(products: &[ModelInfo]) -> Vec<ShopOrder> {
         })
         .collect()
 }
-//pub fn precognition_value()
+pub fn adjustment_shipping(shipping_orders: &mut [ShippingOrder], shoporders: &[ShopOrder], products: &[ModelInfo], shipping: &[ShippingInfo]) {
+    for (index, product) in products.iter().enumerate() {
+        for order in shoporders {
+            if order.shop.shopid == product.shop_id {
+                for item in &order.items {
+                    if item.itemid == product.item_id && item.modelid == product.modelid {
+                        println!("Package: {}, on Shipping ID: {}", index + 1, order.shipping_id);
+                        for shipping_order in shipping_orders.iter_mut() {
+                            if order.shipping_id == shipping_order.shipping_id {
+                                shipping_order.selected_logistic_channelid = shipping[index].channelid;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+pub async fn multi_get_recommend_platform_vouchers(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, products: &[ModelInfo], shipping: &[ShippingInfo], chosen_payment: &PaymentInfo, place_body: &PlaceOrderBody) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
+    let mut orders_json = Vec::new();
+    for (index, product) in products.iter().enumerate() {
+        for order in &place_body.shoporders {
+            if order.shop.shopid == product.shop_id {
+                for item in &order.items {
+                    if item.itemid == product.item_id && item.modelid == product.modelid {
+                        for shipping_order in &place_body.shipping_orders {
+                            if order.shipping_id == shipping_order.shipping_id {
+                                let mut orders = Orders {
+                                    shopid: order.shop.shopid,
+                                    carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
+                                    shop_vouchers: vec![],
+                                    auto_apply: true,
+                                    iteminfos: vec![],
+                                    selected_carrier_id: shipping[index].channelidroot,
+                                };
+                                for item in &order.items {
+                                    orders.iteminfos.push(ItemInfo {
+                                        itemid: item.itemid,
+                                        modelid: item.modelid,
+                                        quantity: item.quantity,
+                                        item_group_id: None,
+                                        insurances: vec![],
+                                        shopid: order.shop.shopid,
+                                        shippable: true,
+                                        non_shippable_err: String::new(),
+                                        none_shippable_reason: String::new(),
+                                        none_shippable_full_reason: String::new(),
+                                        add_on_deal_id: 0,
+                                        is_add_on_sub_item: false,
+                                        is_pre_order: false,
+                                        is_streaming_price: false,
+                                        checkout: true,
+                                        categories: vec![Category {
+                                            catids: vec![100013, 100073],
+                                        }],
+                                        is_spl_zero_interest: false,
+                                        is_prescription: false,
+                                        offerid: 0,
+                                        supports_free_returns: false,
+                                        user_path: 1,
+                                        models: None,
+                                        tier_variations: None,
+                                    });
+                                }
+                                orders_json.push(orders);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Konversi orders_json menjadi string
+    let orders_string = to_string(&orders_json)?;
+    let body_json = RecommendPlatform {
+        orders: orders_string,
+        voucher_market_type: 1,
+        check_voucher_payment_criteria: true,
+        selected_payment_channel_data: SelectedPaymentChannelDataOnRecommendPlatform {
+            version: chosen_payment.version,
+            option_info: String::new(),
+            channel_id: chosen_payment.channel_id,
+            channel_item_option_info: ChannelItemOptionInfoOnRecommendPlatform {
+                option_info: chosen_payment.option_info.to_string(),
+            },
+            text_info: TextInfo {},
+        },
+        spm_channel_id: chosen_payment.channel_id,
+        need_wallet_active_info: true,
+        sorting_flag: 8,
+        priority_promotion_ids: vec![],
+        has_redeem_coins: false,
+        payment_manual_change: true,
+    };
+
+    // Convert struct to JSON
+    //let body_str = serde_json::to_string(&body_json)?;
+    //println!("{:?}", body_str);
+    //println!("{:?}", body);
+    //println!("Request Headers:\n{:?}", headers);
+
+    let url2 = format!("https://mall.shopee.co.id/api/v2/voucher_wallet/get_recommend_platform_vouchers");
+    println!("{}", url2);
+
+    // Buat permintaan HTTP POST
+    let response = (*client)
+        .post(&url2)
+        .headers((*headers).clone())
+        .json(&body_json)
+        .version(Version::HTTP_2) 
+        .send()
+        .await?;
+
+    println!("Status: get_voucher");
+    // Handle response as needed
+    //println!("Request Headers:\n{:?}", headers);
+    let status = response.status();
+    let json_resp: RecomendPlatformResponse = response.json().await?;
+    //println!("Body: {}", body_resp);
+    // Parse response body as JSON
+    let mut freeshipping_voucher: Option<Vouchers> = None;
+    let mut vouchers: Option<Vouchers> = None;
+    // Extract freeshipping_vouchers
+    if status == reqwest::StatusCode::OK {
+        if let Some(freeshipping_vouchers_array) = json_resp.data.as_ref().and_then(|data| data.freeshipping_vouchers.as_ref()) {
+            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| v.fsv_error_message.is_none()) {
+                freeshipping_voucher = Some(Vouchers {
+                    promotionid : voucher.promotionid,
+                    voucher_code : voucher.voucher_code.clone(),
+                    signature : voucher.signature.clone(),
+                    shop_id: None,
+                });
+            }
+        }
+
+        // Extract vouchers
+        if let Some(vouchers_array) = json_resp.data.as_ref().and_then(|data| data.vouchers.as_ref()) {
+            if let Some(voucher) = vouchers_array.iter().find(|v| v.fsv_error_message.is_none()) {
+                vouchers = Some(Vouchers {
+                    promotionid : voucher.promotionid,
+                    voucher_code : voucher.voucher_code.clone(),
+                    signature : voucher.signature.clone(),
+                    shop_id: None,
+                });
+            }
+        }
+    } else {
+        println!("Status: {}", status);
+    }
+    Ok((freeshipping_voucher, vouchers))
+}

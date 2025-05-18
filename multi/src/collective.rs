@@ -4,14 +4,14 @@ use crate::get_user_input;
 use crate::Opt;
 use crate::format_thousands;
 
-pub fn choose_shipping(shippings: &[ShippingInfo], opt: &Opt) -> Option<ShippingInfo> {
+pub fn choose_shipping(shippings: &[ShippingInfo], opt: &Opt, i: usize) -> Option<ShippingInfo> {
     println!("shipping yang tersedia:");
 
     for (index, shipping) in shippings.iter().enumerate() {
         println!("{}. {} - Harga: {} - Id: {}", index + 1, shipping.channel_name, shipping.original_cost / 100000, shipping.channelid);
     }
 
-    if let Some(kurir) = &opt.kurir {
+    if let Some(kurir) = &opt.kurir.as_ref().and_then(|k| k.get(i).cloned()) {
         // If opt.kurir is present, find the shipping with a matching channel_name
         if let Some(selected_shipping) = shippings.iter().find(|shipping| shipping.channel_name == *kurir) {
             println!("{:?}", selected_shipping);
@@ -62,7 +62,7 @@ pub fn choose_payment(payments: &[PaymentInfo], opt: &Opt) -> Option<PaymentInfo
 
     None
 }
-pub fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Option<ModelInfo> {
+pub fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems], i: usize) -> Option<ModelInfo> {
     println!("Variasi yang tersedia:");
 
     for (index, model) in models.iter().enumerate() {
@@ -84,7 +84,7 @@ pub fn choose_model(models: &[ModelInfo], opt: &Opt, fs_items: &[FSItems]) -> Op
         return Some(models[0].clone());
     }
 
-    if let Some(product) = &opt.product {
+    if let Some(product) = &opt.product.as_ref().and_then(|p| p.get(i).cloned()) {
         // If opt.product is present, find the model with a matching name
         if let Some(selected_model) = models.iter().find(|model| model.name == *product) {
             println!("{:?}", selected_model);

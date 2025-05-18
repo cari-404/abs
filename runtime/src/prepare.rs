@@ -581,6 +581,7 @@ pub async fn universal_client_skip_headers() -> reqwest::Client {
         .impersonate_skip_headers(Impersonate::Chrome130)
         .gzip(true)
         .tcp_keepalive(Some(tokio::time::Duration::from_secs(60)))
+        .root_certs_store(load_dynamic_root_certs().expect("Failed to create HTTP client"))
         .build()
         .expect("Failed to create HTTP client")
 }
@@ -599,4 +600,19 @@ pub fn url_to_voucher_data(url: &str) -> (String, String){
         }
     }
     (promotion_id, signature)
+}
+use boring2::{
+    error::ErrorStack,
+    x509::{
+        store::{X509Store, X509StoreBuilder},
+        X509,
+    },
+};
+fn load_dynamic_root_certs() -> Result<X509Store, ErrorStack> {
+    let mut cert_store = X509StoreBuilder::new()?;
+    for cert in rustls_native_certs::load_native_certs().certs {
+        let cert = X509::from_der(&cert)?;
+        cert_store.add_cert(cert)?;
+    }
+    Ok(cert_store.build())
 }
