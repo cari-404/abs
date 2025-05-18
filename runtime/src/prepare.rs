@@ -608,7 +608,7 @@ use boring2::{
         X509,
     },
 };
-fn load_dynamic_root_certs() -> Result<X509Store, ErrorStack> {
+pub fn load_dynamic_root_certs() -> Result<X509Store, ErrorStack> {
     let mut cert_store = X509StoreBuilder::new()?;
     for cert in rustls_native_certs::load_native_certs().certs {
         let cert = X509::from_der(&cert)?;

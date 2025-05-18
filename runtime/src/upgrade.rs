@@ -1,14 +1,16 @@
 use rquest as reqwest;
-use reqwest::Client;
 use reqwest::ClientBuilder;
 use reqwest::redirect::Policy as RedirectPolicy;
 use serde_json::Value;
 use tokio::io;
 use std::cmp::Ordering;
 
+use crate::prepare;
+
 pub async fn get_latest_release(url: &str) -> Option<String> {
-    let client = Client::new();
-    let response = client.get(url)
+    let client = prepare::universal_client_skip_headers();
+    let response = client
+        .await.get(url)
         .header("User-Agent", "rust-updater")
         .send()
         .await
@@ -25,6 +27,7 @@ pub async fn fetch_download_response(url: &str) -> Result<(reqwest::Response, u6
     let client = ClientBuilder::new()
         .gzip(true)
         .redirect(RedirectPolicy::limited(10))
+        .root_certs_store(prepare::load_dynamic_root_certs().expect("Failed to create HTTP client"))
         .build()
         .map_err(|e| {
             eprintln!("Gagal membuat client: {}", e);
