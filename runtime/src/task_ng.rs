@@ -311,7 +311,7 @@ impl From<GetBodyJson> for PlaceOrderBody {
     }
 }
 
-pub async fn place_order_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, place_body: &PlaceOrderBody) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn place_order_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, place_body: &PlaceOrderBody) -> anyhow::Result<serde_json::Value> {
     let mut headers = (*base_headers).clone();
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
     // Convert struct to JSON
@@ -341,7 +341,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     chosen_payment: &PaymentInfo, 
     freeshipping_voucher: Arc<Option<Vouchers>>, 
     platform_vouchers_target: Arc<Option<Vouchers>>, shop_vouchers_target: Arc<Option<Vec<Vouchers>>>, use_coins: bool,
-    place_order: &mut PlaceOrderBody) -> Result<(GetBodyJson, PlaceOrderBody), Box<dyn std::error::Error>> {
+    place_order: &mut PlaceOrderBody) -> anyhow::Result<(GetBodyJson, PlaceOrderBody)> {
 	let current_time = Utc::now();
     let timestamp_millis = current_time.timestamp_millis();
     let timestamp_specific = format!("{:.16}", current_time.nanosecond() as f64 / 1_000_000_000.0);
@@ -465,7 +465,7 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     *place_order = body_json.clone().into();
     Ok((body_json, (*place_order).clone()))
 }
-pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, chosen_payment: &PaymentInfo, mut place_order_body: PlaceOrderBody, adjusted_max_price: Option<i64>) -> Result<PlaceOrderBody, Box<dyn std::error::Error>> {
+pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, chosen_payment: &PaymentInfo, mut place_order_body: PlaceOrderBody, adjusted_max_price: Option<i64>) -> anyhow::Result<PlaceOrderBody> {
     let mut headers = (*base_headers).clone();
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
     loop{
@@ -561,7 +561,7 @@ pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, 
             return Ok(place_order_body)
         } else {
             eprintln!("Failed to get checkout data: {}", status);
-            return Err("Failed to get checkout data".into());
+            return Err(anyhow::anyhow!("Failed to get checkout data"));
         };
     }
 }

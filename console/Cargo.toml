@@ -1,6 +1,6 @@
 [package]
 name = "abs"
-version = "1.0.9"
+version = "1.0.10"
 edition = "2021"
 authors = ["Paijo"]
 description = "Auto Buy from Shopee.co.id"

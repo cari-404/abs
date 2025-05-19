@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  FINAL_VERSION: "1.0.9"
+  FINAL_VERSION: "1.0.10"
 
 permissions:
   contents: write
@@ -123,6 +123,7 @@ jobs:
       run: |
         rustup target add ${{ matrix.platform.target }}
         cargo +stable build --release --target ${{ matrix.platform.target }} -p abs
+        cargo +stable build --release --target ${{ matrix.platform.target }} -p multi
         cargo +stable build --release --target ${{ matrix.platform.target }} -p savevoucher
         cargo +stable build --release --target ${{ matrix.platform.target }} -p updater
 
@@ -135,7 +136,15 @@ jobs:
         toolchain: ${{ matrix.toolchain }}
         args: "--release -p abs"
         strip: true
-
+    - name: Build binary(multi)
+      uses: houseabsolute/actions-rust-cross@v0
+      if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64'
+      with:
+        command: "build"
+        target: ${{ matrix.platform.target }}
+        toolchain: ${{ matrix.toolchain }}
+        args: "--release -p multi"
+        strip: true
     - name: Build binary(savevoucher)
       uses: houseabsolute/actions-rust-cross@v0
       if: matrix.platform.os_name == 'Windows-x86_64' || matrix.platform.os_name == 'Windows-i686' || matrix.platform.os_name == 'Windows-aarch64'
@@ -182,6 +191,7 @@ jobs:
         cargo install cargo-ndk
         rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p abs
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p multi
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p savevoucher
         cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p updater
 
@@ -219,6 +229,7 @@ jobs:
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launcabs
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launchng
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
+        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p multi
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
         cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p updater
 
@@ -235,6 +246,7 @@ jobs:
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launcabs
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launchng
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
+        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p multi
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
         cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p updater
 

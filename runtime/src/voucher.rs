@@ -193,7 +193,7 @@ pub static VC_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
     headers
 });
 
-pub async fn save_shop_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>, product_info: ProductInfo) -> Result<Option<Vouchers>>{
+pub async fn save_shop_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>, product_info: ProductInfo) -> anyhow::Result<Option<Vouchers>>{
     let body_json = json!({
         "voucher_code": code.to_string(),
         "shopid": product_info.shop_id,
@@ -263,7 +263,7 @@ pub async fn save_shop_voucher_by_voucher_code(client: Arc<reqwest::Client>, cod
     Ok(vouchers)
 }
 
-pub async fn save_platform_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>) -> Result<Option<Vouchers>>{
+pub async fn save_platform_voucher_by_voucher_code(client: Arc<reqwest::Client>, code: &str, headers: Arc<HeaderMap>) -> anyhow::Result<Option<Vouchers>>{
     let body_json = json!({
         "voucher_code": code.to_string(),
         "need_user_voucher_status":true
@@ -332,7 +332,7 @@ pub async fn save_platform_voucher_by_voucher_code(client: Arc<reqwest::Client>,
     Ok(vouchers)
 }
 
-pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> Result<Option<Vouchers>>{
+pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> anyhow::Result<Option<Vouchers>>{
     let body_json = SaveVoucherRequest {
         voucher_promotionid: start.trim().parse().expect("Input tidak valid"),
         signature: end.to_string(),
@@ -397,7 +397,7 @@ pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, 
 	Ok(vouchers)
 }
 
-pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> Result<Option<Vouchers>>{
+pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> anyhow::Result<Option<Vouchers>>{
 	let body_json = GetVoucherRequest{
         promotionid: start.trim().parse().expect("Input tidak valid"),
         voucher_code: "-".to_string(),
@@ -663,7 +663,7 @@ pub async fn some_function(client: Arc<reqwest::Client>, start: &str, cookie_con
 					}else{
 						println!("API Checker 1");
 						let cid_1 = start.to_string();
-						let (promotion_id, signature) = api_1(&cid_1, &headers.clone()).await?;
+						let (promotion_id, signature) = api_1(client, &cid_1, &headers.clone()).await?;
 						return Ok((promotion_id.to_string(), signature.to_string()));
 					}
 				}
@@ -687,7 +687,7 @@ pub async fn some_function(client: Arc<reqwest::Client>, start: &str, cookie_con
 	Ok((String::new(), String::new()))	
 }
 
-async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
+async fn api_1(client: Arc<reqwest::Client>, cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 	let cloned_headers = headers.clone();
 	let voucher_request = VoucherCollectionRequest {
 		collection_id: cid_1.to_string(),
@@ -707,17 +707,7 @@ async fn api_1(cid_1: &str, headers: &HeaderMap) -> Result<(String, String)> {
 	//let json_body = serde_json::to_string(&json_request)?;
 	
 	loop {
-        let client = ClientBuilder::new()
-            .danger_accept_invalid_certs(true)
-            .impersonate_skip_headers(Impersonate::Chrome130)
-            .enable_ech_grease(true)
-            .permute_extensions(true)
-            .gzip(true)
-            //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-            .build()?;
-
-        // Buat permintaan HTTP POST
-        let response = client
+        let response = (*client)
             .post("https://mall.shopee.co.id/api/v1/microsite/get_vouchers_by_collections")
             .headers(cloned_headers.clone())
             .json(&json_request)
