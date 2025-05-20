@@ -581,8 +581,12 @@ impl MyWindow {
 		let self2 = self.clone();
         self.btn_jalankan.on().bn_clicked(move || {
             let command = self2.generate_cmd();
+            let mut new_command = Vec::new();
             if let Ok(Some(command))  = command {
-                let _ = self2.execute(command);
+                new_command.push("start".to_string());
+                new_command.push("abs.exe".to_string());
+                new_command.extend(command);
+                let _ = self2.execute(new_command);
             }
             Ok(())
         });
@@ -716,9 +720,13 @@ impl MyWindow {
         let self2 = self.clone();
         self.wnd.on().wm_command_accel_menu(103 as u16, move || {
             let command = self2.generate_vouc();
+            let mut new_command = Vec::new();
             if let Ok(Some(command))  = command {
-                let _ = self2.generate_struct(command.clone());
-                let _ = self2.execute(command);
+                new_command.push("start".to_string());
+                new_command.push("savevoucher.exe".to_string());
+                new_command.extend(command);
+                let _ = self2.generate_struct(new_command.clone());
+                let _ = self2.execute(new_command);
             }
 			Ok(())
 		});
@@ -824,8 +832,6 @@ impl MyWindow {
         // Menjalankan program abs.exe dengan argumen yang dibuat
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
             let mut command = vec![
-                "start".to_string(),
-                "abs.exe".to_string(),
                 "--file".to_string(), file,
                 "--url".to_string(), refe,
                 "--time".to_string(), format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili),
@@ -952,8 +958,6 @@ impl MyWindow {
         let mili = self2.mili_text.text();
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
             let mut command = vec![
-                "start".to_string(),
-                "savevoucher.exe".to_string(),
                 "--file".to_string(), file,
                 "--time".to_string(), format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili),
             ];

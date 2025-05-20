@@ -5,6 +5,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use futures_util::StreamExt;
 use std::time::Instant;
 use std::path::Path;
+use std::fs;
 use once_cell::sync::Lazy;
 use std::env;
 
@@ -172,6 +173,29 @@ async fn extract_archive(exp: bool) -> Result<(), Box<dyn std::error::Error + Se
     Ok(())
 }
 
+fn backup(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            continue;
+        }
+        let file_name = match path.file_name() {
+            Some(name) => name,
+            None => continue,
+        };
+        let dst_path = dst.join(file_name);
+        fs::copy(&path, &dst_path)?;
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -193,7 +217,7 @@ async fn main() {
                 force = true;
             }
             "upgrade" => {
-                if let Err(e) = run_updater() {
+                if let Err(e) = run_updater("update-dir") {
                     println!("Gagal melakukan update: {}", e);
                 }
                 return;
@@ -206,11 +230,27 @@ async fn main() {
                     println!("Gagal mengekstrak arsip: {}", e);
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
+                let current_dir = std::env::current_dir().unwrap();
+                let backup_dir = current_dir.join("update-dir-old");
+                println!("Backing up to {:?}", backup_dir);
+                let _ = backup(&current_dir, &backup_dir);
+                println!("Backup selesai.");
                 println!("Ekstraksi selesai. Updater akan upgrade dengan versi terbaru.");
                 tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
                 println!("Restarting..");
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
                 std::process::exit(0);
+            }
+            "rollback" => {
+                if OS == "windows" {
+                    println!("Mengembalikan pembaruan...");
+                    if let Err(e) = run_updater("update-dir-old") {
+                        println!("Gagal melakukan update: {}", e);
+                    }
+                }else{
+                    println!("Rollback tidak didukung di sistem operasi ini.");
+                }
+                return;
             }
             _ => {}
         }
@@ -258,15 +298,12 @@ async fn main() {
     }
 }
 
-fn run_updater() -> io::Result<()> {
+fn run_updater(update_dir: &str) -> io::Result<()> {
     use std::fs;
     use std::io;
     use std::path::Path;
     println!("Menjalankan updater...");
     std::thread::sleep(std::time::Duration::from_secs(10));
-
-    // Tentukan folder update dan folder tujuan
-    let update_dir = "update-dir";  // Nama folder hasil ekstraksi
 
     // Fungsi rekursif untuk menyalin semua file dan folder
     fn copy_recursive(from: &Path, to: &Path) -> io::Result<()> {

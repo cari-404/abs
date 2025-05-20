@@ -1,15 +1,14 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.0 :
+    To infininity and beyond for memory and thread
+    Add back certificate build-in for compatibility issues
+    Add rollback update
 Whats new in 1.0.10 :
     experimental algorithm for claim platform voucher
 Whats new in 1.0.9 :
     Almost 90% Code Supported Single & Multi Product(Rewrite)
     Experimental Multi Product Checkout
     Remove certificate build-in using system wide installed(rustls_native_certs)
-Whats new in 1.0.8 :
-    experimental multiproduct
-    fix gift product
-    seperate multi product from single ABS for ensure compatibility until stable and then merge
-    partial rewrite for multi product
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -562,27 +561,75 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             async {
                 let raw_checkout_data = Arc::new(task_ng::get_body_builder(&device_info, &chosen_payment, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher.map(|v| vec![v])), use_coins, &mut temp).await?);
+                let (place_order_tx, place_order_rx) = tokio::sync::watch::channel::<Option<task_ng::PlaceOrderBody>>(None);
+                let (trigger_tx, mut trigger_rx) = tokio::sync::mpsc::channel::<()>(1);
                 let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
                 let stop_flag = Arc::new(AtomicBool::new(false));
+                let stop_flag_trigger = Arc::clone(&stop_flag);
+                // Task trigger: kirim sinyal setiap 50ms
+                tokio::spawn(async move {
+                    loop {
+                        if stop_flag_trigger.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        if trigger_tx.send(()).await.is_err() {
+                            break;
+                        }
+                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                    }
+                });
+                // Task refresher: jalankan get_ng setiap kali ada trigger, update ke watch
+                {
+                    let client = Arc::clone(&client);
+                    let shared_headers = Arc::clone(&shared_headers);
+                    let get_body_clone = Arc::clone(&raw_checkout_data);
+                    let chosen_payment_clone = Arc::clone(&chosen_payment);
+                    let place_order_tx = place_order_tx.clone();
+                    let stop_flag_refresher = Arc::clone(&stop_flag);
+
+                    tokio::spawn(async move {
+                        while trigger_rx.recv().await.is_some() {
+                            if stop_flag_refresher.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            let client = Arc::clone(&client);
+                            let headers = Arc::clone(&shared_headers);
+                            let chosen_payment = Arc::clone(&chosen_payment_clone);
+                            let get_body_clone = Arc::clone(&get_body_clone);
+
+                            tokio::spawn({
+                                let place_order_tx = place_order_tx.clone();
+                                async move {
+                                    if let Ok(body) = task_ng::get_ng(
+                                        client,
+                                        headers,
+                                        &get_body_clone.0,
+                                        &chosen_payment,
+                                        get_body_clone.1.clone(),
+                                        adjusted_max_price,
+                                    ).await {
+                                        let _ = place_order_tx.send(Some(body));
+                                    }
+                                }
+                            });
+                        }
+                    });
+                }
                 for i in 0..max_threads {
                     println!("Running on thread: {}", i);
                     let tx = tx.clone();
                     let shared_headers = Arc::clone(&shared_headers);
                     let client = Arc::clone(&client);
+                    let mut place_order_rx = place_order_rx.clone();
                     let stop_flag = Arc::clone(&stop_flag);
-                    let chosen_payment_clone = Arc::clone(&chosen_payment);
-                    let get_body_clone = Arc::clone(&raw_checkout_data);
             
                     tokio::spawn(async move {
                         let mut try_count = 0;
                         while try_count < 3 && !stop_flag.load(Ordering::Relaxed) {
-                            let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone.0, &chosen_payment_clone, get_body_clone.1.clone(), adjusted_max_price).await
-                            {
-                                Ok(body) => body,
-                                Err(err) => {
-                                    eprintln!("Error in get_builder: {:?}", err);
-                                    continue;
-                                }
+                            place_order_rx.changed().await.ok();
+                            let place_order_body = match *place_order_rx.borrow() {
+                                Some(ref body) => body.clone(),
+                                None => continue,
                             };
                             if stop_flag.load(Ordering::Relaxed) {
                                 return;

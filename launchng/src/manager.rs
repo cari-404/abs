@@ -25,18 +25,24 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let progress = gui::ProgressBar::new_dlg(&wnd2, 102, dont_move);
     let download_button = gui::Button::new_dlg(&wnd2, 103, dont_move);
     let cancel_button = gui::Button::new_dlg(&wnd2, 104, dont_move);
+    let rollback_button = gui::Button::new_dlg(&wnd2, 105, dont_move);
 
     let download_button_clone = download_button.clone();
     let info_label_clone = info_label.clone();
     let check_version_clone = check_version.clone();
     let progress_clone = progress.clone();
+    let rollback_button_clone = rollback_button.clone();
     wnd2.on().wm_init_dialog(move |_| {
         progress_clone.set_marquee(true);
+        rollback_button_clone.hwnd().EnableWindow(false);
         download_button_clone.hwnd().EnableWindow(false);
         let download_button_clone = download_button_clone.clone();
         let check_version = check_version_clone.clone();
         let info_label_clone = info_label_clone.clone();
         let progress_clone = progress_clone.clone();
+        if std::path::Path::new("update-dir-old").exists() {
+            rollback_button_clone.hwnd().EnableWindow(true);
+        }
         tokio::spawn(async move {
             if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/cari-404/abs/releases/latest")).await {
                 println!("Versi terbaru: {}", latest_version);
@@ -167,6 +173,13 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             });
         }
         Ok(())
+    });
+    rollback_button.on().bn_clicked(move || {
+        let _ = std::process::Command::new("cmd")
+            .arg("/C")
+            .arg("update-dir-old\\updater.exe rollback")
+            .spawn();
+        std::process::exit(0);
     });
     let _ = wnd2.show_modal();
     Ok(())
