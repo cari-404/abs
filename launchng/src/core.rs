@@ -530,14 +530,9 @@ impl MyWindow {
                         };
                         let mut chosen_model = {
                             let shared_v = shared_variation_clone.lock().unwrap();
-                            shared_v.get(0).unwrap().clone()
+                            shared_v.get(0).cloned().unwrap_or_else(|| {ModelInfo::default()})
                         };
-                        let chosen_shipping = ShippingInfo {
-                            original_cost: i64::default(),
-                            channelid: i64::default(),
-                            channelidroot: i64::default(),
-                            channel_name: String::default(),
-                        };
+                        let chosen_shipping = ShippingInfo::default();
                         let chosen_payment = {
                             let shared_p = shared_payment_data_clone.lock().unwrap();
                             shared_p.get(0).unwrap().clone()
@@ -776,6 +771,11 @@ impl MyWindow {
         let wnd = self.wnd.clone();
 		self.wnd.on().wm_command_accel_menu(11 as u16, move || {
             let _ = manager::updater_window(&wnd);
+			Ok(())
+		});
+        let wnd = self.wnd.clone();
+		self.wnd.on().wm_command_accel_menu(12 as u16, move || {
+            let _ = manager::Multi::new(&wnd).run();
 			Ok(())
 		});
 	}

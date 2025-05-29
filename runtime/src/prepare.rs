@@ -44,7 +44,7 @@ pub struct RawModelInfo {
     pub promotionid: i64,
 }
 // Struct to represent model information
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Default, Deserialize, Debug, Clone)]
 pub struct ModelInfo {
     pub name: String,
     pub product_name: String,
@@ -87,7 +87,7 @@ struct RespFSData {
 struct GetProduct {
     data: Option<ProductData>,
 }
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct ShippingInfo {
     pub original_cost: i64,
     pub channelid: i64,
@@ -113,7 +113,7 @@ pub struct ChannelInfo {
     pub name: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Default, Debug, Clone, Deserialize)]
 pub struct PaymentInfo {
     #[serde(default = "default_unknown")]
     pub name: String,

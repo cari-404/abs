@@ -3,13 +3,11 @@ use winsafe::{self as w,
     HBITMAP,
 };
 use ::runtime::login::{get_qrcode, authentication_qrcode, get_cookie};
-use std::io::Cursor;
-use image::{load_from_memory};
-use image::DynamicImage::ImageRgba8;
-use base64::decode;
 use tokio::time::{sleep, Duration};
 use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+
+use crate::func_main::png_base64_to_pixels_ptr;
 
 pub fn login_window(wnd: &gui::WindowModal) -> Result<(), ()> {
     let (tx_msg, rx_msg) = mpsc::unbounded_channel::<String>();
@@ -101,6 +99,7 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
                 }
             };
             let qrcode_base64 = qrcode.qrcode_base64.clone();
+            /*
             let decode_qrcode = decode(qrcode_base64).unwrap();
             let cursor = Cursor::new(decode_qrcode);
             let png_image = load_from_memory(&cursor.get_ref())
@@ -109,14 +108,16 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
                 ImageRgba8(rgb_image) => rgb_image,
                 _ => png_image.to_rgba8(), // Konversi ke RGB8 jika format awal berbeda
             };
-            println!("Bitmap berhasil dibuat. Ukuran: {:?}", bitmap.dimensions());
-            let mut pixels = bitmap.into_raw();
-            pixels.chunks_exact_mut(4).for_each(|chunk| chunk[0..3].reverse());
+            */
+            let (mut pixels, width, height, stride) = unsafe { png_base64_to_pixels_ptr(&qrcode_base64).unwrap() };
+            println!("Bitmap berhasil dibuat. Ukuran: {:?} x {:?}", width, height);
+            //let mut pixels = bitmap.into_raw();
+            //pixels.chunks_exact_mut(4).for_each(|chunk| chunk[0..3].reverse());
             let mut hbitmap = match <HBITMAP as gdi_Hbitmap>::CreateBitmap(
-                w::SIZE::new(256, 256), // Ukuran bitmap
+                w::SIZE::new(width.try_into().unwrap(), height.try_into().unwrap()), // Ukuran bitmap
                 1,
                 32,
-                pixels.as_mut_ptr().cast(),
+                pixels.as_mut_ptr().cast(), // Pointer ke data piksel
             ) {
                 Ok(bitmap) => bitmap,
                 Err(err) => {

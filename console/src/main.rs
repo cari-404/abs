@@ -1,14 +1,14 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.1 :
+    Add Default struct
+    reduce code and dependency
+    add multi for all distribution
 Whats new in 1.1.0 :
     To infininity and beyond for memory and thread
     Add back certificate build-in for compatibility issues
     Add rollback update
 Whats new in 1.0.10 :
     experimental algorithm for claim platform voucher
-Whats new in 1.0.9 :
-    Almost 90% Code Supported Single & Multi Product(Rewrite)
-    Experimental Multi Product Checkout
-    Remove certificate build-in using system wide installed(rustls_native_certs)
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -161,12 +161,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         quantity: 0,
         voucher_code: None,
     };
-    let mut chosen_shipping = ShippingInfo {
-		original_cost: i64::default(),
-		channelid: i64::default(),
-        channelidroot: i64::default(),
-		channel_name: String::default(),
-	};
+    let mut chosen_shipping = ShippingInfo::default();
     let mut chosen_payment = PaymentInfo {
 		name: String::from("NOT SET"),
 		channel_id: 0,

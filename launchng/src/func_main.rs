@@ -6,9 +6,100 @@ use ::runtime::prepare::{self};
 use std::{ffi::CStr, ptr, io::{self, Error}};
 use std::sync::{Arc, Mutex};
 use chrono::{Local, DateTime, Utc};
-use windows_sys::Win32::System::DataExchange::*;
-use windows_sys::Win32::System::Memory::*;
+use windows::Win32::System::DataExchange::*;
+use windows::Win32::System::Memory::*;
+use windows::{
+    Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal,
+    Win32::Graphics::GdiPlus::{
+        GdiplusStartup, GdiplusShutdown, GdiplusStartupInput, GpBitmap, GpImage, Status,
+        GdipCreateBitmapFromStream, GdipGetImageWidth, GdipGetImageHeight,
+        GdipBitmapLockBits, GdipBitmapUnlockBits, GdipDisposeImage,
+        BitmapData, Rect, ImageLockModeRead,
+    },
+};
+const PIXEL_FORMAT32BPP_ARGB: i32 = 0x26200A; // Add this if not present
 
+pub unsafe fn png_base64_to_pixels_ptr(base64_str: &str) -> windows::core::Result<(Vec<u8>, u32, u32, i32)> {
+    let bytes = base64::decode(base64_str).unwrap();
+    let hglobal = windows::Win32::System::Memory::GlobalAlloc(
+        windows::Win32::System::Memory::GMEM_MOVEABLE,
+        bytes.len(),
+    );
+    let locked = windows::Win32::System::Memory::GlobalLock(hglobal.clone()?) as *mut u8;
+    if locked.is_null() {
+        return Err(windows::core::Error::from_win32());
+    }
+    std::ptr::copy_nonoverlapping(bytes.as_ptr(), locked, bytes.len());
+    let _ = windows::Win32::System::Memory::GlobalUnlock(hglobal.clone()?);
+
+    let stream = CreateStreamOnHGlobal(hglobal?, true)?;
+
+    let mut token = 0usize;
+    let startup_input = GdiplusStartupInput {
+        GdiplusVersion: 1,
+        DebugEventCallback: 0,
+        SuppressBackgroundThread: windows::Win32::Foundation::BOOL(0),
+        SuppressExternalCodecs: windows::Win32::Foundation::BOOL(0),
+    };
+    let status = GdiplusStartup(&mut token, &startup_input, std::ptr::null_mut());
+    if status != Status(0) {
+        return Err(windows::core::Error::from_win32());
+    }
+
+    let mut bitmap: *mut GpBitmap = std::ptr::null_mut();
+    let status = GdipCreateBitmapFromStream(&stream, &mut bitmap);
+    if status != Status(0) || bitmap.is_null() {
+        GdiplusShutdown(token);
+        return Err(windows::core::Error::from_win32());
+    }
+
+    let mut data = BitmapData {
+        Width: 0,
+        Height: 0,
+        Stride: 0,
+        PixelFormat: 0,
+        Scan0: std::ptr::null_mut(),
+        Reserved: usize::MAX,
+    };
+    let mut rect = Rect {
+        X: 0,
+        Y: 0,
+        Width: 0,
+        Height: 0,
+    };
+
+    let mut width: u32 = 0;
+    let mut height: u32 = 0;
+    GdipGetImageWidth(bitmap as *mut GpImage, &mut width);
+    GdipGetImageHeight(bitmap as *mut GpImage, &mut height);
+    rect.Width = width as i32;
+    rect.Height = height as i32;
+
+    let status = GdipBitmapLockBits(
+        bitmap,
+        &rect,
+        ImageLockModeRead.0 as u32,
+        PIXEL_FORMAT32BPP_ARGB,
+        &mut data,
+    );
+    if status != Status(0) {
+        GdipDisposeImage(bitmap as *mut GpImage);
+        GdiplusShutdown(token);
+        return Err(windows::core::Error::from_win32());
+    }
+
+    let pixels = data.Scan0 as *mut u8;
+    let stride = data.Stride;
+    let pixel_count = (stride * height as i32) as usize;
+    let mut buffer = vec![0u8; pixel_count];
+    std::ptr::copy_nonoverlapping(pixels, buffer.as_mut_ptr(), pixel_count);
+
+    GdipBitmapUnlockBits(bitmap, &mut data);
+    GdipDisposeImage(bitmap as *mut GpImage);
+    GdiplusShutdown(token);
+
+    Ok((buffer, width, height, stride))
+}
 pub fn error_modal(wnd: &gui::WindowModal, title: &str, message: &str) -> Result<(), ()> {
     wnd.hwnd().MessageBox(message, title, co::MB::OK | co::MB::ICONSTOP).ok();
     Ok(())
@@ -232,27 +323,21 @@ pub fn set_clipboard(text: &str) -> io::Result<()> {
     };
 
     unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
-            return Err(Error::last_os_error());
-        }
-        EmptyClipboard();
+        OpenClipboard(None).map_err(|e| Error::from_raw_os_error(e.code().0))?;
+        let _ = EmptyClipboard();
 
         let hglobal = GlobalAlloc(GMEM_MOVEABLE, bytes.len());
-        if hglobal.is_null() {
-            CloseClipboard();
-            return Err(Error::last_os_error());
-        }
 
-        let ptr = GlobalLock(hglobal);
+        let ptr = GlobalLock(hglobal.clone()?);
         if ptr.is_null() {
-            CloseClipboard();
+            let _ = CloseClipboard();
             return Err(Error::last_os_error());
         }
 
         ptr::copy_nonoverlapping(bytes.as_ptr(), ptr as *mut u8, bytes.len());
 
-        SetClipboardData(CF_UNICODETEXT, hglobal);
-        CloseClipboard();
+        SetClipboardData(CF_UNICODETEXT, Some(windows::Win32::Foundation::HANDLE(hglobal.unwrap().0)),).map_err(|e| Error::from_raw_os_error(e.code().0))?;
+        let _ = CloseClipboard();
     }
     Ok(())
 }

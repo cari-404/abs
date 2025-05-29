@@ -1,6 +1,6 @@
 [package]
 name = "launchng"
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 authors = ["Paijo"]
 description = "Launcher NG for ABS"
@@ -23,7 +23,14 @@ runtime = { path = "../runtime", features = ["prepare-ext", "flashsale", "core",
 serde_json = "1"
 chrono = "0.4"
 windows-version = "0.1.1"
-image = "0.25.5"
 base64 = "0.13"
-windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory"] }
 futures-util = "0.3"
+windows = { version = "0.59", features = [
+    "Win32_Graphics_GdiPlus",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Memory",
+    "Win32_System_DataExchange",
+] }

@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  FINAL_VERSION: "1.1.0"
+  FINAL_VERSION: "1.1.1"
 
 permissions:
   contents: write
@@ -258,7 +258,7 @@ jobs:
       run: |
         sudo apt install p7zip-full
         cd target/${{ matrix.platform.target }}/release
-        tar -czf ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.tar.gz abs savevoucher updater
+        tar -czf ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.tar.gz abs multi savevoucher updater
         7z a ABS_${{ matrix.platform.os_name }}-v${{ env.FINAL_VERSION }}.7z abs multi savevoucher updater -mf=off
 
     - name: Archive (Windows)
@@ -266,7 +266,7 @@ jobs:
       run: |
         choco install 7zip -y
         cd target/${{ matrix.platform.target }}/release
-        Compress-Archive -Path abs.exe,savevoucher.exe,launcabs.exe,launchng.exe,updater.exe -DestinationPath ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.zip
+        Compress-Archive -Path abs.exe,multi.exe,savevoucher.exe,launcabs.exe,launchng.exe,updater.exe -DestinationPath ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.zip
         7z a ABS_${{ matrix.platform.os_name }}-v${{ env.FINAL_VERSION }}.7z abs.exe multi.exe savevoucher.exe launcabs.exe launchng.exe updater.exe -mf=off
 
     - name: Release binary and SHA-256 checksum to GitHub (Linux)
