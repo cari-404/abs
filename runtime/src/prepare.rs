@@ -166,7 +166,7 @@ struct DataOnAddress {
 struct AddressResp {
     data: Option<DataOnAddress>,
 }
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AddressInfo  {
     pub state: String,
     pub city: String,
@@ -495,16 +495,7 @@ pub async fn info_akun(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) ->
         process::exit(1);
     }
 }
-pub async fn get_redirect_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let client = ClientBuilder::new()
-        .redirect(RedirectPolicy::limited(10))
-        .danger_accept_invalid_certs(true)
-        .impersonate(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        .build()?;
-
+pub async fn get_redirect_url(client: Arc<reqwest::Client>, url: &str) -> Result<String, Box<dyn std::error::Error>> {
     let res = client.get(url)
         .send()
         .await?;
@@ -577,6 +568,7 @@ pub fn read_cookie_file(file_name: &str) -> String {
 }
 pub async fn universal_client_skip_headers() -> reqwest::Client {
     ClientBuilder::new()
+        .redirect(RedirectPolicy::limited(10))
         .danger_accept_invalid_certs(true)
         .impersonate_skip_headers(Impersonate::Chrome130)
         .gzip(true)

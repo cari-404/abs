@@ -1,9 +1,8 @@
 use rquest as reqwest;
-use reqwest::ClientBuilder;
-use reqwest::redirect::Policy as RedirectPolicy;
 use serde_json::Value;
 use tokio::io;
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 use crate::prepare;
 
@@ -23,17 +22,7 @@ pub async fn get_latest_release(url: &str) -> Option<String> {
         None
     }
 }
-pub async fn fetch_download_response(url: &str) -> Result<(reqwest::Response, u64), io::Error> {
-    let client = ClientBuilder::new()
-        .gzip(true)
-        .redirect(RedirectPolicy::limited(10))
-        .root_certs_store(prepare::load_dynamic_root_certs().expect("Failed to create HTTP client"))
-        .build()
-        .map_err(|e| {
-            eprintln!("Gagal membuat client: {}", e);
-            io::Error::new(io::ErrorKind::Other, "Gagal membuat client HTTP")
-        })?;
-
+pub async fn fetch_download_response(client: Arc<reqwest::Client>, url: &str) -> Result<(reqwest::Response, u64), io::Error> {
     let response = client.get(url).send().await.map_err(|e| {
         eprintln!("Gagal mengunduh: {}", e);
         io::Error::new(io::ErrorKind::Other, "Gagal mengunduh file")

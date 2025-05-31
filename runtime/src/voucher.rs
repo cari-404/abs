@@ -1,6 +1,5 @@
 use rquest as reqwest;
-use reqwest::tls::Impersonate;
-use reqwest::{ClientBuilder, header::HeaderMap, Version};
+use reqwest::{header::HeaderMap, Version};
 use reqwest::header::HeaderValue;
 use serde_json::{json, to_string, Value};
 use serde::{Serialize, Deserialize};
@@ -8,7 +7,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use once_cell::sync::Lazy;
 
-use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo};
+use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::crypt::random_hex_string;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -76,6 +75,7 @@ pub struct Orders {
     pub shop_vouchers: Vec<ShopVoucher>,
     pub auto_apply: bool,
     pub iteminfos: Vec<ItemInfo>,
+    pub carrier_infos: Vec<CarrierInfo>,
     pub selected_carrier_id: i64,
 }
 
@@ -107,6 +107,14 @@ pub struct ItemInfo {
     pub user_path: i64,
     pub models: Option<Models>,
     pub tier_variations: Option<TierVariations>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CarrierInfo {
+    pub carrier_id: i64,
+    pub esf: i64,
+    pub shippable_item_ids: Vec<i64>,
+    pub buyer_address: AddressInfo,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -462,7 +470,7 @@ pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &s
 	Ok(vouchers)
 }
 
-pub async fn get_recommend_platform_vouchers(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
+pub async fn get_recommend_platform_vouchers(buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let orders_json = vec![Orders {
         shopid: product_info.shop_id,
         carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
@@ -494,6 +502,12 @@ pub async fn get_recommend_platform_vouchers(client: Arc<reqwest::Client>, heade
             user_path: 1,
             models: None,
             tier_variations: None,
+        }],
+        carrier_infos: vec![CarrierInfo {
+            carrier_id: chosen_shipping.channelidroot,
+            esf: chosen_shipping.original_cost,
+            shippable_item_ids: vec![product_info.item_id],
+            buyer_address: buyer_address.clone(),
         }],
         selected_carrier_id: chosen_shipping.channelidroot,
     }];
@@ -771,18 +785,9 @@ pub async fn headers_collection(cookie_content: &CookieData) -> HeaderMap {
     headers.insert(reqwest::header::COOKIE, reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
     headers
 }
-pub async fn get_voucher_by_collection_id(collection_id: &JsonCollectionRequest, headers: &HeaderMap) -> Result<Vec<VoucherInfo>, Box<dyn std::error::Error>> {
+pub async fn get_voucher_by_collection_id(client: Arc<reqwest::Client>, collection_id: &JsonCollectionRequest, headers: &HeaderMap) -> Result<Vec<VoucherInfo>, Box<dyn std::error::Error>> {
     let mut voucher_data = Vec::new();
 
-    let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        .build()?;
-
-    // Buat permintaan HTTP POST
     let response = client
         .post("https://mall.shopee.co.id/api/v1/microsite/get_vouchers_by_collections")
         .headers(headers.clone())

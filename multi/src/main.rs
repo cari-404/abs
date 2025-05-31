@@ -265,7 +265,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if product_info.shop_id == 0 && product_info.item_id == 0 {
             println!("Cek apakah redirect?.");
-            url = prepare::get_redirect_url(&url).await?;
+            url = prepare::get_redirect_url(client.clone(), &url).await?;
             product_info = prepare::process_url(&url);
             target_urls[i] = url;
         }
@@ -538,6 +538,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let recommend_task = tokio::spawn(async move{
             if !opt.no_fsv {
                 task_ng::multi_get_recommend_platform_vouchers(
+                    &address_info,
                     client_clone,
                     vc_header_clone,
                     &chosen_model_clone,
@@ -639,7 +640,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
             if config.telegram_notif {
                 let msg = format!("Auto Buy Shopee {}\nREPORT!!!\nUsername     : {}\nProduct      : {}\nVariant      : {}\nLink Payment : {}\nCheckout berhasil!", version_info, userdata.username, "Multi", "Multi", url);
-                telegram::send_msg(&config, &msg).await?;
+                telegram::send_msg(client.clone(), &config, &msg).await?;
             }
         }
     }

@@ -8,6 +8,7 @@ use std::path::Path;
 use std::fs;
 use once_cell::sync::Lazy;
 use std::env;
+use std::sync::Arc;
 
 const REPO_OWNER: &str = "cari-404";
 const REPO_NAME: &str = "ABS";
@@ -29,9 +30,10 @@ static OUTPUT_PATH: Lazy<&'static str> = Lazy::new(|| {
 });
 
 async fn download_latest_release(url: &str) -> tokio::io::Result<()> {
+    let client = Arc::new(runtime::prepare::universal_client_skip_headers().await);
     use tokio::fs::OpenOptions;
     println!("URL unduhan: {}", url);
-    let (response, total_size) =  upgrade::fetch_download_response(url).await?;
+    let (response, total_size) =  upgrade::fetch_download_response(client, url).await?;
     let pb = ProgressBar::new(total_size);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta}) {bytes_per_sec}")
@@ -350,7 +352,7 @@ fn run_updater(update_dir: &str) -> io::Result<()> {
 fn get_os() -> &'static str {
     use windows_version::OsVersion;
     let version = OsVersion::current();
-    if version >= OsVersion::new(10, 0, 0, 10240) {
+    let mut os = if version >= OsVersion::new(10, 0, 0, 10240) {
         OS
     } else if version >= OsVersion::new(6, 1, 0, 7600) {
         "windows7"
@@ -358,7 +360,11 @@ fn get_os() -> &'static str {
         "windowsxp"
     } else {
         OS
+    };
+    if ARCH == "aarch64" {
+        os = OS;
     }
+    os
 }
 
 #[cfg(not(target_os = "windows"))]

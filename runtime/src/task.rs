@@ -1,6 +1,5 @@
 use rquest as reqwest;
-use reqwest::tls::Impersonate;
-use reqwest::{ClientBuilder, header::HeaderMap, Version, Body};
+use reqwest::{header::HeaderMap, Version, Body};
 use reqwest::header::HeaderValue;
 use chrono::{Utc};
 use anyhow::Result;
@@ -33,7 +32,7 @@ pub static CO_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
     headers
 });
 
-pub async fn place_order(cookie_content: &CookieData, body_json: &serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+pub async fn place_order(client: Arc<reqwest::Client>, cookie_content: &CookieData, body_json: &serde_json::Value) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
 	let mut headers = headers_checkout(&cookie_content);
 	let data = crypt::random_hex_string(16);
 	headers.insert("af-ac-enc-dat", HeaderValue::from_str(&data).unwrap());
@@ -46,15 +45,6 @@ pub async fn place_order(cookie_content: &CookieData, body_json: &serde_json::Va
 
 	let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/place_order");
 	println!("{}", url2);
-	// Buat klien HTTP
-	let client = ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
-        .impersonate_skip_headers(Impersonate::Chrome130)
-        .enable_ech_grease(true)
-        .permute_extensions(true)
-        .gzip(true)
-        //.use_boring_tls(boring_tls_connector) // Use Rustls for HTTPS
-        .build()?;
 
     // Buat permintaan HTTP POST
     let response = client

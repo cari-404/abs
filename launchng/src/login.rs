@@ -3,6 +3,7 @@ use winsafe::{self as w,
     HBITMAP,
 };
 use ::runtime::login::{get_qrcode, authentication_qrcode, get_cookie};
+use runtime::prepare;
 use tokio::time::{sleep, Duration};
 use tokio::sync::mpsc;
 use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
@@ -89,9 +90,10 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
     let interrupt_flag_clone = interrupt_flag.clone();
     let tx_msg = tx_msg.clone();
     tokio::spawn(async move {
+        let client = Arc::new(prepare::universal_client_skip_headers().await);
         println!("start login_internals async");
         loop{
-            let qrcode = match get_qrcode().await{
+            let qrcode = match get_qrcode(client.clone()).await{
                 Ok(qrcode) => qrcode,
                 Err(err) => {
                     eprintln!("Error mendapatkan QR code: {}", err);
@@ -151,7 +153,7 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
                 }
                 sleep(Duration::from_secs(5)).await;
                 // Menangani hasil dari authentication_qrcode
-                let (status, qrct) = match authentication_qrcode(&qrcode).await {
+                let (status, qrct) = match authentication_qrcode(client.clone(), &qrcode).await {
                     Ok(result) => result,
                     Err(err) => {
                         eprintln!("Error mendapatkan status QR code: {}", err);
@@ -194,7 +196,7 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
             if qrcode_token.is_empty() {
                 continue;
             }else{
-                let cookie = match get_cookie(&qrcode_token).await{
+                let cookie = match get_cookie(client.clone(), &qrcode_token).await{
                     Ok(cookie) => cookie,
                     Err(err) => {
                         eprintln!("Error mendapatkan cookie: {}", err);

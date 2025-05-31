@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
 use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, AddressInfo};
-use crate::voucher::{Vouchers, Orders, ItemInfo, RecommendPlatform, SelectedPaymentChannelDataOnRecommendPlatform, ChannelItemOptionInfoOnRecommendPlatform, TextInfo, Category, RecomendPlatformResponse, };
+use crate::voucher::{Vouchers, Orders, ItemInfo, RecommendPlatform, SelectedPaymentChannelDataOnRecommendPlatform, ChannelItemOptionInfoOnRecommendPlatform, TextInfo, Category, RecomendPlatformResponse, CarrierInfo};
 use crate::crypt::{self, DeviceInfo};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -849,7 +849,7 @@ pub fn adjustment_shipping(shipping_orders: &mut [ShippingOrder], shoporders: &[
         }
     }
 }
-pub async fn multi_get_recommend_platform_vouchers(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, products: &[ModelInfo], shipping: &[ShippingInfo], chosen_payment: &PaymentInfo, place_body: &PlaceOrderBody) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
+pub async fn multi_get_recommend_platform_vouchers(buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, products: &[ModelInfo], shipping: &[ShippingInfo], chosen_payment: &PaymentInfo, place_body: &PlaceOrderBody) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let mut orders_json = Vec::new();
     for (index, product) in products.iter().enumerate() {
         for order in &place_body.shoporders {
@@ -864,6 +864,12 @@ pub async fn multi_get_recommend_platform_vouchers(client: Arc<reqwest::Client>,
                                     shop_vouchers: vec![],
                                     auto_apply: true,
                                     iteminfos: vec![],
+                                    carrier_infos: vec![CarrierInfo {
+                                        carrier_id: shipping[index].channelidroot,
+                                        esf: shipping[index].original_cost,
+                                        shippable_item_ids: order.items.iter().map(|item| item.itemid).collect(),
+                                        buyer_address: buyer_address.clone(),
+                                    }],
                                     selected_carrier_id: shipping[index].channelidroot,
                                 };
                                 for item in &order.items {

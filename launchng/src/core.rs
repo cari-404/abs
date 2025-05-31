@@ -448,7 +448,7 @@ impl MyWindow {
                     let mut product_info = prepare::process_url(&self2.url_text.text().trim());
                     if product_info.shop_id == 0 && product_info.item_id == 0 {
                         println!("Cek apakah redirect?");
-                        match prepare::get_redirect_url(&self2.url_text.text().trim()).await {
+                        match prepare::get_redirect_url(client.clone(), &self2.url_text.text().trim()).await {
                             Ok(redirect) => {
                                 product_info = prepare::process_url(&redirect);
                             }
@@ -817,10 +817,11 @@ impl MyWindow {
         println!("{}", url_1);
         let (tx, rx) = std::sync::mpsc::channel();
         tokio::spawn(async move {
+            let client = Arc::new(prepare::universal_client_skip_headers().await);
             let url_1 = url_1.trim();
             let mut product_info = prepare::process_url(&url_1);
             if product_info.shop_id == 0 && product_info.item_id == 0 {
-                if let Ok(redirect) = prepare::get_redirect_url(&url_1).await {
+                if let Ok(redirect) = prepare::get_redirect_url(client.clone(), &url_1).await {
                     product_info = prepare::process_url(&redirect);
                 }
             }

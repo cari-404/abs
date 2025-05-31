@@ -242,7 +242,7 @@ impl Multi {
                     let mut product_info = prepare::process_url(&self2.url_text.text().trim());
                     if product_info.shop_id == 0 && product_info.item_id == 0 {
                         println!("Cek apakah redirect?");
-                        match prepare::get_redirect_url(&self2.url_text.text().trim()).await {
+                        match prepare::get_redirect_url(client.clone(), &self2.url_text.text().trim()).await {
                             Ok(redirect) => {
                                 product_info = prepare::process_url(&redirect);
                             }
@@ -641,6 +641,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             std::process::exit(0);
         }else{
             tokio::spawn(async move {
+                let client = Arc::new(prepare::universal_client_skip_headers().await);
                 let arch = if ARCH == "x86"{
                     "i686"
                 }else{
@@ -660,7 +661,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 use tokio::fs::OpenOptions;
                 let url = format!("https://github.com/cari-404/abs/releases/download/v{}/ABS_{}-{}-v{}.zip", shared, os, arch, shared);
                 println!("URL unduhan: {}", url);
-                let resp =  upgrade::fetch_download_response(&url).await;
+                let resp =  upgrade::fetch_download_response(client.clone(), &url).await;
                 match resp {
                     Ok((response, total_size)) => {
                         let file = OpenOptions::new()
@@ -841,6 +842,7 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let chat_id_clone = chat_id.clone();
         let wnd2_clone = wnd2_clone.clone();
         tokio::spawn(async move {
+            let client = Arc::new(prepare::universal_client_skip_headers().await);
             println!("test Send");
             let token_text = token_clone.text();
             let chat_id_text = chat_id_clone.text();
@@ -849,7 +851,7 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 let _ = func_main::error_modal(&wnd2_clone, "Error get data", &isi);
             }else{
                 let data = telegram::get_data(&token_text, &chat_id_text);
-                match telegram::send_msg(&data, "This is a test message; you can ignore it.").await {
+                match telegram::send_msg(client.clone(), &data, "This is a test message; you can ignore it.").await {
                     Ok(_) => println!("sent"),         Err(e) => println!("error: {}", e),     };
             }
         });

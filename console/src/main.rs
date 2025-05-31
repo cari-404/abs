@@ -1,4 +1,7 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.2 :
+    fix for free shipping voucher
+    reimplement native client certificate
 Whats new in 1.1.1 :
     Add Default struct
     reduce code and dependency
@@ -7,8 +10,6 @@ Whats new in 1.1.0 :
     To infininity and beyond for memory and thread
     Add back certificate build-in for compatibility issues
     Add rollback update
-Whats new in 1.0.10 :
-    experimental algorithm for claim platform voucher
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -260,7 +261,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut product_info = prepare::process_url(&target_url.trim());
     if product_info.shop_id == 0 && product_info.item_id == 0 {
         println!("Cek apakah redirect?.");
-        target_url = prepare::get_redirect_url(&target_url).await?.into();
+        target_url = prepare::get_redirect_url(client.clone(), &target_url).await?.into();
         product_info = prepare::process_url(&target_url);
     }
 	
@@ -506,6 +507,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let recommend_voucher_fut = async {
             if !opt.no_fsv {
                 voucher::get_recommend_platform_vouchers(
+                    &address_info,
                     client.clone(),
                     vc_header.clone(),
                     &product_info,
@@ -673,7 +675,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
                     if config.telegram_notif {
                         let msg = format!("Auto Buy Shopee {}\nREPORT!!!\nUsername     : {}\nProduct      : {}\nVariant      : {}\nLink Payment : {}\nCheckout berhasil!", version_info, userdata.username, name, chosen_model.name, url);
-                        telegram::send_msg(&config, &msg).await?;
+                        telegram::send_msg(client.clone(), &config, &msg).await?;
                     }
                 }
                 Ok(())
@@ -744,7 +746,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Loop akan berlanjut jika kondisi tidak terpenuhi
             }
             let place_order_body = task::place_order_builder(&device_info, &checkout_price_data, &order_update_info, &dropshipping_info, &promotion_data, &chosen_payment, &shoporders, &shipping_orders, &display_meta_data, &fsv_selection_infos, &buyer_info, &client_event_info, &buyer_txn_fee_info, &disabled_checkout_info, &buyer_service_fee_info, &iof_info).await?;
-            let mpp = task::place_order(&cookie_data, &place_order_body).await?;
+            let mpp = task::place_order(client.clone(), &cookie_data, &place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
             if let Some(checkout_id) = mpp.get("checkoutid") {
@@ -759,7 +761,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let get_body = task::get_builder(&device_info, &address_info, &[(*chosen_model).clone()], &chosen_payment, &chosen_shipping, None, None, None).await?;
             let (checkout_price_data, order_update_info, dropshipping_info, promotion_data, _selected_payment_channel_data, shoporders, shipping_orders, display_meta_data, fsv_selection_infos, buyer_info, client_event_info, buyer_txn_fee_info, disabled_checkout_info, buyer_service_fee_info, iof_info) = task::checkout_get(client.clone(), shared_headers.clone(), &get_body).await?;
             let place_order_body = task::place_order_builder(&device_info, &checkout_price_data, &order_update_info, &dropshipping_info, &promotion_data, &chosen_payment, &shoporders, &shipping_orders, &display_meta_data, &fsv_selection_infos, &buyer_info, &client_event_info, &buyer_txn_fee_info, &disabled_checkout_info, &buyer_service_fee_info, &iof_info).await?;
-            let mpp = task::place_order(&cookie_data, &place_order_body).await?;
+            let mpp = task::place_order(client.clone(), &cookie_data, &place_order_body).await?;
             // Mengecek apakah `mpp` memiliki field `checkoutid`
             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
             if let Some(checkout_id) = mpp.get("checkoutid") {
