@@ -165,7 +165,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 					println!("[{}]Vouchers ditemukan: {:?}", Local::now().format("%H:%M:%S.%3f"), &vouchers);
 					if config.telegram_notif {
 						let msg = format!("Save Voucher Shopee {}\nREPORT!!!\nUsername     : {}\nMode      : Food\nVoucher Data      : {:?}\nClaim berhasil!", version_info, userdata.username, &vouchers);
-						telegram::send_msg(&config, &msg).await?;
+						telegram::send_msg(client.clone(), &config, &msg).await?;
 					}
 					break; 
 				} else {
@@ -232,7 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 					println!("[{}]Vouchers ditemukan: {:?}", Local::now().format("%H:%M:%S.%3f"), &vouchers);
 					if config.telegram_notif {
 						let msg = format!("Save Voucher Shopee {}\nREPORT!!!\nUsername     : {}\nMode      : Normal\nVoucher Data      : {:?}\nClaim berhasil!", version_info, userdata.username, &vouchers);
-						telegram::send_msg(&config, &msg).await?;
+						telegram::send_msg(client.clone(), &config, &msg).await?;
 					}
 					break; 
 				} else {
