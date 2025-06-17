@@ -134,7 +134,7 @@ impl MyWindow {
             text: "1000".to_owned(),
             position: (80, 80),
             width: 150,
-            edit_style: ES::NUMBER,
+            control_style: ES::NUMBER,
             resize_behavior: (gui::Horz::Resize, gui::Vert::None),
             ..Default::default()
         });
@@ -155,7 +155,7 @@ impl MyWindow {
             text: "1".to_owned(),
             position: (80, 110),
             width: 210,
-            edit_style: ES::NUMBER,
+            control_style: ES::NUMBER,
             resize_behavior: (gui::Horz::Resize, gui::Vert::None),
             ..Default::default()
         });
@@ -193,7 +193,7 @@ impl MyWindow {
             text: "Use Coins".to_owned(),
             position: (380, 160),
             size: (80, 20),
-            check_state: gui::CheckState::Checked,
+            check_state: co::BST::CHECKED,
             ..Default::default()
         });
     
@@ -208,56 +208,56 @@ impl MyWindow {
             text: "Jam".to_owned(),
             position: (80, 160),
             size: (60, 20),
-            label_style: SS::CENTER,
+            control_style: SS::CENTER,
             ..Default::default()
         });
         let jam_text = gui::Edit::new(&wnd, gui::EditOpts {
             text: "23".to_owned(),
             position: (80, 190),
             width: 60,
-            edit_style: ES::NUMBER,
+            control_style: ES::NUMBER,
             ..Default::default()
         });
         let _menit_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Menit".to_owned(),
             position: (150, 160),
             size: (60, 20),
-            label_style: SS::CENTER,
+            control_style: SS::CENTER,
             ..Default::default()
         });
         let menit_text = gui::Edit::new(&wnd, gui::EditOpts {
             text: "59".to_owned(),
             position: (150, 190),
             width: 60,
-            edit_style: ES::NUMBER,
+            control_style: ES::NUMBER,
             ..Default::default()
         });
         let _detik_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Detik".to_owned(),
             position: (220, 160),
             size: (60, 20),
-            label_style: SS::CENTER,
+            control_style: SS::CENTER,
             ..Default::default()
         });
         let detik_text = gui::Edit::new(&wnd, gui::EditOpts {
             text: "59".to_owned(),
             position: (220, 190),
             width: 60,
-            edit_style: ES::NUMBER,
+            control_style: ES::NUMBER,
             ..Default::default()
         });
         let _mili_label = gui::Label::new(&wnd, gui::LabelOpts {
             text: "Mili".to_owned(),
             position: (290, 160),
             size: (60, 20),
-            label_style: SS::CENTER,
+            control_style: SS::CENTER,
             ..Default::default()
         });
         let mili_text = gui::Edit::new(&wnd, gui::EditOpts {
             text: "900".to_owned(),
             position: (290, 190),
             width: 60,
-            edit_style: ES::NUMBER,
+            control_style: ES::NUMBER,
             ..Default::default()
         });
     
@@ -420,35 +420,39 @@ impl MyWindow {
         let self2 = self.clone();
         self.btn_cek.on().bn_clicked(move || {
             println!("Cek button clicked!");
-            println!("{}", self2.url_text.text());
+            println!("{}", self2.url_text.text().unwrap_or_else(|_| String::new()));
             // Disable the button to prevent multiple async tasks from being started
             self2.btn_cek.hwnd().EnableWindow(false);
-            self2.btn_cek.set_text("Wait");
+            self2.btn_cek.hwnd().SetWindowText("Wait");
             self2.variasi_combo.items().delete_all();
             self2.kurir_combo.items().delete_all();
-            let file = self2.file_combo.text();
-            if self2.url_text.text().is_empty() {
+            let file = match self2.file_combo.items().selected_text() {
+                    Ok(Some(text)) => text,
+                    Ok(None) => "".to_string(),
+                    Err(_) => "".to_string()
+            };
+            if self2.url_text.text().unwrap_or_else(|_| String::new()).is_empty() {
                 let _ = func_main::error_cek(&self2.wnd, "Error", "Empty URL");
                 println!("Empty URL");
                 self2.btn_cek.hwnd().EnableWindow(true);
                 //btn_cek.clone().hwnd().ShowWindow(SW::HIDE);
-                self2.btn_cek.set_text("Cek");
+                self2.btn_cek.hwnd().SetWindowText("Cek");
             } else if file.is_empty() {
                 let _ = func_main::error_cek(&self2.wnd, "Error", "Please select a file before running the program");
                 println!("Please select a file before running the program");
                 self2.btn_cek.hwnd().EnableWindow(true);
                 self2.btn_cek.hwnd().ShowWindow(SW::SHOW);
-                self2.btn_cek.set_text("Cek");
+                self2.btn_cek.hwnd().SetWindowText("Cek");
             }else{
                 let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
                 let device_info = crypt::create_devices(&func_main::get_fp_data(&file));
                 let self2 = self2.clone();
                 tokio::spawn(async move {
                     let client = Arc::new(prepare::universal_client_skip_headers().await);
-                    let mut product_info = prepare::process_url(&self2.url_text.text().trim());
+                    let mut product_info = prepare::process_url(&self2.url_text.text().unwrap_or_else(|_| String::new()).trim());
                     if product_info.shop_id == 0 && product_info.item_id == 0 {
                         println!("Cek apakah redirect?");
-                        match prepare::get_redirect_url(client.clone(), &self2.url_text.text().trim()).await {
+                        match prepare::get_redirect_url(&self2.url_text.text().unwrap_or_else(|_| String::new()).trim()).await {
                             Ok(redirect) => {
                                 product_info = prepare::process_url(&redirect);
                             }
@@ -464,7 +468,7 @@ impl MyWindow {
                         let shared_payment_data_clone = self2.shared_payment_data.clone();
                         let shared_kurir_data_clone = self2.shared_kurir_data.clone();
                         match timeout(Duration::from_secs(10), prepare::get_product(client.clone(), &product_info, &cookie_data)).await {
-                            Ok(Ok((name, model_info, is_official_shop, fs_info, rcode))) => {
+                            Ok(Ok((_name, model_info, _is_official_shop, fs_info, rcode))) => {
                                 if rcode == "200 OK" {
                                     let fs_items = if fs_info.promotionid != 0 {
                                         println!("promotionid  : {}", fs_info.promotionid);
@@ -537,7 +541,7 @@ impl MyWindow {
                             let shared_p = shared_payment_data_clone.lock().unwrap();
                             shared_p.get(0).unwrap().clone()
                         };
-                        chosen_model.quantity = self2.kuan_text.text().parse::<i32>().unwrap_or(1);
+                        chosen_model.quantity = self2.kuan_text.text().unwrap_or_else(|_| String::new()).parse::<i32>().unwrap_or(1);
                         match timeout(Duration::from_secs(10), runtime::prepare_ext::get_shipping_data(client.clone(), base_headers.clone(), shared_headers.clone(), &device_info, Some(&product_info), &address_info, &chosen_model, &chosen_payment, &chosen_shipping)).await {
                             Ok(Ok(kurirs)) => {
                                 let mut shared = shared_kurir_data_clone.lock().unwrap();
@@ -562,12 +566,12 @@ impl MyWindow {
                             }
                         };
                         self2.btn_cek.clone().hwnd().EnableWindow(true);
-                        self2.btn_cek.set_text("Cek");
+                        self2.btn_cek.hwnd().SetWindowText("Cek");
                     }else{
                         let _ = func_main::error_cek(&self2.wnd, "Error", "Invalid URL");
                         println!("Invalid URL");
                         self2.btn_cek.hwnd().EnableWindow(true);
-                        self2.btn_cek.set_text("Cek");
+                        self2.btn_cek.hwnd().SetWindowText("Cek");
                     }
                 });
             };
@@ -582,6 +586,15 @@ impl MyWindow {
                 new_command.push("abs.exe".to_string());
                 new_command.extend(command);
                 let _ = self2.execute(new_command);
+            }
+            Ok(())
+        });
+        let self2 = self.clone();
+        self.harga_checkbox.on().bn_clicked(move || {
+            if self2.harga_checkbox.is_checked() == true{
+                self2.harga_text.hwnd().EnableWindow(true);
+            }else{
+                self2.harga_text.hwnd().EnableWindow(false);
             }
             Ok(())
         });
@@ -602,6 +615,7 @@ impl MyWindow {
             self2.menit_text.set_text(&minute);
             self2.platform_combobox.hwnd().EnableWindow(false);
             self2.code_shop_text.hwnd().EnableWindow(false);
+            self2.harga_text.hwnd().EnableWindow(false);
             func_main::set_visibility(&self2.promotionid_label, &self2.promotionid_text, false);
             func_main::set_visibility(&self2.signature_label, &self2.signature_text, false);
             func_main::set_visibility(&self2.code_label, &self2.code_platform_text, false);
@@ -621,11 +635,11 @@ impl MyWindow {
             let file_submenu = w::HMENU::CreatePopupMenu()?;
 
             file_submenu.append_item(&[
-                w::MenuItem::Entry(101, "Manual Run"),
-                w::MenuItem::Entry(102, "Generate Struct"),
-                w::MenuItem::Entry(103, "Save Voucher"),
+                w::MenuItem::Entry{cmd_id: 101, text: "Manual Run"},
+                w::MenuItem::Entry{cmd_id: 102, text: "Generate Struct"},
+                w::MenuItem::Entry{cmd_id: 103, text: "Save Voucher"},
                 w::MenuItem::Separator,
-                w::MenuItem::Entry(3, "E&xit"),
+                w::MenuItem::Entry{cmd_id: 3, text: "E&xit"},
             ])?;
 
             // Tampilkan menu di posisi kursor
@@ -647,8 +661,8 @@ impl MyWindow {
         self.fsv_checkbox.on().bn_clicked(move || {
             println!("fsv only clicked!");
             if self2.fsv_checkbox.is_checked() == true{
-                self2.shop_checkbox.set_check_state(gui::CheckState::Unchecked);
-                self2.platform_checkbox.set_check_state(gui::CheckState::Unchecked);
+                self2.shop_checkbox.set_state(co::BST::UNCHECKED);
+                self2.platform_checkbox.set_state(co::BST::UNCHECKED);
                 self2.platform_combobox.hwnd().EnableWindow(false);
                 func_main::set_visibility(&self2.promotionid_label, &self2.promotionid_text, false);
                 func_main::set_visibility(&self2.signature_label, &self2.signature_text, false);
@@ -661,7 +675,7 @@ impl MyWindow {
         self.shop_checkbox.on().bn_clicked(move || {
             println!("Code clicked!");
             if self2.shop_checkbox.is_checked() == true{
-                self2.fsv_checkbox.set_check_state(gui::CheckState::Unchecked);
+                self2.fsv_checkbox.set_state(co::BST::UNCHECKED);
                 self2.code_shop_text.hwnd().EnableWindow(true);
                 self2.code_shop_text.hwnd().ShowWindow(SW::SHOW);
             }else{
@@ -673,7 +687,7 @@ impl MyWindow {
         self.platform_checkbox.on().bn_clicked(move || {
             println!("Voucher clicked!");
             if self2.platform_checkbox.is_checked() == true{
-                self2.fsv_checkbox.set_check_state(gui::CheckState::Unchecked);
+                self2.fsv_checkbox.set_state(co::BST::UNCHECKED);
                 self2.platform_combobox.hwnd().EnableWindow(true);
                 func_main::set_visibility(&self2.promotionid_label, &self2.promotionid_text, true);
                 func_main::set_visibility(&self2.signature_label, &self2.signature_text, true);
@@ -691,7 +705,7 @@ impl MyWindow {
             }
             Ok(())
         });
-		self.wnd.on().wm_command_accel_menu(101 as u16, move || {
+		self.wnd.on().wm_command_acc_menu(101 as u16, move || {
             let command = vec!["start","abs.exe",];
             let _status = std::process::Command::new("cmd")
                 .arg("/c")
@@ -702,7 +716,7 @@ impl MyWindow {
 			Ok(())
 		});
         let self2 = self.clone();
-		self.wnd.on().wm_command_accel_menu(102 as u16, move || {
+		self.wnd.on().wm_command_acc_menu(102 as u16, move || {
             let command = self2.generate_cmd();
             if let Ok(Some(command))  = command {
                 let url = self2.generate_struct(command);
@@ -713,7 +727,7 @@ impl MyWindow {
 			Ok(())
 		});
         let self2 = self.clone();
-        self.wnd.on().wm_command_accel_menu(103 as u16, move || {
+        self.wnd.on().wm_command_acc_menu(103 as u16, move || {
             let command = self2.generate_vouc();
             let mut new_command = Vec::new();
             if let Ok(Some(command))  = command {
@@ -726,106 +740,104 @@ impl MyWindow {
 			Ok(())
 		});
         
-		self.wnd.on().wm_command_accel_menu(1 as u16, move || {
+		self.wnd.on().wm_command_acc_menu(1 as u16, move || {
             println!("Menu clicked!");
 			Ok(())
 		});
         let self2 = self.clone();
-        self.wnd.on().wm_command_accel_menu(2 as u16, move || {
+        self.wnd.on().wm_command_acc_menu(2 as u16, move || {
             func_main::populate_combobox_with_files(&self2.file_combo, "akun");
             func_main::populate_payment_combo(&self2.payment_combo, self2.shared_payment_data.clone());
 			Ok(())
 		});
         let self2 = self.clone();
-        self.wnd.on().wm_command_accel_menu(3 as u16, move || {
+        self.wnd.on().wm_command_acc_menu(3 as u16, move || {
 			self2.wnd.close(); // close on ESC
 			Ok(())
 		});
         let wnd = self.wnd.clone();
-        self.wnd.on().wm_command_accel_menu(5 as u16, move || {
+        self.wnd.on().wm_command_acc_menu(5 as u16, move || {
             let _ = manager::account_window(&wnd);
 			Ok(())
 		});
         let wnd = self.wnd.clone();
-        self.wnd.on().wm_command_accel_menu(6 as u16, move || {
+        self.wnd.on().wm_command_acc_menu(6 as u16, move || {
             let _ = manager::telegram_window(&wnd);
 			Ok(())
 		});
         let wnd = self.wnd.clone();
-		self.wnd.on().wm_command_accel_menu(8 as u16, move || { 
+		self.wnd.on().wm_command_acc_menu(8 as u16, move || { 
             let _ = about::about_window(&wnd);
 			Ok(())
 		});
         let wnd = self.wnd.clone();
-		self.wnd.on().wm_command_accel_menu(9 as u16, move || {
+		self.wnd.on().wm_command_acc_menu(9 as u16, move || {
             println!("Menu clicked!");
             let _ = manager::show_fs_window(&wnd);
 			Ok(())
 		});
         let wnd = self.wnd.clone();
-		self.wnd.on().wm_command_accel_menu(10 as u16, move || {
+		self.wnd.on().wm_command_acc_menu(10 as u16, move || {
             println!("Menu clicked!");
             let _ = manager::log_window(&wnd);
 			Ok(())
 		});
         let wnd = self.wnd.clone();
-		self.wnd.on().wm_command_accel_menu(11 as u16, move || {
+		self.wnd.on().wm_command_acc_menu(11 as u16, move || {
             let _ = manager::updater_window(&wnd);
 			Ok(())
 		});
         let wnd = self.wnd.clone();
-		self.wnd.on().wm_command_accel_menu(12 as u16, move || {
-            let _ = manager::Multi::new(&wnd).run();
+		self.wnd.on().wm_command_acc_menu(12 as u16, move || {
+            let _ = manager::Multi::new().run(&wnd);
 			Ok(())
 		});
 	}
     fn generate_cmd(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
         let self2 = self.clone();
         println!("Jalankan button clicked!");
-        let url = self2.url_text.text();
-        let Some(payment) = self2.payment_combo.items().selected_text() else {
+        let url = self2.url_text.text().unwrap_or_else(|_| String::new());
+        let Ok(Some(payment)) = self2.payment_combo.items().selected_text() else {
             eprintln!("Payment is not selected");
             return Ok(None);
         };
-        let harga = if self2.harga_checkbox.check_state() == gui::CheckState::Checked{
-            self2.harga_text.text()
+        let harga = if self2.harga_checkbox.state() == co::BST::CHECKED {
+            self2.harga_text.text().unwrap_or_else(|_| String::new())
         }else{
             String::new()
         };
-        let Some(file) = self2.file_combo.items().selected_text() else {
+        let Ok(Some(file)) = self2.file_combo.items().selected_text() else {
             eprintln!("File is not selected");
             return Ok(None);
         };
-        let variasi = if let Some(variasi) = self2.variasi_combo.items().selected_text() {
+        let variasi = if let Ok(Some(variasi)) = self2.variasi_combo.items().selected_text() {
             variasi
         } else {
             eprintln!("Variasi is not selected, using default value.");
             String::new() // Outputkan nilai kosong
         };           
-        let Some(kurir) = self2.kurir_combo.items().selected_text() else {
+        let Ok(Some(kurir)) = self2.kurir_combo.items().selected_text() else {
             eprintln!("kurir is not selected");
             return Ok(None);
         };
         println!("{}", variasi);            
-        let jam = self2.jam_text.text();
-        let menit = self2.menit_text.text();
-        let detik = self2.detik_text.text();
-        let mili = self2.mili_text.text();
-        let kuan = self2.kuan_text.text();
-        //let token = self2.token_text.text();
+        let jam = self2.jam_text.text().unwrap_or_else(|_| String::new());
+        let menit = self2.menit_text.text().unwrap_or_else(|_| String::new());
+        let detik = self2.detik_text.text().unwrap_or_else(|_| String::new());
+        let mili = self2.mili_text.text().unwrap_or_else(|_| String::new());
+        let kuan = self2.kuan_text.text().unwrap_or_else(|_| String::new());
+        //let token = self2.token_text.text().unwrap_or_else(|_| String::new());
         let url_1 = url.clone();
         println!("{}", url_1);
         let (tx, rx) = std::sync::mpsc::channel();
         tokio::spawn(async move {
-            let client = Arc::new(prepare::universal_client_skip_headers().await);
             let url_1 = url_1.trim();
             let mut product_info = prepare::process_url(&url_1);
             if product_info.shop_id == 0 && product_info.item_id == 0 {
-                if let Ok(redirect) = prepare::get_redirect_url(client.clone(), &url_1).await {
+                if let Ok(redirect) = prepare::get_redirect_url(&url_1).await {
                     product_info = prepare::process_url(&redirect);
                 }
             }
-        
             let _ = tx.send(product_info);
         });
         let product_info = rx.recv().unwrap();
@@ -861,33 +873,33 @@ impl MyWindow {
         };
         let mut commands = vec![];
 
-        if self2.fsv_checkbox.check_state() == gui::CheckState::Checked {
+        if self2.fsv_checkbox.state() == co::BST::CHECKED {
             commands.push("--fsv-only".to_string());
         }
-        if self2.coins_checkbox.check_state() == gui::CheckState::Unchecked {
+        if self2.coins_checkbox.state() == co::BST::UNCHECKED {
             commands.push("--no-coins".to_string());
         }
-        if self2.platform_checkbox.check_state() == gui::CheckState::Checked {
+        if self2.platform_checkbox.state() == co::BST::CHECKED {
             match self2.platform_combobox.items().selected_index() {
                 Some(0) => {
                     commands.push("--claim-platform-vouchers".to_string());
                     commands.push("--pro-id".to_string());
-                    commands.push(self2.promotionid_text.text());
+                    commands.push(self2.promotionid_text.text().unwrap_or_else(|_| String::new()));
                     commands.push("--sign".to_string());
-                    commands.push(self2.signature_text.text());
+                    commands.push(self2.signature_text.text().unwrap_or_else(|_| String::new()));
                 }
                 Some(1) => {
                     commands.push("--platform-vouchers".to_string());
                     commands.push("--code-platform".to_string());
-                    commands.push(self2.code_platform_text.text());
+                    commands.push(self2.code_platform_text.text().unwrap_or_else(|_| String::new()));
                 }
                 Some(2) => {
                     commands.push("--collection-vouchers".to_string());
                     commands.push("--collectionid".to_string());
-                    commands.push(self2.cid_text.text());
+                    commands.push(self2.cid_text.text().unwrap_or_else(|_| String::new()));
                 }
                 Some(3) => {
-                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text());
+                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text().unwrap_or_else(|_| String::new()));
                     commands.push("--claim-platform-vouchers".to_string());
                     commands.push("--pro-id".to_string());
                     commands.push(proid);
@@ -897,10 +909,10 @@ impl MyWindow {
                 _ => {}
             }
         }
-        if self2.shop_checkbox.check_state() == gui::CheckState::Checked {
+        if self2.shop_checkbox.state() == co::BST::CHECKED {
             commands.push("--shop-vouchers".to_string());
             commands.push("--code-shop".to_string());
-            commands.push(self2.code_shop_text.text());
+            commands.push(self2.code_shop_text.text().unwrap_or_else(|_| String::new()));
         }
         Ok(Some(create_command(commands)))
     }
@@ -949,14 +961,14 @@ impl MyWindow {
     }
     fn generate_vouc(&self) -> Result<Option<Vec<String>>, Box<dyn std::error::Error>> {
         let self2 = self.clone();
-        let Some(file) = self2.file_combo.items().selected_text() else {
+        let Ok(Some(file)) = self2.file_combo.items().selected_text() else {
             eprintln!("File is not selected");
             return Ok(None);
         };
-        let jam = self2.jam_text.text();
-        let menit = self2.menit_text.text();
-        let detik = self2.detik_text.text();
-        let mili = self2.mili_text.text();
+        let jam = self2.jam_text.text().unwrap_or_else(|_| String::new());
+        let menit = self2.menit_text.text().unwrap_or_else(|_| String::new());
+        let detik = self2.detik_text.text().unwrap_or_else(|_| String::new());
+        let mili = self2.mili_text.text().unwrap_or_else(|_| String::new());
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
             let mut command = vec![
                 "--file".to_string(), file,
@@ -967,15 +979,15 @@ impl MyWindow {
         };
         let mut commands = vec![];
 
-        if self2.platform_checkbox.check_state() == gui::CheckState::Checked {
+        if self2.platform_checkbox.state() == co::BST::CHECKED {
             match self2.platform_combobox.items().selected_index() {
                 Some(0) => {
                     commands.push("--mode".to_string());
                     commands.push("1".to_string());                    
                     commands.push("--pro-id".to_string());
-                    commands.push(self2.promotionid_text.text());
+                    commands.push(self2.promotionid_text.text().unwrap_or_else(|_| String::new()));
                     commands.push("--sign".to_string());
-                    commands.push(self2.signature_text.text());
+                    commands.push(self2.signature_text.text().unwrap_or_else(|_| String::new()));
                 }
                 //future code
                 /*Some(1) => {
@@ -987,10 +999,10 @@ impl MyWindow {
                     commands.push("--mode".to_string());
                     commands.push("2".to_string());
                     commands.push("--collectionid".to_string());
-                    commands.push(self2.cid_text.text());
+                    commands.push(self2.cid_text.text().unwrap_or_else(|_| String::new()));
                 }
                 Some(3) => {
-                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text());
+                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text().unwrap_or_else(|_| String::new()));
                     commands.push("--mode".to_string());
                     commands.push("1".to_string());                    
                     commands.push("--pro-id".to_string());
@@ -1004,7 +1016,17 @@ impl MyWindow {
         Ok(Some(create_command(commands)))
     }
     fn execute(&self, command: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-        let file = self.file_combo.text();
+        let file = match self.file_combo.items().selected_text() {
+            Ok(Some(file)) => file,
+            Ok(None) => {
+                eprintln!("File is not selected");
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("Error getting selected file: {}", e);
+                return Ok(());
+            }   
+        };
         if !file.is_empty() {
             let _status = std::process::Command::new("cmd")
                 .arg("/c")

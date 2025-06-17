@@ -3,6 +3,7 @@ use base64::encode;
 use byteorder::{BigEndian, WriteBytesExt};
 use rand::{distributions::Alphanumeric, Rng};
 use serde::{Serialize, Deserialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct BuyerPaymentInfo {
@@ -93,4 +94,44 @@ pub fn generate_csrftoken(length: usize) -> String {
         .take(length)
         .map(char::from)
         .collect()
+}
+
+fn to_hex_string(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+// Documentation for get_x_sap_ri function more on https://xsblog.site/post/6 or https://blog.csdn.net/dxxmsl/article/details/140381283 
+pub fn get_x_sap_ri() -> (String, u32, u8) {
+    // Timestamp dalam detik
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as u32;
+
+    // Buffer 26 byte
+    let mut buffer = [0u8; 26];
+
+    // Simpan timestamp ke posisi 0..4 (little endian)
+    buffer[0..4].copy_from_slice(&timestamp.to_le_bytes());
+
+    // 22 byte acak
+    let random_bytes: Vec<u8> = (0..22).map(|_| rand::random()).collect();
+    buffer[4..26].copy_from_slice(&random_bytes);
+
+    // Masukkan ke buffer mulai dari index 4
+    buffer[4..].copy_from_slice(&random_bytes);
+
+    // Modifikasi byte ke-11 (index ke-11 dalam buffer berarti byte ke-7 dari random_array)
+    let mut magic = buffer[11];
+    magic = (3 << 4) + (15 & magic);
+    buffer[11] = magic;
+
+    // Set nilai tetap
+    buffer[12] = 3;
+    buffer[13] = 1;
+
+    // Konversi ke hex string
+    let hex_string = to_hex_string(&buffer);
+
+    // Return hasil
+    (hex_string, timestamp, random_bytes[0])
 }

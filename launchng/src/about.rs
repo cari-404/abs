@@ -41,7 +41,7 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         }
     };
     println!("{}", run_win);
-    let wnd2 = gui::WindowModal::new_dlg(wnd, 2000);
+    let wnd2 = gui::WindowModal::new_dlg(2000);
     let ok_button = gui::Button::new_dlg(&wnd2, 2001, dont_move);
     let ver_label = gui::Label::new_dlg(&wnd2, 2002, dont_move);
     let os_label = gui::Label::new_dlg(&wnd2, 2003, dont_move);
@@ -55,11 +55,11 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     wnd2.on().wm_init_dialog(move |_| {
         println!("Start About APL");
-        ver_label.set_text(&version_info);
-        os_label.set_text(&version_message);
-        run_label.set_text(&run_win);
+        ver_label.set_text_and_resize(&version_info);
+        os_label.set_text_and_resize(&version_message);
+        run_label.set_text_and_resize(&run_win);
         Ok(true)
     });
-    let _ = wnd2.show_modal();
+    let _ = wnd2.show_modal(wnd);
     Ok(())
 }

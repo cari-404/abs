@@ -21,18 +21,18 @@ const PIXEL_FORMAT32BPP_ARGB: i32 = 0x26200A; // Add this if not present
 
 pub unsafe fn png_base64_to_pixels_ptr(base64_str: &str) -> windows::core::Result<(Vec<u8>, u32, u32, i32)> {
     let bytes = base64::decode(base64_str).unwrap();
-    let hglobal = windows::Win32::System::Memory::GlobalAlloc(
+    let hglobal = unsafe{windows::Win32::System::Memory::GlobalAlloc(
         windows::Win32::System::Memory::GMEM_MOVEABLE,
         bytes.len(),
-    );
-    let locked = windows::Win32::System::Memory::GlobalLock(hglobal.clone()?) as *mut u8;
+    )};
+    let locked = unsafe { windows::Win32::System::Memory::GlobalLock(hglobal.clone()?) as *mut u8 };
     if locked.is_null() {
         return Err(windows::core::Error::from_win32());
     }
-    std::ptr::copy_nonoverlapping(bytes.as_ptr(), locked, bytes.len());
-    let _ = windows::Win32::System::Memory::GlobalUnlock(hglobal.clone()?);
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), locked, bytes.len()) };
+    let _ = unsafe { windows::Win32::System::Memory::GlobalUnlock(hglobal.clone()?) };
 
-    let stream = CreateStreamOnHGlobal(hglobal?, true)?;
+    let stream = unsafe { CreateStreamOnHGlobal(hglobal?, true)? };
 
     let mut token = 0usize;
     let startup_input = GdiplusStartupInput {
@@ -41,15 +41,15 @@ pub unsafe fn png_base64_to_pixels_ptr(base64_str: &str) -> windows::core::Resul
         SuppressBackgroundThread: windows::Win32::Foundation::BOOL(0),
         SuppressExternalCodecs: windows::Win32::Foundation::BOOL(0),
     };
-    let status = GdiplusStartup(&mut token, &startup_input, std::ptr::null_mut());
+    let status = unsafe { GdiplusStartup(&mut token, &startup_input, std::ptr::null_mut()) };
     if status != Status(0) {
         return Err(windows::core::Error::from_win32());
     }
 
     let mut bitmap: *mut GpBitmap = std::ptr::null_mut();
-    let status = GdipCreateBitmapFromStream(&stream, &mut bitmap);
+    let status = unsafe { GdipCreateBitmapFromStream(&stream, &mut bitmap) };
     if status != Status(0) || bitmap.is_null() {
-        GdiplusShutdown(token);
+        unsafe { GdiplusShutdown(token) };
         return Err(windows::core::Error::from_win32());
     }
 
@@ -70,33 +70,38 @@ pub unsafe fn png_base64_to_pixels_ptr(base64_str: &str) -> windows::core::Resul
 
     let mut width: u32 = 0;
     let mut height: u32 = 0;
-    GdipGetImageWidth(bitmap as *mut GpImage, &mut width);
-    GdipGetImageHeight(bitmap as *mut GpImage, &mut height);
+    unsafe {
+        GdipGetImageWidth(bitmap as *mut GpImage, &mut width);
+        GdipGetImageHeight(bitmap as *mut GpImage, &mut height);
+    }
     rect.Width = width as i32;
     rect.Height = height as i32;
 
-    let status = GdipBitmapLockBits(
-        bitmap,
-        &rect,
-        ImageLockModeRead.0 as u32,
-        PIXEL_FORMAT32BPP_ARGB,
-        &mut data,
-    );
-    if status != Status(0) {
+    let status = unsafe {
+        GdipBitmapLockBits(
+            bitmap,
+            &rect,
+            ImageLockModeRead.0 as u32,
+            PIXEL_FORMAT32BPP_ARGB,
+            &mut data,
+        )
+    };
+    if status != Status(0) {unsafe{
         GdipDisposeImage(bitmap as *mut GpImage);
         GdiplusShutdown(token);
         return Err(windows::core::Error::from_win32());
-    }
+    }}
 
     let pixels = data.Scan0 as *mut u8;
     let stride = data.Stride;
     let pixel_count = (stride * height as i32) as usize;
     let mut buffer = vec![0u8; pixel_count];
-    std::ptr::copy_nonoverlapping(pixels, buffer.as_mut_ptr(), pixel_count);
-
-    GdipBitmapUnlockBits(bitmap, &mut data);
-    GdipDisposeImage(bitmap as *mut GpImage);
-    GdiplusShutdown(token);
+    unsafe {
+        std::ptr::copy_nonoverlapping(pixels, buffer.as_mut_ptr(), pixel_count);
+        GdipBitmapUnlockBits(bitmap, &mut data);
+        GdipDisposeImage(bitmap as *mut GpImage);
+        GdiplusShutdown(token);
+    }
 
     Ok((buffer, width, height, stride))
 }
@@ -142,7 +147,7 @@ pub fn get_fp_data(file: &str) -> String {
     sz_token_content
 }
 pub fn handle_file_selection(file_combo: &gui::ComboBox, cookie_edit: &gui::Edit, sz_edit: &gui::Edit, my_list: &gui::ListView) {
-    if let Some(file) = file_combo.items().selected_text() {
+    if let Ok(Some(file)) = file_combo.items().selected_text() {
         println!("selected file: {}", file);
         if !file.is_empty() {
             my_list.items().delete_all();
@@ -178,7 +183,7 @@ pub fn populate_combobox_with_files(combo: &gui::ComboBox, folder_path: &str) {
                         println!("{}", file_name);
                         combo.items().add(&[&file_name]); // Add file to combobox.
                     }
-                    if combo.items().count() > 0 {
+                    if combo.items().count() > Ok(0) {
                         combo.items().select(Some(0));
                     }
                 } else {
@@ -220,7 +225,7 @@ pub fn populate_payment_combo(combo: &gui::ComboBox, shared_variation_clone: Arc
                 *shared = payment_info_list.clone(); 
                 for payment_info in payment_info_list {
                     combo.items().add(&[payment_info.name.to_string()]);
-                    if combo.items().count() > 0 {
+                    if combo.items().count() > Ok(0) {
                         combo.items().select(Some(0));
                     }
                 }

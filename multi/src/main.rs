@@ -265,7 +265,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if product_info.shop_id == 0 && product_info.item_id == 0 {
             println!("Cek apakah redirect?.");
-            url = prepare::get_redirect_url(client.clone(), &url).await?;
+            url = prepare::get_redirect_url(&url).await?;
             product_info = prepare::process_url(&url);
             target_urls[i] = url;
         }
@@ -585,7 +585,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             tokio::spawn(async move {
                 let mut try_count = 0;
                 while try_count < 3 && !stop_flag.load(Ordering::Relaxed) {
-                    let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone.0, &chosen_payment_clone, get_body_clone.1.clone(), adjusted_max_price).await
+                    let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone.0, &chosen_payment_clone, get_body_clone.1.clone()).await
                     {
                         Ok(body) => body,
                         Err(err) => {

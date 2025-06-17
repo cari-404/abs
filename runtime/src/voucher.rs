@@ -99,7 +99,6 @@ pub struct ItemInfo {
     pub is_pre_order: bool,
     pub is_streaming_price: bool,
     pub checkout: bool,
-    pub categories: Vec<Category>,
     pub is_spl_zero_interest: bool,
     pub is_prescription: bool,
     pub offerid: i64,
@@ -115,11 +114,6 @@ pub struct CarrierInfo {
     pub esf: i64,
     pub shippable_item_ids: Vec<i64>,
     pub buyer_address: AddressInfo,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Category {
-    pub catids: Vec<i64>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -492,9 +486,6 @@ pub async fn get_recommend_platform_vouchers(buyer_address: &AddressInfo, client
             is_pre_order: false,
             is_streaming_price: false,
             checkout: true,
-            categories: vec![Category {
-                catids: vec![100013, 100073],
-            }],
             is_spl_zero_interest: false,
             is_prescription: false,
             offerid: 0,
@@ -505,7 +496,7 @@ pub async fn get_recommend_platform_vouchers(buyer_address: &AddressInfo, client
         }],
         carrier_infos: vec![CarrierInfo {
             carrier_id: chosen_shipping.channelidroot,
-            esf: chosen_shipping.original_cost,
+            esf: if chosen_shipping.original_cost == 0 { 1 } else { chosen_shipping.original_cost },
             shippable_item_ids: vec![product_info.item_id],
             buyer_address: buyer_address.clone(),
         }],

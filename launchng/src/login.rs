@@ -15,7 +15,7 @@ pub fn login_window(wnd: &gui::WindowModal) -> Result<(), ()> {
     let _ = tx_msg.send("Stopped".to_string());
     let interrupt_flag = Arc::new(AtomicBool::new(false));
     let dont_move = (gui::Horz::None, gui::Vert::None);
-    let loginwnd = gui::WindowModal::new_dlg(wnd, 3000);
+    let loginwnd = gui::WindowModal::new_dlg(3000);
     let label = gui::Label::new_dlg(&loginwnd, 3001, dont_move);
     let button = gui::Button::new_dlg(&loginwnd, 3002, dont_move);
     let label_clone = label.clone();
@@ -79,7 +79,7 @@ pub fn login_window(wnd: &gui::WindowModal) -> Result<(), ()> {
         println!("Window is gone, goodbye!");
         Ok(())
     });
-    let _ = loginwnd.show_modal();
+    let _ = loginwnd.show_modal(wnd);
     Ok(())
 }
 
@@ -111,7 +111,7 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
                 _ => png_image.to_rgba8(), // Konversi ke RGB8 jika format awal berbeda
             };
             */
-            let (mut pixels, width, height, stride) = unsafe { png_base64_to_pixels_ptr(&qrcode_base64).unwrap() };
+            let (mut pixels, width, height, _stride) = unsafe { png_base64_to_pixels_ptr(&qrcode_base64).unwrap() };
             println!("Bitmap berhasil dibuat. Ukuran: {:?} x {:?}", width, height);
             //let mut pixels = bitmap.into_raw();
             //pixels.chunks_exact_mut(4).for_each(|chunk| chunk[0..3].reverse());

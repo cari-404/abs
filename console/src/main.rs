@@ -1,4 +1,9 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.3 :
+    Switch back price checker to abs
+    fix for free shipping voucher
+    add support multi product
+    update to winsafe 0.0.24
 Whats new in 1.1.2 :
     fix for free shipping voucher
     reimplement native client certificate
@@ -6,10 +11,6 @@ Whats new in 1.1.1 :
     Add Default struct
     reduce code and dependency
     add multi for all distribution
-Whats new in 1.1.0 :
-    To infininity and beyond for memory and thread
-    Add back certificate build-in for compatibility issues
-    Add rollback update
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -261,7 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut product_info = prepare::process_url(&target_url.trim());
     if product_info.shop_id == 0 && product_info.item_id == 0 {
         println!("Cek apakah redirect?.");
-        target_url = prepare::get_redirect_url(client.clone(), &target_url).await?.into();
+        target_url = prepare::get_redirect_url(&target_url).await?.into();
         product_info = prepare::process_url(&target_url);
     }
 	
@@ -603,9 +604,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         &get_body_clone.0,
                                         &chosen_payment,
                                         get_body_clone.1.clone(),
-                                        adjusted_max_price,
                                     ).await {
-                                        let _ = place_order_tx.send(Some(body));
+                                        if let Some(limit) = adjusted_max_price {
+                                            let price_opt = body.checkout_price_data.as_ref()
+                                                .and_then(|d| d.get("merchandise_subtotal"))
+                                                .and_then(|v| v.as_i64());
+
+                                            match price_opt {
+                                                Some(price) if price > limit => {
+                                                    println!(
+                                                        "[{}]Harga terlalu tinggi ({} > {}). Coba ulang...",
+                                                        chrono::Local::now().format("%H:%M:%S.%3f"),
+                                                        price, limit
+                                                    );
+                                                    // Retry
+                                                }
+                                                Some(price) => {
+                                                    println!(
+                                                        "[{}]Harga cocok ({} <= {}).",
+                                                        chrono::Local::now().format("%H:%M:%S.%3f"),
+                                                        price, limit
+                                                    );
+                                                    // Lanjut proses
+                                                    let _ = place_order_tx.send(Some(body));
+                                                }
+                                                None => {
+                                                    println!(
+                                                        "[{}]Gagal membaca merchandise_subtotal, ulangi...",
+                                                        chrono::Local::now().format("%H:%M:%S.%3f")
+                                                    );
+                                                    // Retry
+                                                }
+                                            }
+                                        } else {
+                                            let _ = place_order_tx.send(Some(body));
+                                        }
                                     }
                                 }
                             });
@@ -688,7 +721,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let order_update_info;
             let dropshipping_info;
             let promotion_data;
-            let selected_payment_channel_data;
             let shoporders;
             let shipping_orders;
             let display_meta_data;
@@ -702,7 +734,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop{
                 let get_body = task::get_wtoken_builder(&token, &device_info, &product_info, &address_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping).await?;
                 let (
-                    price_data, update_info, dropship_info, promo_data, payment_data, 
+                    price_data, update_info, dropship_info, promo_data, _payment_data, 
                     orders, shipping_orders_data, meta_data, fsv_infos, buyer_info_data, 
                     event_info, txn_fee_info, disabled_info, service_fee_info, iof_data
                 ) = task::checkout_get(client.clone(), shared_headers.clone(), &get_body.clone()).await?;
@@ -721,7 +753,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             order_update_info = update_info;
                             dropshipping_info = dropship_info;
                             promotion_data = promo_data;
-                            selected_payment_channel_data = payment_data;
                             shoporders = orders;
                             shipping_orders = shipping_orders_data;
                             display_meta_data = meta_data;

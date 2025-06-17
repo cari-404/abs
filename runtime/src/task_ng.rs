@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::{Serialize, Deserialize};
 
 use crate::prepare::{ModelInfo, ShippingInfo, PaymentInfo, AddressInfo};
-use crate::voucher::{Vouchers, Orders, ItemInfo, RecommendPlatform, SelectedPaymentChannelDataOnRecommendPlatform, ChannelItemOptionInfoOnRecommendPlatform, TextInfo, Category, RecomendPlatformResponse, CarrierInfo};
+use crate::voucher::{Vouchers, Orders, ItemInfo, RecommendPlatform, SelectedPaymentChannelDataOnRecommendPlatform, ChannelItemOptionInfoOnRecommendPlatform, TextInfo, RecomendPlatformResponse, CarrierInfo};
 use crate::crypt::{self, DeviceInfo};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -465,105 +465,71 @@ pub async fn get_body_builder(device_info: &DeviceInfo,
     *place_order = body_json.clone().into();
     Ok((body_json, (*place_order).clone()))
 }
-pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, chosen_payment: &PaymentInfo, mut place_order_body: PlaceOrderBody, adjusted_max_price: Option<i64>) -> anyhow::Result<PlaceOrderBody> {
+pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, body_json: &GetBodyJson, chosen_payment: &PaymentInfo, mut place_order_body: PlaceOrderBody) -> anyhow::Result<PlaceOrderBody> {
     let mut headers = (*base_headers).clone();
     headers.insert("af-ac-enc-dat", HeaderValue::from_str(&crypt::random_hex_string(16)).unwrap());
-    loop{
-        //println!("Status: Start Checkout");
-        //let t1 = std::time::Instant::now();
-        let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
-        //let body_str = serde_json::to_string(&body_json)?;
-        //println!("{}", body_str);
-        println!("{}", url2);
+    //println!("Status: Start Checkout");
+    //let t1 = std::time::Instant::now();
+    let url2 = format!("https://mall.shopee.co.id/api/v4/checkout/get");
+    //let body_str = serde_json::to_string(&body_json)?;
+    //println!("{}", body_str);
+    println!("{}", url2);
 
-        let response = (*client)
-            .post(&url2)
-            .headers(headers.clone())
-            .version(Version::HTTP_2)
-            .json(&body_json)
-            .send()
-            .await?;
-        //println!("[{:?}] Setelah .send()", t1.elapsed());
-        //println!("Status: Done Checkout");
-        let status = response.status();
-        if status == reqwest::StatusCode::OK {
-            let v: Value = response.json().await?;
-            //println!("[{:?}] setelah .json()", t1.elapsed());
-            //println!("body: {}", v);
-            let v = Arc::new(v);
-            if let Some(limit) = adjusted_max_price {
-                let price_opt = v.get("checkout_price_data")
-                    .and_then(|d| d.get("merchandise_subtotal"))
-                    .and_then(|v| v.as_i64());
+    let response = (*client)
+        .post(&url2)
+        .headers(headers.clone())
+        .version(Version::HTTP_2)
+        .json(&body_json)
+        .send()
+        .await?;
+    //println!("[{:?}] Setelah .send()", t1.elapsed());
+    //println!("Status: Done Checkout");
+    let status = response.status();
+    if status == reqwest::StatusCode::OK {
+        let v: Value = response.json().await?;
+        //println!("[{:?}] setelah .json()", t1.elapsed());
+        //println!("body: {}", v);
+        let v = Arc::new(v);
 
-                match price_opt {
-                    Some(price) if price > limit => {
-                        println!(
-                            "[{}]Harga terlalu tinggi ({} > {}). Coba ulang...",
-                            chrono::Local::now().format("%H:%M:%S.%3f"),
-                            price, limit
-                        );
-                        // Retry
-                        continue;
-                    }
-                    Some(price) => {
-                        println!(
-                            "[{}]Harga cocok ({} <= {}).",
-                            chrono::Local::now().format("%H:%M:%S.%3f"),
-                            price, limit
-                        );
-                        // Lanjut proses
-                    }
-                    None => {
-                        println!(
-                            "[{}]Gagal membaca merchandise_subtotal, ulangi...",
-                            chrono::Local::now().format("%H:%M:%S.%3f")
-                        );
-                        continue; // Retry
-                    }
-                }
+        let keys = [
+            "checkout_price_data",
+            "display_meta_data",
+            "buyer_txn_fee_info",
+            "disabled_checkout_info",
+            "buyer_service_fee_info",
+            "iof_info",
+        ];
+
+        let dash_body: Arc<DashMap<String, Option<Value>>> = Arc::new(DashMap::new());
+
+        keys.par_iter().for_each(|&key| {
+            let value = v.get(key).cloned();
+            dash_body.insert(key.to_string(), value);
+        });
+
+        dash_body.insert(
+            "selected_payment_channel_data".to_string(),
+            Some(chosen_payment.place_order.clone()),
+        );
+
+        // Langkah 5: Transfer nilai dari DashMap ke PlaceOrderBody
+        for entry in dash_body.iter() {
+            match entry.key().as_str() {
+                "checkout_price_data" => place_order_body.checkout_price_data = entry.value().clone(),
+                "display_meta_data" => place_order_body.display_meta_data = entry.value().clone(),
+                "buyer_txn_fee_info" => place_order_body.buyer_txn_fee_info = entry.value().clone(),
+                "disabled_checkout_info" => place_order_body.disabled_checkout_info = entry.value().clone(),
+                "buyer_service_fee_info" => place_order_body.buyer_service_fee_info = entry.value().clone(),
+                "iof_info" => place_order_body.iof_info = entry.value().clone(),
+                "selected_payment_channel_data" => place_order_body.selected_payment_channel_data = entry.value().clone(),
+                _ => {}
             }
-
-            let keys = [
-                "checkout_price_data",
-                "display_meta_data",
-                "buyer_txn_fee_info",
-                "disabled_checkout_info",
-                "buyer_service_fee_info",
-                "iof_info",
-            ];
-
-            let dash_body: Arc<DashMap<String, Option<Value>>> = Arc::new(DashMap::new());
-
-            keys.par_iter().for_each(|&key| {
-                let value = v.get(key).cloned();
-                dash_body.insert(key.to_string(), value);
-            });
-
-            dash_body.insert(
-                "selected_payment_channel_data".to_string(),
-                Some(chosen_payment.place_order.clone()),
-            );
-
-            // Langkah 5: Transfer nilai dari DashMap ke PlaceOrderBody
-            for entry in dash_body.iter() {
-                match entry.key().as_str() {
-                    "checkout_price_data" => place_order_body.checkout_price_data = entry.value().clone(),
-                    "display_meta_data" => place_order_body.display_meta_data = entry.value().clone(),
-                    "buyer_txn_fee_info" => place_order_body.buyer_txn_fee_info = entry.value().clone(),
-                    "disabled_checkout_info" => place_order_body.disabled_checkout_info = entry.value().clone(),
-                    "buyer_service_fee_info" => place_order_body.buyer_service_fee_info = entry.value().clone(),
-                    "iof_info" => place_order_body.iof_info = entry.value().clone(),
-                    "selected_payment_channel_data" => place_order_body.selected_payment_channel_data = entry.value().clone(),
-                    _ => {}
-                }
-            }
-            return Ok(place_order_body)
-        } else {
-            eprintln!("Failed to get checkout data: {}", status);
-            return Err(anyhow::anyhow!("Failed to get checkout data"));
-        };
-    }
+        }
+        return Ok(place_order_body)
+    } else {
+        eprintln!("Failed to get checkout data: {}", status);
+        return Err(anyhow::anyhow!("Failed to get checkout data"));
+    };
 }
 pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>,
     device_info: &DeviceInfo, 
@@ -889,9 +855,6 @@ pub async fn multi_get_recommend_platform_vouchers(buyer_address: &AddressInfo, 
                                         is_pre_order: false,
                                         is_streaming_price: false,
                                         checkout: true,
-                                        categories: vec![Category {
-                                            catids: vec![100013, 100073],
-                                        }],
                                         is_spl_zero_interest: false,
                                         is_prescription: false,
                                         offerid: 0,

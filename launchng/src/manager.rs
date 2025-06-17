@@ -55,15 +55,15 @@ pub struct Multi {
     pub shared_kurir_data: Arc<Mutex<Vec<ShippingInfo>>>,
 }
 impl Multi {
-    pub fn new(wnd: &gui::WindowMain) -> Self {
+    pub fn new() -> Self {
         let shared_payment_data = Arc::new(Mutex::new(vec![]));
         let shared_variation_data = Arc::new(Mutex::new(vec![]));
         let shared_kurir_data = Arc::new(Mutex::new(vec![]));
         let dont_move = (gui::Horz::None, gui::Vert::None);
         let resized = (gui::Horz::Resize, gui::Vert::Resize);
-        let move_h = (gui::Horz::Repos, gui::Vert::None);
+        let _move_h = (gui::Horz::Repos, gui::Vert::None);
         let moved = (gui::Horz::Repos, gui::Vert::Repos);
-        let wnd2 = gui::WindowModal::new_dlg(wnd, 900);
+        let wnd2 = gui::WindowModal::new_dlg(900);
         let cek_button = gui::Button::new_dlg(&wnd2, 901, dont_move);
         let file_combo = gui::ComboBox::new_dlg(&wnd2, 902, dont_move);
         let url_text = gui::Edit::new_dlg(&wnd2, 903, dont_move);
@@ -96,8 +96,8 @@ impl Multi {
         new_self.events();
         new_self
     }
-    pub fn run(&self) -> AnyResult<()> {
-        let _ = self.wnd2.show_modal();
+    pub fn run(&self, wnd: &gui::WindowMain) -> AnyResult<()> {
+        let _ = self.wnd2.show_modal(wnd);
         Ok(())
     }
     pub fn events(&self) {
@@ -109,14 +109,16 @@ impl Multi {
                 m if m <= 14 => "14", m if m <= 29 => "29", m if m <= 44 => "44", _ => "59",
             };
             self_clone.jam_text.set_text(&hour);
-            self_clone.menit_text.set_text(minute);
+            self_clone.menit_text.set_text(&minute);
             self_clone.platform_combo.items().add(&[
                 "Claim", "Code", "Collection id", "Link",
             ]);
             self_clone.platform_combo.items().select(Some(0));
-            self_clone.my_list.columns().add(&[
-                ("Url", 240), ("Quantity", 120), ("Variation", 120), ("Courier", 120), ("Voucher Shop", 120),
-            ]);
+            self_clone.my_list.cols().add("Url", 240);
+            self_clone.my_list.cols().add("Quantity", 120);
+            self_clone.my_list.cols().add("Variation", 120);
+            self_clone.my_list.cols().add("Courier", 120);
+            self_clone.my_list.cols().add("Voucher Shop", 120);
             self_clone.my_list.set_extended_style(true, w::co::LVS_EX::FULLROWSELECT);
             func_main::populate_combobox_with_files(&self_clone.file_combo, "akun");
             func_main::populate_payment_combo(&self_clone.payment_combo, self_clone.shared_payment_data.clone());
@@ -130,8 +132,8 @@ impl Multi {
         });
         let self_clone = self.clone();
         self.push_button.on().bn_clicked(move || {
-            let url = self_clone.url_text.text();
-            let quantity = self_clone.quantity_text.text();
+            let url = self_clone.url_text.text().unwrap_or_else(|_| String::new());
+            let quantity = self_clone.quantity_text.text().unwrap_or_else(|_| String::new());
             if url.is_empty() {
                 let isi = format!("Please input the url before pushing");
                 let _ = func_main::error_modal(&self_clone.wnd2, "Error push data", &isi);
@@ -139,12 +141,20 @@ impl Multi {
                 let isi = format!("Please input the quantity before pushing");
                 let _ = func_main::error_modal(&self_clone.wnd2, "Error push data", &isi);
             } else {
-                let variasi = self_clone.variasi_combo.text();
-                let kurir = self_clone.kurir_combo.text();
-                let shop_code = if self_clone.shopcode_text.text().is_empty() {
+                let variasi = match self_clone.variasi_combo.items().selected_text() {
+                    Ok(Some(text)) => text,
+                    Ok(None) => "".to_string(),
+                    Err(_) => "".to_string()
+                };
+                let kurir = match self_clone.kurir_combo.items().selected_text() {
+                    Ok(Some(text)) => text,
+                    Ok(None) => "".to_string(),
+                    Err(_) => "".to_string()
+                };
+                let shop_code = if self_clone.shopcode_text.text().unwrap_or_else(|_| String::new()).is_empty() {
                     "".to_string()
                 } else {
-                    self_clone.shopcode_text.text()
+                    self_clone.shopcode_text.text().unwrap_or_else(|_| String::new())
                 };
                 self_clone.my_list.items().add(
                     &[
@@ -160,7 +170,7 @@ impl Multi {
         self.platform_checkbox.on().bn_clicked(move || {
             println!("platform checkbox clicked!");
             if self_clone.platform_checkbox.is_checked() == true{
-                self_clone.fsv_checkbox.set_check_state(gui::CheckState::Unchecked);
+                self_clone.fsv_checkbox.set_state(co::BST::UNCHECKED);
                 self_clone.platform_combo.hwnd().EnableWindow(true);
                 self_clone.platform_combo.items().select(Some(0));
                 func_main::set_visibility(&self_clone.proid_label, &self_clone.proid_text, true);
@@ -214,35 +224,39 @@ impl Multi {
         let self2 = self.clone();
         self.cek_button.on().bn_clicked(move || {
             println!("Cek button clicked!");
-            println!("{}", self2.url_text.text());
+            println!("{}", self2.url_text.text().unwrap_or_else(|_| String::new()));
             // Disable the button to prevent multiple async tasks from being started
             self2.cek_button.hwnd().EnableWindow(false);
-            self2.cek_button.set_text("Wait");
+            self2.cek_button.hwnd().SetWindowText("Wait");
             self2.variasi_combo.items().delete_all();
             self2.kurir_combo.items().delete_all();
-            let file = self2.file_combo.text();
-            if self2.url_text.text().is_empty() {
+            let file = match self2.file_combo.items().selected_text() {
+                Ok(Some(text)) => text,
+                Ok(None) => "".to_string(),
+                Err(_) => "".to_string()
+            };
+            if self2.url_text.text().unwrap_or_else(|_| String::new()).is_empty() {
                 let _ = func_main::error_modal(&self2.wnd2, "Error", "Empty URL");
                 println!("Empty URL");
                 self2.cek_button.hwnd().EnableWindow(true);
                 //cek_button.clone().hwnd().ShowWindow(SW::HIDE);
-                self2.cek_button.set_text("Cek");
+                self2.cek_button.hwnd().SetWindowText("Cek");
             } else if file.is_empty() {
                 let _ = func_main::error_modal(&self2.wnd2, "Error", "Please select a file before running the program");
                 println!("Please select a file before running the program");
                 self2.cek_button.hwnd().EnableWindow(true);
                 self2.cek_button.hwnd().ShowWindow(SW::SHOW);
-                self2.cek_button.set_text("Cek");
+                self2.cek_button.hwnd().SetWindowText("Cek");
             }else{
                 let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
                 let device_info = crypt::create_devices(&func_main::get_fp_data(&file));
                 let self2 = self2.clone();
                 tokio::spawn(async move {
                     let client = Arc::new(prepare::universal_client_skip_headers().await);
-                    let mut product_info = prepare::process_url(&self2.url_text.text().trim());
+                    let mut product_info = prepare::process_url(&self2.url_text.text().unwrap_or_else(|_| String::new()).trim());
                     if product_info.shop_id == 0 && product_info.item_id == 0 {
                         println!("Cek apakah redirect?");
-                        match prepare::get_redirect_url(client.clone(), &self2.url_text.text().trim()).await {
+                        match prepare::get_redirect_url(&self2.url_text.text().unwrap_or_else(|_| String::new()).trim()).await {
                             Ok(redirect) => {
                                 product_info = prepare::process_url(&redirect);
                             }
@@ -258,7 +272,7 @@ impl Multi {
                         let shared_payment_data_clone = self2.shared_payment_data.clone();
                         let shared_kurir_data_clone = self2.shared_kurir_data.clone();
                         match timeout(Duration::from_secs(10), prepare::get_product(client.clone(), &product_info, &cookie_data)).await {
-                            Ok(Ok((name, model_info, is_official_shop, fs_info, rcode))) => {
+                            Ok(Ok((_name, model_info, _is_official_shop, fs_info, rcode))) => {
                                 if rcode == "200 OK" {
                                     let fs_items = if fs_info.promotionid != 0 {
                                         println!("promotionid  : {}", fs_info.promotionid);
@@ -331,7 +345,7 @@ impl Multi {
                             let shared_p = shared_payment_data_clone.lock().unwrap();
                             shared_p.get(0).unwrap().clone()
                         };
-                        chosen_model.quantity = self2.quantity_text.text().parse::<i32>().unwrap_or(1);
+                        chosen_model.quantity = self2.quantity_text.text().unwrap_or_else(|_| String::new()).parse::<i32>().unwrap_or(1);
                         match timeout(Duration::from_secs(10), runtime::prepare_ext::get_shipping_data(client.clone(), base_headers.clone(), shared_headers.clone(), &device_info, Some(&product_info), &address_info, &chosen_model, &chosen_payment, &chosen_shipping)).await {
                             Ok(Ok(kurirs)) => {
                                 let mut shared = shared_kurir_data_clone.lock().unwrap();
@@ -356,12 +370,12 @@ impl Multi {
                             }
                         };
                         self2.cek_button.clone().hwnd().EnableWindow(true);
-                        self2.cek_button.set_text("Cek");
+                        self2.cek_button.hwnd().SetWindowText("Cek");
                     }else{
                         let _ = func_main::error_modal(&self2.wnd2, "Error", "Invalid URL");
                         println!("Invalid URL");
                         self2.cek_button.hwnd().EnableWindow(true);
-                        self2.cek_button.set_text("Cek");
+                        self2.cek_button.hwnd().SetWindowText("Cek");
                     }
                 });
             };
@@ -372,7 +386,7 @@ impl Multi {
             let command = self_clone.generate_cmd();
             let mut new_command = Vec::new();
             if let Ok(Some(command))  = command {
-                let url = self_clone.generate_struct(command.clone());
+                let _url = self_clone.generate_struct(command.clone());
                 new_command.push("start".to_string());
                 new_command.push("multi.exe".to_string());
                 new_command.extend(command);
@@ -395,12 +409,12 @@ impl Multi {
             eprintln!("Variasi is not Found");
             return Ok(None);
         };
-        let Some(payment) = self2.payment_combo.items().selected_text() else {
+        let Ok(Some(payment)) = self2.payment_combo.items().selected_text() else {
             eprintln!("Payment is not selected");
             return Ok(None);
         };
         let harga = String::new(); // Outputkan nilai kosong
-        let Some(file) = self2.file_combo.items().selected_text() else {
+        let Ok(Some(file)) = self2.file_combo.items().selected_text() else {
             eprintln!("File is not selected");
             return Ok(None);
         };
@@ -425,10 +439,10 @@ impl Multi {
             return Ok(None);
         };
         println!("Variasi: {:?}", variasi);
-        let jam = self2.jam_text.text();
-        let menit = self2.menit_text.text();
-        let detik = self2.detik_text.text();
-        let mili = self2.mili_text.text();
+        let jam = self2.jam_text.text().unwrap_or_else(|_| String::new());
+        let menit = self2.menit_text.text().unwrap_or_else(|_| String::new());
+        let detik = self2.detik_text.text().unwrap_or_else(|_| String::new());
+        let mili = self2.mili_text.text().unwrap_or_else(|_| String::new());
         let kuan =  if list_count > 0 {
             let mut collected_text = Vec::new();
             for index in 0..list_count {
@@ -439,7 +453,7 @@ impl Multi {
             eprintln!("Kurir is not Found");
             return Ok(None);
         };
-        //let token = self2.token_text.text();
+        //let token = self2.token_text.text().unwrap_or_else(|_| String::new());
         // Menjalankan program abs.exe dengan argumen yang dibuat
         let create_command = |extra_args: Vec<String>| -> Vec<String> {
             let mut command = vec![
@@ -472,33 +486,33 @@ impl Multi {
         };
         let mut commands = vec![];
 
-        if self2.fsv_checkbox.check_state() == gui::CheckState::Checked {
+        if self2.fsv_checkbox.state() == co::BST::CHECKED {
             commands.push("--fsv-only".to_string());
         }
-        /*if self2.coins_checkbox.check_state() == gui::CheckState::Unchecked {
+        /*if self2.coins_checkbox.state() == co::BST::UNCHECKED {
             commands.push("--no-coins".to_string());
         }*/
-        if self2.platform_checkbox.check_state() == gui::CheckState::Checked {
+        if self2.platform_checkbox.state() == co::BST::CHECKED {
             match self2.platform_combo.items().selected_index() {
                 Some(0) => {
                     commands.push("--claim-platform-vouchers".to_string());
                     commands.push("--pro-id".to_string());
-                    commands.push(self2.proid_text.text());
+                    commands.push(self2.proid_text.text().unwrap_or_else(|_| String::new()));
                     commands.push("--sign".to_string());
-                    commands.push(self2.signature_text.text());
+                    commands.push(self2.signature_text.text().unwrap_or_else(|_| String::new()));
                 }
                 Some(1) => {
                     commands.push("--platform-vouchers".to_string());
                     commands.push("--code-platform".to_string());
-                    commands.push(self2.code_text.text());
+                    commands.push(self2.code_text.text().unwrap_or_else(|_| String::new()));
                 }
                 Some(2) => {
                     commands.push("--collection-vouchers".to_string());
                     commands.push("--collectionid".to_string());
-                    commands.push(self2.collection_text.text());
+                    commands.push(self2.collection_text.text().unwrap_or_else(|_| String::new()));
                 }
                 Some(3) => {
-                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text());
+                    let (proid, sign) = prepare::url_to_voucher_data(&self2.link_text.text().unwrap_or_else(|_| String::new()));
                     commands.push("--claim-platform-vouchers".to_string());
                     commands.push("--pro-id".to_string());
                     commands.push(proid);
@@ -526,7 +540,11 @@ impl Multi {
         Ok(Some(create_command(commands)))
     }
     fn execute(&self, command: Vec<String>) -> Result<(), Box<dyn std::error::Error>> {
-        let file = self.file_combo.text();
+        let file = match self.file_combo.items().selected_text() {
+            Ok(Some(text)) => text,
+            Ok(None) => "".to_string(),
+            Err(_) => "".to_string()
+        };
         if !file.is_empty() {
             let _status = std::process::Command::new("cmd")
                 .arg("/c")
@@ -557,12 +575,12 @@ impl Multi {
 pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let taskbar = w::CoCreateInstance::<w::ITaskbarList4>(
         &co::CLSID::TaskbarList,
-        None,
+        None::<&w::IUnknown>,
         co::CLSCTX::INPROC_SERVER,
     ).map_err(|_| ())?;
     let check_version = Arc::new(Mutex::new(String::new()));
     let dont_move = (gui::Horz::None, gui::Vert::None);
-    let wnd2 = gui::WindowModal::new_dlg(wnd, 100);
+    let wnd2 = gui::WindowModal::new_dlg(100);
     let info_label = gui::Label::new_dlg(&wnd2, 101, dont_move);
     let progress = gui::ProgressBar::new_dlg(&wnd2, 102, dont_move);
     let download_button = gui::Button::new_dlg(&wnd2, 103, dont_move);
@@ -594,16 +612,16 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/cari-404/abs/releases/latest")).await {
                     println!("Versi terbaru: {}", latest_version);
                     if upgrade::compare_versions(CURRENT_VERSION, &latest_version) == std::cmp::Ordering::Less {
-                        info_label_clone.set_text(&format!("Versi :{} tersedia!", latest_version));
+                        info_label_clone.set_text_and_resize(&format!("Versi :{} tersedia!", latest_version));
                         download_button_clone.hwnd().EnableWindow(true);
                         let mut shared = check_version.lock().unwrap();
                         shared.clear();
                         *shared = latest_version;
                     }else {
-                        info_label_clone.set_text("Versi terbaru sudah terpasang.");
+                        info_label_clone.set_text_and_resize("Versi terbaru sudah terpasang.");
                     }
                 } else {
-                    info_label_clone.set_text("Gagal mengecek versi terbaru.");
+                    info_label_clone.set_text_and_resize("Gagal mengecek versi terbaru.");
                 }
                 progress_clone.set_marquee(false);
                 let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
@@ -633,7 +651,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let wnd2_clone = wnd2_clone.clone();
         let wnd_clone = wnd_clone.clone();
         let taskbar = taskbar_clone.clone();
-        if download_button_clone.text() == "Install" {
+        if download_button_clone.hwnd().GetWindowText().unwrap_or_default() == "Install" {
             let _ = std::process::Command::new("cmd")
                 .arg("/C")
                 .arg("updater.exe offline")
@@ -698,7 +716,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                                 0.0
                             };
                         
-                            info_label_clone.set_text(&format!(
+                            info_label_clone.set_text_and_resize(&format!(
                                 "Kecepatan: {:.2} KB/s | Diunduh: {:.2}/{:.2} MB ({:.1}%) | ETA: {}",                     speed_kb,                     downloaded_mb,                     total_mb,                     percentage,                     format_eta(eta_secs)
                             ));
                             let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), downloaded as u64, total_size as u64);
@@ -711,8 +729,8 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                             eprintln!("{}", isi);
                             let _ = func_main::error_modal(&wnd2_clone, "Error", &isi);
                         }else{
-                            info_label_clone.set_text("Click to install(restart the app)");
-                            download_button_clone.set_text("Install");
+                            info_label_clone.set_text_and_resize("Click to install(restart the app)");
+                            download_button_clone.hwnd().SetWindowText("Install");
                         }
                     }
                     Err(e) => {
@@ -731,12 +749,12 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             .spawn();
         std::process::exit(0);
     });
-    let _ = wnd2.show_modal();
+    let _ = wnd2.show_modal(wnd);
     Ok(())
 }
 pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let dont_move = (gui::Horz::None, gui::Vert::None);
-    let wnd2 = gui::WindowModal::new_dlg(wnd, 500);
+    let wnd2 = gui::WindowModal::new_dlg(500);
     let save_button = gui::Button::new_dlg(&wnd2, 501, dont_move);
     let cancel_button = gui::Button::new_dlg(&wnd2, 502, dont_move);
     let test_button = gui::Button::new_dlg(&wnd2, 503, dont_move);
@@ -770,9 +788,9 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             token_clone.set_text(&data.telegram_token);
             chat_id_clone.set_text(&data.telegram_chat_id);
             if data.telegram_notif == true{
-                checkbox_clone.set_check_state(gui::CheckState::Checked);
+                checkbox_clone.set_state(co::BST::CHECKED);
             }else{
-                checkbox_clone.set_check_state(gui::CheckState::Unchecked);
+                checkbox_clone.set_state(co::BST::UNCHECKED);
             }
         });
         Ok(true)
@@ -787,8 +805,8 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let chat_id_clone = chat_id.clone();
     let checkbox_clone = checkbox.clone();
     save_button.on().bn_clicked(move || {
-        let token_text = token_clone.text();
-        let chat_id_text = chat_id_clone.text();
+        let token_text = token_clone.text().unwrap_or_else(|_| String::new());
+        let chat_id_text = chat_id_clone.text().unwrap_or_else(|_| String::new());
         if token_text.is_empty() || chat_id_text.is_empty() {
             let isi = format!("please fill token and chat id");
             let _ = func_main::error_modal(&wnd2_clone, "Error save data", &isi);
@@ -809,7 +827,7 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                     }
                 };
                 if let serde_json::Value::Object(ref mut map) = config {
-                    if checkbox_clone.check_state() == gui::CheckState::Checked {
+                    if checkbox_clone.state() == co::BST::CHECKED {
                         map.insert("telegram_notif".to_string(), serde_json::Value::Bool(true));
                     }else{
                         map.insert("telegram_notif".to_string(), serde_json::Value::Bool(false));
@@ -844,8 +862,8 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         tokio::spawn(async move {
             let client = Arc::new(prepare::universal_client_skip_headers().await);
             println!("test Send");
-            let token_text = token_clone.text();
-            let chat_id_text = chat_id_clone.text();
+            let token_text = token_clone.text().unwrap_or_else(|_| String::new());
+            let chat_id_text = chat_id_clone.text().unwrap_or_else(|_| String::new());
             if token_text.is_empty() || chat_id_text.is_empty() {
                 let isi = format!("please fill token and chat id");
                 let _ = func_main::error_modal(&wnd2_clone, "Error get data", &isi);
@@ -857,20 +875,20 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         });
         Ok(())
     });
-    let _ = wnd2.show_modal();
+    let _ = wnd2.show_modal(wnd);
     Ok(())
 }
 pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let dont_move = (gui::Horz::None, gui::Vert::None);
-    let wnd2 = gui::WindowModal::new_dlg(wnd, 1000);
+    let wnd2 = gui::WindowModal::new_dlg(1000);
     let resize_h = (gui::Horz::Resize, gui::Vert::None);
-    let resize_v = (gui::Horz::None, gui::Vert::Resize);
+    let _resize_v = (gui::Horz::None, gui::Vert::Resize);
     let resized = (gui::Horz::Resize, gui::Vert::Resize);
     let move_h = (gui::Horz::Repos, gui::Vert::None);
-    let move_v = (gui::Horz::None, gui::Vert::Repos);
+    let _move_v = (gui::Horz::None, gui::Vert::Repos);
     let moved = (gui::Horz::Repos, gui::Vert::Repos);
-    let move_h_resize_v = (gui::Horz::Repos, gui::Vert::Resize);
-    let resize_h_move_v = (gui::Horz::Resize, gui::Vert::Repos);
+    let _move_h_resize_v = (gui::Horz::Repos, gui::Vert::Resize);
+    let _resize_h_move_v = (gui::Horz::Resize, gui::Vert::Repos);
     //let wnd2 = gui::WindowModeless::new_dlg(&wnd_clone, 1000, w::POINT::new(0, 0));
     //let wnd2 = gui::WindowMain::new_dlg(1000, Some(101), None);
     let save_button = gui::Button::new_dlg(&wnd2, 1001, moved);
@@ -881,7 +899,7 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let my_list = gui::ListView::new_dlg(&wnd2, 1006, resized, Some(100));
     let qr_button = gui::Button::new_dlg(&wnd2, 1007, move_h);
     let my_list_clone = my_list.clone();
-    wnd2.on().wm_command_accel_menu(101 as u16, move || {
+    wnd2.on().wm_command_acc_menu(101 as u16, move || {
         if let Some(selected_item) = my_list_clone.items().focused() {
             let _ = func_main::set_clipboard(&selected_item.text(1));
         } else {
@@ -899,7 +917,8 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let my_list_clone = my_list.clone();
     cookie_edit.on().en_change(move || {
         my_list_clone.items().delete_all();
-        let cookie_data = prepare::create_cookie(&cookie_edit_clone.text());
+        let cookie_edit_text = cookie_edit_clone.text().unwrap_or_else(|_| String::new());
+        let cookie_data = prepare::create_cookie(&cookie_edit_text);
         my_list_clone.items().add(
             &[
                 "CSRFTOKEN",     &cookie_data.csrftoken, ], None, (),
@@ -911,9 +930,8 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let sz_edit_clone = sz_edit.clone();
     let my_list_clone = my_list.clone();
     wnd2.on().wm_init_dialog(move |_| {
-        my_list_clone.columns().add(&[
-            ("Item", 120), ("Value", 300),
-        ]);
+        my_list_clone.cols().add("Item", 120);
+        my_list_clone.cols().add("Value", 300);
         my_list_clone.items().add(
             &[
                 "Default",     "text", ], None, // no icon; requires a previous set_image_list()
@@ -942,7 +960,7 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         my_list_clone.items().delete_all();
         sz_edit_clone.set_text("");
         cookie_edit_clone.set_text("");
-        println!("{}", file_combo_clone.text());
+        //println!("{}", file_combo_clone.text());
         Ok(())
     });
     let file_combo_clone = file_combo.clone();
@@ -955,9 +973,9 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     let file_combo_clone = file_combo.clone();
     file_combo.on().cbn_drop_down(move || {
-        let selected_text = file_combo_clone.text();
+        let selected_index = file_combo_clone.items().selected_index();
         func_main::populate_combobox_with_files(&file_combo_clone, "akun");
-        file_combo_clone.set_text(&selected_text);
+        file_combo_clone.items().select(selected_index);
         Ok(())
     });
     wnd2.on().wm_destroy(move || {
@@ -973,9 +991,13 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let file_combo_clone = file_combo.clone();
     let wnd2_clone = wnd2.clone();
     save_button.on().bn_clicked(move || {
-        let file = file_combo_clone.text();
-        let cookie = cookie_edit.text();
-        let sz = sz_edit.text();
+        let file = match file_combo_clone.items().selected_text() {
+            Ok(Some(text)) => text,
+            Ok(None) => "".to_string(),
+            Err(_) => "".to_string()
+        };
+        let cookie = cookie_edit.text().unwrap_or_else(|_| String::new());
+        let sz = sz_edit.text().unwrap_or_else(|_| String::new());
         if file.is_empty() {
             let isi = format!("Please select a file before saving the cookie");
             let _ = func_main::error_modal(&wnd2_clone, "Error save data", &isi);
@@ -997,20 +1019,20 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         }
         Ok(())
     });
-    let _ = wnd2.show_modal();
+    let _ = wnd2.show_modal(wnd);
     //wnd2.run_main(None);
     Ok(())
 }
 pub fn log_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let dont_move = (gui::Horz::None, gui::Vert::None);
-    let wnd2 = gui::WindowModeless::new_dlg(wnd, 600, w::POINT{x:0, y:0});
-    let txt_log = gui::Edit::new_dlg(&wnd2, 601, dont_move);
+    let wnd2 = gui::WindowModeless::new_dlg(wnd, 600, (0,0));
+    let _txt_log = gui::Edit::new_dlg(&wnd2, 601, dont_move);
     Ok(())
 }
 pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let taskbar = w::CoCreateInstance::<w::ITaskbarList4>(
         &co::CLSID::TaskbarList,
-        None,
+        None::<&w::IUnknown>,
         co::CLSCTX::INPROC_SERVER,
     ).map_err(|_| ())?;
     let (tx_msg, rx_msg) = mpsc::unbounded_channel::<String>();
@@ -1019,15 +1041,15 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let shared_fsid = Arc::new(Mutex::new(vec![]));
     let wnd_clone = wnd.clone();
     let dont_move = (gui::Horz::None, gui::Vert::None);
-    let resize_h = (gui::Horz::Resize, gui::Vert::None);
-    let resize_v = (gui::Horz::None, gui::Vert::Resize);
+    let _resize_h = (gui::Horz::Resize, gui::Vert::None);
+    let _resize_v = (gui::Horz::None, gui::Vert::Resize);
     let resized = (gui::Horz::Resize, gui::Vert::Resize);
     let move_h = (gui::Horz::Repos, gui::Vert::None);
-    let move_v = (gui::Horz::None, gui::Vert::Repos);
+    let _move_v = (gui::Horz::None, gui::Vert::Repos);
     let moved = (gui::Horz::Repos, gui::Vert::Repos);
-    let move_h_resize_v = (gui::Horz::Repos, gui::Vert::Resize);
+    let _move_h_resize_v = (gui::Horz::Repos, gui::Vert::Resize);
     let resize_h_move_v = (gui::Horz::Resize, gui::Vert::Repos);
-    let wnd2 = gui::WindowModal::new_dlg(&wnd_clone, 700);
+    let wnd2 = gui::WindowModal::new_dlg(700);
     //let wnd2 = gui::WindowModeless::new_dlg(&wnd_clone, 1000, w::POINT::new(0, 0));
     //let wnd2 = gui::WindowMain::new_dlg(1000, Some(101), None);
     let cek_button = gui::Button::new_dlg(&wnd2, 701, move_h);
@@ -1048,7 +1070,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let count_label = gui::Label::new_dlg(&wnd2, 716, dont_move);
 
     let my_list_clone = my_list.clone();
-    wnd2.on().wm_command_accel_menu(201 as u16, move || {
+    wnd2.on().wm_command_acc_menu(201 as u16, move || {
         if let Some(selected_item) = my_list_clone.items().focused() {
             let url = selected_item.text(5 as u32);
             let _ = func_main::open_url(&url);
@@ -1058,7 +1080,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         Ok(())
     });
     let my_list_clone = my_list.clone();
-    wnd2.on().wm_command_accel_menu(202 as u16, move || {
+    wnd2.on().wm_command_acc_menu(202 as u16, move || {
         if let Some(selected_item) = my_list_clone.items().focused() {
             println!("Selected item: {:?}", selected_item.index());
             let url = selected_item.text(5 as u32);
@@ -1071,8 +1093,12 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     let my_list_clone = my_list.clone();
     let file_combo_clone = file_combo.clone();
-    wnd2.on().wm_command_accel_menu(203 as u16, move || {
-        let file = file_combo_clone.text();
+    wnd2.on().wm_command_acc_menu(203 as u16, move || {
+        let file = match file_combo_clone.items().selected_text() {
+            Ok(Some(text)) => text,
+            Ok(None) => "".to_string(),
+            Err(_) => "".to_string()
+        };
         if let Some(selected_item) = my_list_clone.items().focused() {
             let product_info = prepare::process_url(&selected_item.text(5 as u32));
             let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
@@ -1106,9 +1132,13 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let file_combo_clone = file_combo.clone();
     let my_list_clone = my_list.clone();
     wnd2.on().wm_init_dialog(move |_| {
-        my_list_clone.columns().add(&[
-            ("Name", 120), ("Modelid", 120), ("estimate", 120), ("hidden", 120), ("stock", 120), ("Url", 300), ("Variation",120),
-        ]);
+        my_list_clone.cols().add("Name", 120);
+        my_list_clone.cols().add("Modelid", 120);
+        my_list_clone.cols().add("Estimate", 120);
+        my_list_clone.cols().add("Hidden", 120);
+        my_list_clone.cols().add("Stock", 120);
+        my_list_clone.cols().add("Url", 300);
+        my_list_clone.cols().add("Variation", 120);
         my_list_clone.items().add(
             &[
                 "Default",     "text",     "text",     "text",     "text",     "text",     "", ], None, // no icon; requires a previous set_image_list()
@@ -1122,7 +1152,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let search_edit_clone = search_edit.clone();
     let my_list_clone = my_list.clone();
     search_button.on().bn_clicked(move || {
-        let search_text = search_edit_clone.text();
+        let search_text = search_edit_clone.text().unwrap_or_else(|_| String::new());
         if search_text.is_empty() {
             let isi = format!("Please input the search text");
             let _ = func_main::error_modal(&wnd2_clone, "Error search data", &isi);
@@ -1149,7 +1179,11 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     cek_button.on().bn_clicked(move || {
         progress_clone.set_marquee(true);
         let _ = taskbar_clone.SetProgressState(wnd_clone.hwnd(), co::TBPF::INDETERMINATE);
-        let file = file_combo_clone.text();
+        let file = match file_combo_clone.items().selected_text() {
+            Ok(Some(text)) => text,
+            Ok(None) => "".to_string(),
+            Err(_) => "".to_string()
+        };
         if file.is_empty() {
             let isi = format!("Please select a file before checking the fs");
             let _ = func_main::error_modal(&wnd2_clone, "Error check data", &isi);
@@ -1176,7 +1210,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                             println!("{}", fsi.promotionid);
                             fs_combo_clone.items().add(&[&fsi.promotionid.to_string()]);
                         }
-                        if fs_combo_clone.items().count() > 0 {
+                        if fs_combo_clone.items().count() > Ok(0) {
                             fs_combo_clone.items().select(Some(0));
                         }
                         let mut shared = shared_fsid_clone.lock().unwrap();
@@ -1210,14 +1244,18 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let wnd_clone = wnd.clone();
     single_button.on().bn_clicked(move || {
         progress_clone.set_state(w::co::PBST::NORMAL);
-        let fsid = fs_combo_clone.text();
+        let fsid = match fs_combo_clone.items().selected_text() {
+            Ok(Some(text)) => text,
+            Ok(None) => "".to_string(),
+            Err(_) => "".to_string()
+        };
         if fsid.is_empty() {
             let isi = format!("Please select a fs id before checking the fs");
             let _ = func_main::error_modal(&wnd2_clone, "Error check data", &isi);
         } else {
-            mode_label_clone.set_text("Single");
+            mode_label_clone.set_text_and_resize("Single");
             wnd2_clone.hwnd().ShowWindow(w::co::SW::SHOWMAXIMIZED);
-            let Some(selecte_fsid) = fs_combo_clone.items().selected_text() else {
+            let Ok(Some(selecte_fsid)) = fs_combo_clone.items().selected_text() else {
                 eprintln!("Tidak ada fsid yang dipilih.");
                 return Ok(());
             };
@@ -1231,8 +1269,8 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let shared = shared_fsid_clone.lock().unwrap();
             if let Some(matching) = shared.iter().find(|item| item.promotionid == promotionid) {
                 proid_label.set_text_and_resize(&matching.promotionid.to_string());
-                stime_label.set_text(&(func_main::human_readable_time(matching.start_time)).to_string());
-                etime_label.set_text(&(func_main::human_readable_time(matching.end_time)).to_string());
+                stime_label.set_text_and_resize(&(func_main::human_readable_time(matching.start_time)).to_string());
+                etime_label.set_text_and_resize(&(func_main::human_readable_time(matching.end_time)).to_string());
                 fsinfo.push(matching.clone());
             } else {
                 println!("Tidak ditemukan promotionid yang cocok");
@@ -1260,7 +1298,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let isi = format!("Promotionid not available\nPlease check the account selected and try again");
             let _ = func_main::error_modal(&wnd2_clone, "Error: not found", &isi);
         } else {
-            mode_label_clone.set_text("All");
+            mode_label_clone.set_text_and_resize("All");
             wnd2_clone.hwnd().ShowWindow(w::co::SW::SHOWMAXIMIZED);
             let _ = get_flashsale_products(&wnd_clone, &wnd2_clone, Arc::new(shared.to_vec()), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
         }
@@ -1308,16 +1346,20 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         Ok(())
     });
 
-    let _ = wnd2.show_modal();
+    let _ = wnd2.show_modal(wnd);
     //wnd2.run_main(None);
     Ok(())
 }
 fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo: Arc<Vec<FSInfo>>, file_combo: &gui::ComboBox, my_list: &gui::ListView, progress: &gui::ProgressBar, interrupt_flag: &Arc<AtomicBool>, tx_msg: &mpsc::UnboundedSender<String>, progress_label: &gui::Label, count_label: &gui::Label) -> Result<(), ()> {
-    let file = file_combo.text();
+    let file = match file_combo.items().selected_text() {
+        Ok(Some(text)) => text,
+        Ok(None) => "".to_string(),
+        Err(_) => "".to_string()
+    };
     let wnd_clone = wnd.clone();
     let taskbar_clone = w::CoCreateInstance::<w::ITaskbarList4>(
         &co::CLSID::TaskbarList,
-        None,
+        None::<&w::IUnknown>,
         co::CLSCTX::INPROC_SERVER,
     ).map_err(|_| ())?;
     if file.is_empty() {
@@ -1325,7 +1367,7 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
         let _ = func_main::error_modal(&wnd2, "Error check data", &isi);
     } else {
         my_list.items().delete_all();
-        let Some(select_cookie_file) = file_combo.items().selected_text() else {
+        let Ok(Some(select_cookie_file)) = file_combo.items().selected_text() else {
             eprintln!("Tidak ada file cookie yang dipilih.");
             return Ok(());
         };
@@ -1374,7 +1416,7 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
                                             &item.name,                                 &format!("{:?}", item.modelids.unwrap_or_default()),                                 &func_main::format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),                                 &item.hidden_price_display.as_deref().unwrap_or("No Hide").to_string(),                                 &item.stock.to_string(),                                 &link,                             ], None, ());
                                         let _ = tx_msg.send("Running".to_string());
                                         count +=1;
-                                        count_label.set_text(&count.to_string());
+                                        count_label.set_text_and_resize(&count.to_string());
                                     }
                                 }
                                 Err(e) => {
@@ -1386,7 +1428,7 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
                             progress_clone.set_position(potition as u32);
                             let progressinf = format!("{}/{}", potition, max);
                             println!("Progress: {}", progressinf);
-                            progress_label_clone.set_text(&progressinf);
+                            progress_label_clone.set_text_and_resize(&progressinf);
                             let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), potition as u64, max as u64);
                         }
                     }

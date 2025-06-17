@@ -495,7 +495,17 @@ pub async fn info_akun(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) ->
         process::exit(1);
     }
 }
-pub async fn get_redirect_url(client: Arc<reqwest::Client>, url: &str) -> Result<String, Box<dyn std::error::Error>> {
+pub async fn get_redirect_url(url: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let client = ClientBuilder::new()
+        .redirect(RedirectPolicy::limited(10))
+        .danger_accept_invalid_certs(true)
+        .impersonate(Impersonate::Chrome130)
+        .enable_ech_grease(true)
+        .permute_extensions(true)
+        .root_certs_store(load_dynamic_root_certs().expect("Failed to create HTTP client"))
+        .gzip(true)
+        .build()?;
+
     let res = client.get(url)
         .send()
         .await?;
