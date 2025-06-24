@@ -11,9 +11,6 @@
 rustflags = [
     "-Ctarget-feature=+crt-static",
     "-Clink-args=/DEFAULTLIB:msvcrt.lib",
-    "-Clink-args=/NODEFAULTLIB:vcruntime.lib",
-    "-Clink-args=/NODEFAULTLIB:ucrt.lib",
-    "-Clink-args=/NODEFAULTLIB:libucrt.lib",
 ]
 
 # The backtrace code for panics in Rust is almost as large as the entire editor.
