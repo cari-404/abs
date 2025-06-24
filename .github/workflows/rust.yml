@@ -226,12 +226,12 @@ jobs:
         rustup toolchain install nightly-x86_64-pc-windows-msvc
         rustup target add x86_64-win7-windows-msvc --toolchain nightly-x86_64-pc-windows-msvc
         rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launcabs
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p launchng
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p abs
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p multi
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p savevoucher
-        cargo +nightly-x86_64-pc-windows-msvc build --release -Z build-std=std,panic_abort --target x86_64-win7-windows-msvc -p updater
+        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p launcabs
+        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p launchng
+        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p abs
+        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p multi
+        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p savevoucher
+        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p updater
 
     - name: Install nightly toolchain for Windows 7 32-bit or Windows XP 32-bit
       if: matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-i686'
@@ -243,12 +243,12 @@ jobs:
         rustup toolchain install nightly-i686-pc-windows-msvc
         rustup target add i686-win7-windows-msvc --toolchain nightly-i686-pc-windows-msvc
         rustup component add rust-src --toolchain nightly-i686-pc-windows-msvc
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launcabs
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p launchng
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p abs
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p multi
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p savevoucher
-        cargo +nightly-i686-pc-windows-msvc build --release -Z build-std=std,panic_abort --target i686-win7-windows-msvc -p updater
+        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p launcabs
+        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p launchng
+        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p abs
+        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p multi
+        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p savevoucher
+        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p updater
 
     - name: Run tests
       run: ls -R

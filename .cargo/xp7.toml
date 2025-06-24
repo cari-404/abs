@@ -1,0 +1,28 @@
+# The following is not used by default via .cargo/config.toml,
+# because `build-std-features` cannot be keyed by profile.
+# This breaks the bench profile which doesn't support panic=abort.
+# See: https://github.com/rust-lang/cargo/issues/11214
+# See: https://github.com/rust-lang/cargo/issues/13894
+
+# Avoid linking with vcruntime140.dll by statically linking everything,
+# and then explicitly linking with ucrtbase.dll dynamically.
+# We do this, because vcruntime140.dll is an optional Windows component.
+[target.'cfg(all(target_os = "windows", target_env = "msvc"))']
+rustflags = [
+    "-Ctarget-feature=+crt-static",
+    "-Clink-args=/DEFAULTLIB:msvcrt.lib",
+    "-Clink-args=/NODEFAULTLIB:vcruntime.lib",
+    "-Clink-args=/NODEFAULTLIB:ucrt.lib",
+    "-Clink-args=/NODEFAULTLIB:libucrt.lib",
+]
+
+# The backtrace code for panics in Rust is almost as large as the entire editor.
+# = Huge reduction in binary size by removing all that.
+[unstable]
+build-std = ["std", "panic_abort"]
+# vvv The following parts are specific to official Windows builds. vvv
+# (The use of internal registries, security features, etc., are mandatory.)
+
+# Enable shadow stacks: https://learn.microsoft.com/en-us/cpp/build/reference/cetcompat
+[target.'cfg(all(target_os = "windows", any(target_arch = "x86", target_arch = "x86_64")))']
+rustflags = ["-Clink-args=/DYNAMICBASE", "-Clink-args=/CETCOMPAT"]
