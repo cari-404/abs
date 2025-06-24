@@ -10,8 +10,7 @@
 [target.'cfg(all(target_os = "windows", target_env = "msvc"))']
 rustflags = [
     "-Ctarget-feature=+crt-static",
-    "-Clink-args=/DEFAULTLIB:msvcrt.lib",
-    "-Clink-args=/DEFAULTLIB:libucrt.lib",
+    "-Clink-args=/DEFAULTLIB:ucrt.lib",
 ]
 
 # The backtrace code for panics in Rust is almost as large as the entire editor.
