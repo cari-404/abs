@@ -10,6 +10,8 @@
 [target.'cfg(all(target_os = "windows", target_env = "msvc"))']
 rustflags = [
     "-Ctarget-feature=+crt-static",
+    "-Clink-args=/DEFAULTLIB:ucrt.lib",
+    "-Clink-args=/NODEFAULTLIB:libucrt.lib",
 ]
 
 # The backtrace code for panics in Rust is almost as large as the entire editor.
@@ -20,5 +22,5 @@ build-std = ["std", "panic_abort"]
 # (The use of internal registries, security features, etc., are mandatory.)
 
 # Enable shadow stacks: https://learn.microsoft.com/en-us/cpp/build/reference/cetcompat
-[target.'cfg(all(target_os = "windows", any(target_arch = "x86", target_arch = "x86_64")))']
+[target.'cfg(all(target_os = "windows", target_arch = "x86_64"))']
 rustflags = ["-Clink-args=/DYNAMICBASE", "-Clink-args=/CETCOMPAT"]
