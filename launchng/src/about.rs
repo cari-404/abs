@@ -55,9 +55,9 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     });
     wnd2.on().wm_init_dialog(move |_| {
         println!("Start About APL");
-        ver_label.set_text_and_resize(&version_info);
-        os_label.set_text_and_resize(&version_message);
-        run_label.set_text_and_resize(&run_win);
+        let _ = ver_label.set_text_and_resize(&version_info);
+        let _ = os_label.set_text_and_resize(&version_message);
+        let _ = run_label.set_text_and_resize(&run_win);
         Ok(true)
     });
     let _ = wnd2.show_modal(wnd);

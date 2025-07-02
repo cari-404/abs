@@ -11,3 +11,5 @@ listview.*
 *.zip
 *.tar.gz
 update-dir/*
+draw/*
+deals/*

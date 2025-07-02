@@ -3,7 +3,7 @@ members = [
     "runtime",
     "console",
     "launcabs",
-    "video", "live", "savevoucher", "launchng", "libabsho", "draw", "updater", "multi"]
+    "video", "live", "savevoucher", "launchng", "libabsho", "draw", "updater", "multi", "deals", "loginweb"]
 resolver = "2"
 
 [profile.release]

@@ -1,4 +1,7 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.4 :
+    add support for bypass mode (unstable)
+    rework shoporder and shippinginfo data processing
 Whats new in 1.1.3 :
     Switch back price checker to abs
     fix for free shipping voucher
@@ -7,10 +10,6 @@ Whats new in 1.1.3 :
 Whats new in 1.1.2 :
     fix for free shipping voucher
     reimplement native client certificate
-Whats new in 1.1.1 :
-    Add Default struct
-    reduce code and dependency
-    add multi for all distribution
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -87,6 +86,8 @@ struct Opt {
     no_coins: bool,
     #[structopt(short, long, help = "Test mode")]
     test: bool,
+    #[structopt(short, long, help = "Bypass mode(Calculate Without server).!!!UNSTABLE!!!")]
+    bypass: bool,
 }
 
 #[cfg(windows)]
@@ -467,6 +468,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chosen_model = Arc::new(chosen_model);
     println!("asuransi: {:?}", temp.shoporders);
     let mut selected_platform_voucher = None;
+    /*if opt.bypass {
+        println!("Bypass mode enabled. Skipping voucher claim and checkout.");
+        println!("You can use this mode to calculate without server interaction.");
+        println!("Please ensure you have the correct data for the calculation.");
+        if let Some(ref checkout_price_data) = temp.checkout_price_data {
+            let detail_payment = task::CheckoutPriceData::parse_checkout_price_data(checkout_price_data);
+            match detail_payment {
+                Ok(detail_payment) => {
+                    println!("Checkout Price Data: {:#?}", detail_payment);
+                    println!("Subtotal Pesanan: {}", detail_payment.merchandise_subtotal / 100_000);
+                    println!("Total Proteksi Produk: {}", detail_payment.insurance_subtotal / 100_000);
+                    println!("Subtotal Pengiriman: {}", detail_payment.shipping_subtotal_before_discount / 100_000);
+                    println!("Biaya Layanan: {}", detail_payment.buyer_service_fee / 100_000);
+                    if detail_payment.shipping_discount_subtotal > 0 {
+                        println!("Total Diskon Pengiriman: -{}", detail_payment.shipping_discount_subtotal / 100_000);
+                    }
+                    if detail_payment.promocode_applied.is_some() {
+                        println!("Voucher Diskon: -{}", detail_payment.promocode_applied.as_ref().and_then(|v| v.as_i64()).map(|v| v / 100_000).unwrap_or(0));
+                    }
+                    if detail_payment.shopee_coins_redeemed.is_some() {
+                        println!("Koin Shopee Telah Digunakan: -{}", detail_payment.shopee_coins_redeemed.as_ref().and_then(|v| v.as_i64()).map(|v| v / 100_000).unwrap_or(0));
+                    }
+                    println!("---------------------------------------------------------------------");
+                    println!("Total Harga: {}", detail_payment.total_payable / 100_000);
+                }
+                Err(e) => {
+                    println!("Gagal parsing Checkout Price Data: {e}");
+                }
+            }
+        } else {
+            println!("Checkout Price Data: None");
+        }
+        process::exit(0);
+    }*/
     if opt.claim_platform_vouchers{
         if !promotionid.is_empty() && !signature.is_empty() {
             selected_platform_voucher = voucher::get_voucher_data(client.clone(), &promotionid, &signature, vc_header.clone()).await?;
@@ -508,6 +543,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let recommend_voucher_fut = async {
             if !opt.no_fsv {
                 voucher::get_recommend_platform_vouchers(
+                    adjusted_max_price,
                     &address_info,
                     client.clone(),
                     vc_header.clone(),
@@ -598,7 +634,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             tokio::spawn({
                                 let place_order_tx = place_order_tx.clone();
                                 async move {
-                                    if let Ok(body) = task_ng::get_ng(
+                                    if let Ok(mut body) = task_ng::get_ng(
                                         client,
                                         headers,
                                         &get_body_clone.0,
@@ -606,34 +642,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         get_body_clone.1.clone(),
                                     ).await {
                                         if let Some(limit) = adjusted_max_price {
-                                            let price_opt = body.checkout_price_data.as_ref()
+                                            if opt.bypass {
+                                                if let Some(ref mut checkout_price_data) = body.checkout_price_data {
+                                                    task::recalculate_shipping_subtotal(checkout_price_data, limit);
+                                                }
+                                                let _ = place_order_tx.send(Some(body));
+                                            }else{
+                                                let price_opt = body.checkout_price_data.as_ref()
                                                 .and_then(|d| d.get("merchandise_subtotal"))
                                                 .and_then(|v| v.as_i64());
 
-                                            match price_opt {
-                                                Some(price) if price > limit => {
-                                                    println!(
-                                                        "[{}]Harga terlalu tinggi ({} > {}). Coba ulang...",
-                                                        chrono::Local::now().format("%H:%M:%S.%3f"),
-                                                        price, limit
-                                                    );
-                                                    // Retry
-                                                }
-                                                Some(price) => {
-                                                    println!(
-                                                        "[{}]Harga cocok ({} <= {}).",
-                                                        chrono::Local::now().format("%H:%M:%S.%3f"),
-                                                        price, limit
-                                                    );
-                                                    // Lanjut proses
-                                                    let _ = place_order_tx.send(Some(body));
-                                                }
-                                                None => {
-                                                    println!(
-                                                        "[{}]Gagal membaca merchandise_subtotal, ulangi...",
-                                                        chrono::Local::now().format("%H:%M:%S.%3f")
-                                                    );
-                                                    // Retry
+                                                match price_opt {
+                                                    Some(price) if price > limit => {
+                                                        println!(
+                                                            "[{}]Harga terlalu tinggi ({} > {}). Coba ulang...",
+                                                            chrono::Local::now().format("%H:%M:%S.%3f"),
+                                                            price, limit
+                                                        );
+                                                        // Retry
+                                                    }
+                                                    Some(price) => {
+                                                        println!(
+                                                            "[{}]Harga cocok ({} <= {}).",
+                                                            chrono::Local::now().format("%H:%M:%S.%3f"),
+                                                            price, limit
+                                                        );
+                                                        // Lanjut proses
+                                                        let _ = place_order_tx.send(Some(body));
+                                                    }
+                                                    None => {
+                                                        println!(
+                                                            "[{}]Gagal membaca merchandise_subtotal, ulangi...",
+                                                            chrono::Local::now().format("%H:%M:%S.%3f")
+                                                        );
+                                                        // Retry
+                                                    }
                                                 }
                                             }
                                         } else {

@@ -9,6 +9,7 @@ build = "build.rs"
 [build-dependencies]
 thunk = { git = "https://github.com/cari-404/thunk.git", package = "thunk-rs" }
 winresource = "0.1"
+chrono = "0.4"
 
 [package.metadata.winresource]
 FileDescription = "Save Voucher"
@@ -25,4 +26,4 @@ structopt = "0.3"
 num_cpus = "1.16"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Console"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_System_Console"] }

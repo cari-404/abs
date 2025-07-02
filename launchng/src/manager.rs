@@ -108,17 +108,17 @@ impl Multi {
             let minute = match local.minute() {
                 m if m <= 14 => "14", m if m <= 29 => "29", m if m <= 44 => "44", _ => "59",
             };
-            self_clone.jam_text.set_text(&hour);
-            self_clone.menit_text.set_text(&minute);
-            self_clone.platform_combo.items().add(&[
+            let _ = self_clone.jam_text.set_text(&hour);
+            let _ = self_clone.menit_text.set_text(&minute);
+            let _ = self_clone.platform_combo.items().add(&[
                 "Claim", "Code", "Collection id", "Link",
             ]);
             self_clone.platform_combo.items().select(Some(0));
-            self_clone.my_list.cols().add("Url", 240);
-            self_clone.my_list.cols().add("Quantity", 120);
-            self_clone.my_list.cols().add("Variation", 120);
-            self_clone.my_list.cols().add("Courier", 120);
-            self_clone.my_list.cols().add("Voucher Shop", 120);
+            let _ = self_clone.my_list.cols().add("Url", 240);
+            let _ = self_clone.my_list.cols().add("Quantity", 120);
+            let _ = self_clone.my_list.cols().add("Variation", 120);
+            let _ = self_clone.my_list.cols().add("Courier", 120);
+            let _ = self_clone.my_list.cols().add("Voucher Shop", 120);
             self_clone.my_list.set_extended_style(true, w::co::LVS_EX::FULLROWSELECT);
             func_main::populate_combobox_with_files(&self_clone.file_combo, "akun");
             func_main::populate_payment_combo(&self_clone.payment_combo, self_clone.shared_payment_data.clone());
@@ -156,13 +156,13 @@ impl Multi {
                 } else {
                     self_clone.shopcode_text.text().unwrap_or_else(|_| String::new())
                 };
-                self_clone.my_list.items().add(
+                let _ = self_clone.my_list.items().add(
                     &[
                         &url.to_string(), &quantity.to_string(), &variasi.to_string(), &kurir.to_string(), &shop_code.to_string(),
                     ], None, () // no icon; requires a previous set_image_list()
                 );
-                self_clone.url_text.set_text("");
-                self_clone.quantity_text.set_text("1");
+                let _ = self_clone.url_text.set_text("");
+                let _ = self_clone.quantity_text.set_text("1");
             }
             Ok(())
         });
@@ -227,7 +227,7 @@ impl Multi {
             println!("{}", self2.url_text.text().unwrap_or_else(|_| String::new()));
             // Disable the button to prevent multiple async tasks from being started
             self2.cek_button.hwnd().EnableWindow(false);
-            self2.cek_button.hwnd().SetWindowText("Wait");
+            let _ = self2.cek_button.hwnd().SetWindowText("Wait");
             self2.variasi_combo.items().delete_all();
             self2.kurir_combo.items().delete_all();
             let file = match self2.file_combo.items().selected_text() {
@@ -240,13 +240,13 @@ impl Multi {
                 println!("Empty URL");
                 self2.cek_button.hwnd().EnableWindow(true);
                 //cek_button.clone().hwnd().ShowWindow(SW::HIDE);
-                self2.cek_button.hwnd().SetWindowText("Cek");
+                let _ = self2.cek_button.hwnd().SetWindowText("Cek");
             } else if file.is_empty() {
                 let _ = func_main::error_modal(&self2.wnd2, "Error", "Please select a file before running the program");
                 println!("Please select a file before running the program");
                 self2.cek_button.hwnd().EnableWindow(true);
                 self2.cek_button.hwnd().ShowWindow(SW::SHOW);
-                self2.cek_button.hwnd().SetWindowText("Cek");
+                let _ = self2.cek_button.hwnd().SetWindowText("Cek");
             }else{
                 let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
                 let device_info = crypt::create_devices(&func_main::get_fp_data(&file));
@@ -306,7 +306,7 @@ impl Multi {
                                     *shared = model_info.clone(); 
                                     let name_model_vec: Vec<String> = model_info.iter().map(|model| model.name.clone()).collect();
                                     for name_model in &name_model_vec {
-                                        self2.variasi_combo.items().add(&[name_model]);
+                                        let _ = self2.variasi_combo.items().add(&[name_model]);
                                         self2.variasi_combo.items().select(Some(0));
                                     }
                                 } else {
@@ -354,7 +354,7 @@ impl Multi {
                                 let kurirs_iter: Vec<String> = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
                                 for name_kurir in &kurirs_iter {
                                     println!("{}", name_kurir);
-                                    self2.kurir_combo.items().add(&[name_kurir]);
+                                    let _ = self2.kurir_combo.items().add(&[name_kurir]);
                                     self2.kurir_combo.items().select(Some(0));
                                 }
                             },
@@ -370,12 +370,12 @@ impl Multi {
                             }
                         };
                         self2.cek_button.clone().hwnd().EnableWindow(true);
-                        self2.cek_button.hwnd().SetWindowText("Cek");
+                        let _ = self2.cek_button.hwnd().SetWindowText("Cek");
                     }else{
                         let _ = func_main::error_modal(&self2.wnd2, "Error", "Invalid URL");
                         println!("Invalid URL");
                         self2.cek_button.hwnd().EnableWindow(true);
-                        self2.cek_button.hwnd().SetWindowText("Cek");
+                        let _ = self2.cek_button.hwnd().SetWindowText("Cek");
                     }
                 });
             };
@@ -612,16 +612,16 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/cari-404/abs/releases/latest")).await {
                     println!("Versi terbaru: {}", latest_version);
                     if upgrade::compare_versions(CURRENT_VERSION, &latest_version) == std::cmp::Ordering::Less {
-                        info_label_clone.set_text_and_resize(&format!("Versi :{} tersedia!", latest_version));
+                        let _ = info_label_clone.set_text_and_resize(&format!("Versi :{} tersedia!", latest_version));
                         download_button_clone.hwnd().EnableWindow(true);
                         let mut shared = check_version.lock().unwrap();
                         shared.clear();
                         *shared = latest_version;
                     }else {
-                        info_label_clone.set_text_and_resize("Versi terbaru sudah terpasang.");
+                        let _ = info_label_clone.set_text_and_resize("Versi terbaru sudah terpasang.");
                     }
                 } else {
-                    info_label_clone.set_text_and_resize("Gagal mengecek versi terbaru.");
+                    let _ = info_label_clone.set_text_and_resize("Gagal mengecek versi terbaru.");
                 }
                 progress_clone.set_marquee(false);
                 let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
@@ -715,8 +715,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                             } else {
                                 0.0
                             };
-                        
-                            info_label_clone.set_text_and_resize(&format!(
+                            let _ = info_label_clone.set_text_and_resize(&format!(
                                 "Kecepatan: {:.2} KB/s | Diunduh: {:.2}/{:.2} MB ({:.1}%) | ETA: {}",                     speed_kb,                     downloaded_mb,                     total_mb,                     percentage,                     format_eta(eta_secs)
                             ));
                             let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), downloaded as u64, total_size as u64);
@@ -729,8 +728,8 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                             eprintln!("{}", isi);
                             let _ = func_main::error_modal(&wnd2_clone, "Error", &isi);
                         }else{
-                            info_label_clone.set_text_and_resize("Click to install(restart the app)");
-                            download_button_clone.hwnd().SetWindowText("Install");
+                            let _ = info_label_clone.set_text_and_resize("Click to install(restart the app)");
+                            let _ = download_button_clone.hwnd().SetWindowText("Install");
                         }
                     }
                     Err(e) => {
@@ -785,8 +784,8 @@ pub fn telegram_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 }
             };
             println!("{:?}", data);
-            token_clone.set_text(&data.telegram_token);
-            chat_id_clone.set_text(&data.telegram_chat_id);
+            let _ = token_clone.set_text(&data.telegram_token);
+            let _ = chat_id_clone.set_text(&data.telegram_chat_id);
             if data.telegram_notif == true{
                 checkbox_clone.set_state(co::BST::CHECKED);
             }else{
@@ -916,10 +915,10 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let cookie_edit_clone = cookie_edit.clone();
     let my_list_clone = my_list.clone();
     cookie_edit.on().en_change(move || {
-        my_list_clone.items().delete_all();
+        let _ = my_list_clone.items().delete_all();
         let cookie_edit_text = cookie_edit_clone.text().unwrap_or_else(|_| String::new());
         let cookie_data = prepare::create_cookie(&cookie_edit_text);
-        my_list_clone.items().add(
+        let _ = my_list_clone.items().add(
             &[
                 "CSRFTOKEN",     &cookie_data.csrftoken, ], None, (),
         );
@@ -930,19 +929,19 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let sz_edit_clone = sz_edit.clone();
     let my_list_clone = my_list.clone();
     wnd2.on().wm_init_dialog(move |_| {
-        my_list_clone.cols().add("Item", 120);
-        my_list_clone.cols().add("Value", 300);
-        my_list_clone.items().add(
+        let _ = my_list_clone.cols().add("Item", 120);
+        let _ = my_list_clone.cols().add("Value", 300);
+        let _ = my_list_clone.items().add(
             &[
                 "Default",     "text", ], None, // no icon; requires a previous set_image_list()
             (),   // no object data; requires specifying the generic `ListView` type
         );
-        my_list_clone.items().add(
+        let _ = my_list_clone.items().add(
             &[
                 "CSRFTOKEN",     "Our CSRF token Hardwork", ], None, // no icon; requires a previous set_image_list()
             (),   // no object data; requires specifying the generic `ListView` type
         );
-        my_list_clone.items().add(
+        let _ = my_list_clone.items().add(
             &[
                 "Visible",     "True", ], None, (),
         );
@@ -951,15 +950,15 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         func_main::handle_file_selection(&file_combo_clone, &cookie_edit_clone, &sz_edit_clone, &my_list_clone);
         Ok(true)
     });
-    let file_combo_clone = file_combo.clone();
+    //let file_combo_clone = file_combo.clone();
     let cookie_edit_clone = cookie_edit.clone();
     let sz_edit_clone = sz_edit.clone();
     let my_list_clone = my_list.clone();
     file_combo.on().cbn_edit_change(move || {
         println!("Edit change!");
-        my_list_clone.items().delete_all();
-        sz_edit_clone.set_text("");
-        cookie_edit_clone.set_text("");
+        let _ = my_list_clone.items().delete_all();
+        let _ = sz_edit_clone.set_text("");
+        let _ = cookie_edit_clone.set_text("");
         //println!("{}", file_combo_clone.text());
         Ok(())
     });
@@ -1039,7 +1038,6 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let _ = tx_msg.send("Stopped".to_string());
     let interrupt_flag = Arc::new(AtomicBool::new(false));
     let shared_fsid = Arc::new(Mutex::new(vec![]));
-    let wnd_clone = wnd.clone();
     let dont_move = (gui::Horz::None, gui::Vert::None);
     let _resize_h = (gui::Horz::Resize, gui::Vert::None);
     let _resize_v = (gui::Horz::None, gui::Vert::Resize);
@@ -1122,7 +1120,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                     }
                 }
                 let item = my_list_clone.items().get(selected_item_index);
-                item.set_text(6 as u32, &format!("{:?}", variation));
+                let _ = item.set_text(6 as u32, &format!("{:?}", variation));
             });
         } else {
             println!("No item selected");
@@ -1132,14 +1130,14 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let file_combo_clone = file_combo.clone();
     let my_list_clone = my_list.clone();
     wnd2.on().wm_init_dialog(move |_| {
-        my_list_clone.cols().add("Name", 120);
-        my_list_clone.cols().add("Modelid", 120);
-        my_list_clone.cols().add("Estimate", 120);
-        my_list_clone.cols().add("Hidden", 120);
-        my_list_clone.cols().add("Stock", 120);
-        my_list_clone.cols().add("Url", 300);
-        my_list_clone.cols().add("Variation", 120);
-        my_list_clone.items().add(
+        let _ = my_list_clone.cols().add("Name", 120);
+        let _ = my_list_clone.cols().add("Modelid", 120);
+        let _ = my_list_clone.cols().add("Estimate", 120);
+        let _ = my_list_clone.cols().add("Hidden", 120);
+        let _ = my_list_clone.cols().add("Stock", 120);
+        let _ = my_list_clone.cols().add("Url", 300);
+        let _ = my_list_clone.cols().add("Variation", 120);
+        let _ = my_list_clone.items().add(
             &[
                 "Default",     "text",     "text",     "text",     "text",     "text",     "", ], None, // no icon; requires a previous set_image_list()
             (),   // no object data; requires specifying the generic `ListView` type
@@ -1162,8 +1160,8 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 let text = item.text(0).to_lowercase();
                 if text.contains(&search_text.to_lowercase()) {
                     println!("Item cocok di index {}: {}", i, text);
-                    item.select(true); // pilih item
-                    item.ensure_visible(); // scroll ke item
+                    let _ = item.select(true); // pilih item
+                    let _ = item.ensure_visible(); // scroll ke item
                 }
             }
         };
@@ -1208,7 +1206,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                         }
                         for fsi in &fsid_current {
                             println!("{}", fsi.promotionid);
-                            fs_combo_clone.items().add(&[&fsi.promotionid.to_string()]);
+                            let _ = fs_combo_clone.items().add(&[&fsi.promotionid.to_string()]);
                         }
                         if fs_combo_clone.items().count() > Ok(0) {
                             fs_combo_clone.items().select(Some(0));
@@ -1253,7 +1251,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let isi = format!("Please select a fs id before checking the fs");
             let _ = func_main::error_modal(&wnd2_clone, "Error check data", &isi);
         } else {
-            mode_label_clone.set_text_and_resize("Single");
+            let _ = mode_label_clone.set_text_and_resize("Single");
             wnd2_clone.hwnd().ShowWindow(w::co::SW::SHOWMAXIMIZED);
             let Ok(Some(selecte_fsid)) = fs_combo_clone.items().selected_text() else {
                 eprintln!("Tidak ada fsid yang dipilih.");
@@ -1268,9 +1266,9 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let mut fsinfo = Vec::new();
             let shared = shared_fsid_clone.lock().unwrap();
             if let Some(matching) = shared.iter().find(|item| item.promotionid == promotionid) {
-                proid_label.set_text_and_resize(&matching.promotionid.to_string());
-                stime_label.set_text_and_resize(&(func_main::human_readable_time(matching.start_time)).to_string());
-                etime_label.set_text_and_resize(&(func_main::human_readable_time(matching.end_time)).to_string());
+                let _ = proid_label.set_text_and_resize(&matching.promotionid.to_string());
+                let _ = stime_label.set_text_and_resize(&(func_main::human_readable_time(matching.start_time)).to_string());
+                let _ = etime_label.set_text_and_resize(&(func_main::human_readable_time(matching.end_time)).to_string());
                 fsinfo.push(matching.clone());
             } else {
                 println!("Tidak ditemukan promotionid yang cocok");
@@ -1298,7 +1296,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let isi = format!("Promotionid not available\nPlease check the account selected and try again");
             let _ = func_main::error_modal(&wnd2_clone, "Error: not found", &isi);
         } else {
-            mode_label_clone.set_text_and_resize("All");
+            let _ = mode_label_clone.set_text_and_resize("All");
             wnd2_clone.hwnd().ShowWindow(w::co::SW::SHOWMAXIMIZED);
             let _ = get_flashsale_products(&wnd_clone, &wnd2_clone, Arc::new(shared.to_vec()), &file_combo_clone, &my_list_clone, &progress_clone, &interrupt_flag_clone, &tx_msg_clone, &progress_label_clone, &count_label_clone);
         }
@@ -1340,7 +1338,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                 }
             }
         }
-        my_list_clone.items().delete_all();
+        let _ = my_list_clone.items().delete_all();
         println!("Window is gone, goodbye!");
         let _ = taskbar_clone.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
         Ok(())
@@ -1366,7 +1364,7 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
         let isi = format!("Please select a file before checking the fs");
         let _ = func_main::error_modal(&wnd2, "Error check data", &isi);
     } else {
-        my_list.items().delete_all();
+        let _ = my_list.items().delete_all();
         let Ok(Some(select_cookie_file)) = file_combo.items().selected_text() else {
             eprintln!("Tidak ada file cookie yang dipilih.");
             return Ok(());
@@ -1412,11 +1410,11 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
                                             return;
                                         }
                                         let link = format!("https://shopee.co.id/product/{}/{}", item.shopid, item.itemid);
-                                        my_list_clone.items().add(&[
+                                        let _ = my_list_clone.items().add(&[
                                             &item.name,                                 &format!("{:?}", item.modelids.unwrap_or_default()),                                 &func_main::format_thousands(item.price_before_discount * (100 - item.raw_discount) / 100 / 100000),                                 &item.hidden_price_display.as_deref().unwrap_or("No Hide").to_string(),                                 &item.stock.to_string(),                                 &link,                             ], None, ());
                                         let _ = tx_msg.send("Running".to_string());
                                         count +=1;
-                                        count_label.set_text_and_resize(&count.to_string());
+                                        let _ = count_label.set_text_and_resize(&count.to_string());
                                     }
                                 }
                                 Err(e) => {
@@ -1428,7 +1426,7 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
                             progress_clone.set_position(potition as u32);
                             let progressinf = format!("{}/{}", potition, max);
                             println!("Progress: {}", progressinf);
-                            progress_label_clone.set_text_and_resize(&progressinf);
+                            let _ = progress_label_clone.set_text_and_resize(&progressinf);
                             let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), potition as u64, max as u64);
                         }
                     }

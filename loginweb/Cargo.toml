@@ -1,0 +1,12 @@
+[package]
+name = "loginweb"
+version = "1.1.4"
+edition = "2024"
+
+[dependencies]
+runtime = { path = "../runtime"}
+chromiumoxide = "0.7"
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+anyhow = "1.0"
+

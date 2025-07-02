@@ -34,6 +34,12 @@ pub struct VoucherOnRecomendPlatform {
     pub voucher_code: String,
     pub signature: String,
     pub fsv_error_message: Option<String>,
+    pub fsv_voucher_card_ui_info: Option<FsvVoucherCardUiInfo>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct FsvVoucherCardUiInfo {
+    pub int_min_spend_fsv_ui_only: i64,
 }
 
 #[derive(Serialize)]
@@ -464,7 +470,7 @@ pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &s
 	Ok(vouchers)
 }
 
-pub async fn get_recommend_platform_vouchers(buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
+pub async fn get_recommend_platform_vouchers(adjusted_max_price: Option<i64>, buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let orders_json = vec![Orders {
         shopid: product_info.shop_id,
         carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
@@ -555,7 +561,7 @@ pub async fn get_recommend_platform_vouchers(buyer_address: &AddressInfo, client
     // Extract freeshipping_vouchers
     if status == reqwest::StatusCode::OK {
         if let Some(freeshipping_vouchers_array) = json_resp.data.as_ref().and_then(|data| data.freeshipping_vouchers.as_ref()) {
-            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| v.fsv_error_message.is_none()) {
+            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| { v.fsv_error_message.is_none() && v.fsv_voucher_card_ui_info.as_ref().map_or(true, |info| adjusted_max_price.map_or(true, |max| info.int_min_spend_fsv_ui_only <= max))}) {
                 freeshipping_voucher = Some(Vouchers {
                     promotionid : voucher.promotionid,
                     voucher_code : voucher.voucher_code.clone(),

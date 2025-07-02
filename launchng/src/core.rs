@@ -1,6 +1,6 @@
 use winsafe::{self as w,
     gui, prelude::*, co::{self, ES, SS, SW}, AnyResult,
-    HMENU, guard,
+    HMENU, guard, HWND,
 };
 use ::runtime::prepare::{self, AddressInfo, ShippingInfo, ModelInfo, PaymentInfo,};
 use runtime::crypt;
@@ -45,8 +45,9 @@ pub struct MyWindow {
     link_label: gui::Label,
     link_text: gui::Edit,
     coins_checkbox: gui::CheckBox,
-    shared_payment_data: Arc<Mutex<Vec<PaymentInfo>>>, 
-    shared_variation_data: Arc<Mutex<Vec<ModelInfo>>>, 
+    bypass_checkbox: gui::CheckBox,
+    shared_payment_data: Arc<Mutex<Vec<PaymentInfo>>>,
+    shared_variation_data: Arc<Mutex<Vec<ModelInfo>>>,
     shared_kurir_data: Arc<Mutex<Vec<ShippingInfo>>>,
 }
 
@@ -192,6 +193,13 @@ impl MyWindow {
         let coins_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
             text: "Use Coins".to_owned(),
             position: (380, 160),
+            size: (80, 20),
+            check_state: co::BST::CHECKED,
+            ..Default::default()
+        });
+        let bypass_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
+            text: "Bypass".to_owned(),
+            position: (480, 160),
             size: (80, 20),
             check_state: co::BST::CHECKED,
             ..Default::default()
@@ -397,6 +405,7 @@ impl MyWindow {
             cid_label, cid_text,
             link_label, link_text,
             coins_checkbox,
+            bypass_checkbox,
             shared_payment_data, shared_variation_data, shared_kurir_data
         };
         new_self.events(); // attach our events
@@ -423,7 +432,7 @@ impl MyWindow {
             println!("{}", self2.url_text.text().unwrap_or_else(|_| String::new()));
             // Disable the button to prevent multiple async tasks from being started
             self2.btn_cek.hwnd().EnableWindow(false);
-            self2.btn_cek.hwnd().SetWindowText("Wait");
+            let _ = self2.btn_cek.hwnd().SetWindowText("Wait");
             self2.variasi_combo.items().delete_all();
             self2.kurir_combo.items().delete_all();
             let file = match self2.file_combo.items().selected_text() {
@@ -436,13 +445,13 @@ impl MyWindow {
                 println!("Empty URL");
                 self2.btn_cek.hwnd().EnableWindow(true);
                 //btn_cek.clone().hwnd().ShowWindow(SW::HIDE);
-                self2.btn_cek.hwnd().SetWindowText("Cek");
+                let _ = self2.btn_cek.hwnd().SetWindowText("Cek");
             } else if file.is_empty() {
                 let _ = func_main::error_cek(&self2.wnd, "Error", "Please select a file before running the program");
                 println!("Please select a file before running the program");
                 self2.btn_cek.hwnd().EnableWindow(true);
                 self2.btn_cek.hwnd().ShowWindow(SW::SHOW);
-                self2.btn_cek.hwnd().SetWindowText("Cek");
+                let _ = self2.btn_cek.hwnd().SetWindowText("Cek");
             }else{
                 let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
                 let device_info = crypt::create_devices(&func_main::get_fp_data(&file));
@@ -502,7 +511,7 @@ impl MyWindow {
                                     *shared = model_info.clone(); 
                                     let name_model_vec: Vec<String> = model_info.iter().map(|model| model.name.clone()).collect();
                                     for name_model in &name_model_vec {
-                                        self2.variasi_combo.items().add(&[name_model]);
+                                        let _ = self2.variasi_combo.items().add(&[name_model]);
                                         self2.variasi_combo.items().select(Some(0));
                                     }
                                 } else {
@@ -547,10 +556,9 @@ impl MyWindow {
                                 let mut shared = shared_kurir_data_clone.lock().unwrap();
                                 shared.clear();
                                 *shared = kurirs.clone(); 
-                                let kurirs_iter: Vec<String> = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
-                                for name_kurir in &kurirs_iter {
-                                    println!("{}", name_kurir);
-                                    self2.kurir_combo.items().add(&[name_kurir]);
+                                for (index, shipping) in kurirs.iter().enumerate() {
+                                    println!("{}. {} - Harga: {} - Id: {}", index + 1, shipping.channel_name, shipping.original_cost / 100000, shipping.channelid);
+                                    let _ = self2.kurir_combo.items().add(&[shipping.channel_name.clone()]);
                                     self2.kurir_combo.items().select(Some(0));
                                 }
                             },
@@ -566,12 +574,12 @@ impl MyWindow {
                             }
                         };
                         self2.btn_cek.clone().hwnd().EnableWindow(true);
-                        self2.btn_cek.hwnd().SetWindowText("Cek");
+                        let _ = self2.btn_cek.hwnd().SetWindowText("Cek");
                     }else{
                         let _ = func_main::error_cek(&self2.wnd, "Error", "Invalid URL");
                         println!("Invalid URL");
                         self2.btn_cek.hwnd().EnableWindow(true);
-                        self2.btn_cek.hwnd().SetWindowText("Cek");
+                        let _ = self2.btn_cek.hwnd().SetWindowText("Cek");
                     }
                 });
             };
@@ -593,8 +601,11 @@ impl MyWindow {
         self.harga_checkbox.on().bn_clicked(move || {
             if self2.harga_checkbox.is_checked() == true{
                 self2.harga_text.hwnd().EnableWindow(true);
+                self2.bypass_checkbox.hwnd().EnableWindow(true);
             }else{
                 self2.harga_text.hwnd().EnableWindow(false);
+                self2.bypass_checkbox.hwnd().EnableWindow(false);
+                self2.bypass_checkbox.set_state(co::BST::UNCHECKED);
             }
             Ok(())
         });
@@ -611,11 +622,14 @@ impl MyWindow {
                 m if m <= 44 => "44",
                 _ => "59",
             };
-            self2.jam_text.set_text(&hour);
-            self2.menit_text.set_text(&minute);
+            self2.coins_checkbox.set_state(co::BST::CHECKED);
+            self2.fsv_checkbox.set_state(co::BST::CHECKED);
+            let _ = self2.jam_text.set_text(&hour);
+            let _ = self2.menit_text.set_text(&minute);
             self2.platform_combobox.hwnd().EnableWindow(false);
             self2.code_shop_text.hwnd().EnableWindow(false);
             self2.harga_text.hwnd().EnableWindow(false);
+            self2.bypass_checkbox.hwnd().EnableWindow(false);
             func_main::set_visibility(&self2.promotionid_label, &self2.promotionid_text, false);
             func_main::set_visibility(&self2.signature_label, &self2.signature_text, false);
             func_main::set_visibility(&self2.code_label, &self2.code_platform_text, false);
@@ -705,6 +719,22 @@ impl MyWindow {
             }
             Ok(())
         });
+        let self2 = self.clone();
+        self.coins_checkbox.on().bn_clicked(move || {
+            println!("Use Coins clicked!");
+            if self2.coins_checkbox.is_checked() == true{
+                self2.bypass_checkbox.set_state(co::BST::UNCHECKED);
+            }
+            Ok(())
+        });
+        let self2 = self.clone();
+        self.bypass_checkbox.on().bn_clicked(move || {
+            println!("Use Bypass clicked!");
+            if self2.bypass_checkbox.is_checked() == true{
+                self2.coins_checkbox.set_state(co::BST::UNCHECKED);
+            }
+            Ok(())
+        });
 		self.wnd.on().wm_command_acc_menu(101 as u16, move || {
             let command = vec!["start","abs.exe",];
             let _status = std::process::Command::new("cmd")
@@ -779,7 +809,10 @@ impl MyWindow {
         let wnd = self.wnd.clone();
 		self.wnd.on().wm_command_acc_menu(10 as u16, move || {
             println!("Menu clicked!");
-            let _ = manager::log_window(&wnd);
+            if let Err(e) = manager::log_window(&wnd) {
+                HWND::NULL.MessageBox(
+                    &format!("{:?}", e), "Uncaught error", co::MB::ICONERROR).unwrap();
+            }
 			Ok(())
 		});
         let wnd = self.wnd.clone();
@@ -878,6 +911,9 @@ impl MyWindow {
         }
         if self2.coins_checkbox.state() == co::BST::UNCHECKED {
             commands.push("--no-coins".to_string());
+        }        
+        if self2.bypass_checkbox.state() == co::BST::CHECKED {
+            commands.push("--bypass".to_string());
         }
         if self2.platform_checkbox.state() == co::BST::CHECKED {
             match self2.platform_combobox.items().selected_index() {

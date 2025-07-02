@@ -490,6 +490,12 @@ pub async fn get_ng(client: Arc<reqwest::Client>, base_headers: Arc<HeaderMap>, 
         //println!("[{:?}] setelah .json()", t1.elapsed());
         //println!("body: {}", v);
         let v = Arc::new(v);
+        if let Some(shipping_orders) = v.get("shipping_orders") {
+            place_order_body.shipping_orders = serde_json::from_value(shipping_orders.clone())?;
+        }
+        if let Some(shoporders) = v.get("shoporders") {
+            place_order_body.shoporders = serde_json::from_value(shoporders.clone())?;
+        }
 
         let keys = [
             "checkout_price_data",
@@ -832,7 +838,7 @@ pub async fn multi_get_recommend_platform_vouchers(buyer_address: &AddressInfo, 
                                     iteminfos: vec![],
                                     carrier_infos: vec![CarrierInfo {
                                         carrier_id: shipping[index].channelidroot,
-                                        esf: shipping[index].original_cost,
+                                        esf: if shipping[index].original_cost == 0 { 1 } else { shipping[index].original_cost },
                                         shippable_item_ids: order.items.iter().map(|item| item.itemid).collect(),
                                         buyer_address: buyer_address.clone(),
                                     }],

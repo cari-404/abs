@@ -150,13 +150,13 @@ pub fn handle_file_selection(file_combo: &gui::ComboBox, cookie_edit: &gui::Edit
     if let Ok(Some(file)) = file_combo.items().selected_text() {
         println!("selected file: {}", file);
         if !file.is_empty() {
-            my_list.items().delete_all();
+            let _ = my_list.items().delete_all();
             let cookie_content = prepare::read_cookie_file(&file);
             let cookie_data = prepare::create_cookie(&cookie_content);
             let sz_token_content = get_fp_data(&file);
-            sz_edit.set_text(&sz_token_content);
-            cookie_edit.set_text(&cookie_content);
-            my_list.items().add(
+            let _ = sz_edit.set_text(&sz_token_content);
+            let _ = cookie_edit.set_text(&cookie_content);
+            let _ = my_list.items().add(
                 &[
                     "CSRFTOKEN",
                     &cookie_data.csrftoken,
@@ -181,7 +181,7 @@ pub fn populate_combobox_with_files(combo: &gui::ComboBox, folder_path: &str) {
                     println!("Available files:");
                     for file_name in files {
                         println!("{}", file_name);
-                        combo.items().add(&[&file_name]); // Add file to combobox.
+                        let _ = combo.items().add(&[&file_name]); // Add file to combobox.
                     }
                     if combo.items().count() > Ok(0) {
                         combo.items().select(Some(0));
@@ -224,7 +224,7 @@ pub fn populate_payment_combo(combo: &gui::ComboBox, shared_variation_clone: Arc
                 shared.clear();
                 *shared = payment_info_list.clone(); 
                 for payment_info in payment_info_list {
-                    combo.items().add(&[payment_info.name.to_string()]);
+                    let _ = combo.items().add(&[payment_info.name.to_string()]);
                     if combo.items().count() > Ok(0) {
                         combo.items().select(Some(0));
                     }

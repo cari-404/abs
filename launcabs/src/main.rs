@@ -979,7 +979,7 @@ impl App {
         let media_model = vec!["No Media","Live","Video",];
         let version_info = env!("CARGO_PKG_VERSION");
         let ver_label_info1 = "Launcher Auto Buy Shopee";
-        let ver_label_info2 = format!("Version : {} (PREVIEW)", version_info);
+        let ver_label_info2 = format!("Version : {}", version_info);
         self.version_label.set_text(ver_label_info1);
         self.version_label2.set_text(&ver_label_info2);
         self.harga_text.set_text("1000");
