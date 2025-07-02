@@ -122,10 +122,10 @@ jobs:
       if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64'
       run: |
         rustup target add ${{ matrix.platform.target }}
-        cargo +stable build --release --target ${{ matrix.platform.target }} -p abs
-        cargo +stable build --release --target ${{ matrix.platform.target }} -p multi
-        cargo +stable build --release --target ${{ matrix.platform.target }} -p savevoucher
-        cargo +stable build --release --target ${{ matrix.platform.target }} -p updater
+        cargo +stable build --release -j 8 --target ${{ matrix.platform.target }} -p abs
+        cargo +stable build --release -j 8 --target ${{ matrix.platform.target }} -p multi
+        cargo +stable build --release -j 8 --target ${{ matrix.platform.target }} -p savevoucher
+        cargo +stable build --release -j 8 --target ${{ matrix.platform.target }} -p updater
 
     - name: Build binary(abs)
       uses: houseabsolute/actions-rust-cross@v0
@@ -134,7 +134,7 @@ jobs:
         command: "build"
         target: ${{ matrix.platform.target }}
         toolchain: ${{ matrix.toolchain }}
-        args: "--release -p abs"
+        args: "--release -j 8 -p abs"
         strip: true
     - name: Build binary(multi)
       uses: houseabsolute/actions-rust-cross@v0
@@ -143,7 +143,7 @@ jobs:
         command: "build"
         target: ${{ matrix.platform.target }}
         toolchain: ${{ matrix.toolchain }}
-        args: "--release -p multi"
+        args: "--release -j 8 -p multi"
         strip: true
     - name: Build binary(savevoucher)
       uses: houseabsolute/actions-rust-cross@v0
@@ -152,7 +152,7 @@ jobs:
         command: "build"
         target: ${{ matrix.platform.target }}
         toolchain: ${{ matrix.toolchain }}
-        args: "--release -p savevoucher"
+        args: "--release -j 8 -p savevoucher"
         strip: true
 
     - name: Build binary (lauchabs)
@@ -162,7 +162,7 @@ jobs:
         command: "build"
         target: ${{ matrix.platform.target }}
         toolchain: ${{ matrix.toolchain }}
-        args: "--release -p launcabs"
+        args: "--release -j 8 -p launcabs"
         strip: true
 
     - name: Build binary (LauncherNG)
@@ -172,7 +172,7 @@ jobs:
         command: "build"
         target: ${{ matrix.platform.target }}
         toolchain: ${{ matrix.toolchain }}
-        args: "--release -p launchng"
+        args: "--release -j 8 -p launchng"
         strip: true
 
     - name: Build binary (updater)
@@ -182,7 +182,7 @@ jobs:
         command: "build"
         target: ${{ matrix.platform.target }}
         toolchain: ${{ matrix.toolchain }}
-        args: "--release -p updater"
+        args: "--release -j 8 -p updater"
         strip: true
 
     - name: Build for Android-NDK
@@ -190,10 +190,10 @@ jobs:
       run: |
         cargo install cargo-ndk
         rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
-        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p abs
-        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p multi
-        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p savevoucher
-        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -p updater
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -j 8 -p abs
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -j 8 -p multi
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -j 8 -p savevoucher
+        cargo ndk -t armeabi-v7a -t arm64-v8a build --release -j 8 -p updater
 
     - name: Configure for Windows XP Build
       if: matrix.platform.os_name == 'WindowsXP-x86_64' || matrix.platform.os_name == 'WindowsXP-i686'
@@ -226,12 +226,12 @@ jobs:
         rustup toolchain install nightly-x86_64-pc-windows-msvc
         rustup target add x86_64-win7-windows-msvc --toolchain nightly-x86_64-pc-windows-msvc
         rustup component add rust-src --toolchain nightly-x86_64-pc-windows-msvc
-        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p launcabs
-        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p launchng
-        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p abs
-        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p multi
-        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p savevoucher
-        cargo +nightly-x86_64-pc-windows-msvc build --release --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p updater
+        cargo +nightly-x86_64-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p launcabs
+        cargo +nightly-x86_64-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p launchng
+        cargo +nightly-x86_64-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p abs
+        cargo +nightly-x86_64-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p multi
+        cargo +nightly-x86_64-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p savevoucher
+        cargo +nightly-x86_64-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target x86_64-win7-windows-msvc -p updater
 
     - name: Install nightly toolchain for Windows 7 32-bit or Windows XP 32-bit
       if: matrix.platform.os_name == 'Windows7-i686' || matrix.platform.os_name == 'WindowsXP-i686'
@@ -243,12 +243,12 @@ jobs:
         rustup toolchain install nightly-i686-pc-windows-msvc
         rustup target add i686-win7-windows-msvc --toolchain nightly-i686-pc-windows-msvc
         rustup component add rust-src --toolchain nightly-i686-pc-windows-msvc
-        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p launcabs
-        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p launchng
-        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p abs
-        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p multi
-        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p savevoucher
-        cargo +nightly-i686-pc-windows-msvc build --release --config .cargo/xp7.toml --target i686-win7-windows-msvc -p updater
+        cargo +nightly-i686-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target i686-win7-windows-msvc -p launcabs
+        cargo +nightly-i686-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target i686-win7-windows-msvc -p launchng
+        cargo +nightly-i686-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target i686-win7-windows-msvc -p abs
+        cargo +nightly-i686-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target i686-win7-windows-msvc -p multi
+        cargo +nightly-i686-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target i686-win7-windows-msvc -p savevoucher
+        cargo +nightly-i686-pc-windows-msvc build --release -j 8 --config .cargo/xp7.toml --target i686-win7-windows-msvc -p updater
 
     - name: Run tests
       run: ls -R
