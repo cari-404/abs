@@ -1,4 +1,6 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.5 :
+    add logging for request and response for diagnostic
 Whats new in 1.1.4 :
     add support for bypass mode (unstable)
     rework shoporder and shippinginfo data processing
@@ -7,9 +9,6 @@ Whats new in 1.1.3 :
     fix for free shipping voucher
     add support multi product
     update to winsafe 0.0.24
-Whats new in 1.1.2 :
-    fix for free shipping voucher
-    reimplement native client certificate
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -18,6 +17,7 @@ use runtime::task_ng::{self};
 use runtime::voucher::{self};
 use runtime::crypt::{self};
 use runtime::telegram::{self};
+use runtime::telemetry;
 use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike, Utc};
 use std::io::{self, Write, Read};
 use std::process;
@@ -86,6 +86,8 @@ struct Opt {
     no_coins: bool,
     #[structopt(short, long, help = "Test mode")]
     test: bool,
+    #[structopt(short, long, help = "Collect logs")]
+    dump: bool,
     #[structopt(short, long, help = "Bypass mode(Calculate Without server).!!!UNSTABLE!!!")]
     bypass: bool,
 }
@@ -218,7 +220,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     println!("Telegram Notification data: {:?}", config);
-	args_checking(&opt);
+    let telmet = if opt.dump {
+        telemetry::Telemetry::new(env!("CARGO_PKG_NAME"))
+    } else {
+        telemetry::Telemetry::default()
+    };
+    telmet.write(&format!("Auto Buy Shopee [Version {}]", version_info));
+    args_checking(&opt);
     clear_screen();
     // Welcome Header
     println!("Auto Buy Shopee [Version {}]", version_info);
@@ -306,6 +314,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
     }
     let task_time_dt = parse_task_time(&task_time_str)?;
+    telmet.write(&format!("Url: {}", target_url));
+    telmet.write(&format!("Task time set to: {}", task_time_dt));
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
@@ -324,6 +334,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("State     : {}", address_info.state);
 	println!("City      : {}", address_info.city);
 	println!("District  : {}", address_info.district);
+    telmet.write(&format!(
+        "User info: username={}, email={}, phone={}, state={}, city={}, district={}",
+        userdata.username,
+        userdata.email,
+        userdata.phone,
+        address_info.state,
+        address_info.city,
+        address_info.district
+    ));
 	//std::thread::sleep(std::time::Duration::from_secs(2));
 	println!("shop_id: {}", product_info.shop_id);
     println!("item_id: {}", product_info.item_id);
@@ -695,6 +714,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let client = Arc::clone(&client);
                     let mut place_order_rx = place_order_rx.clone();
                     let stop_flag = Arc::clone(&stop_flag);
+                    let telmet = telmet.clone();
             
                     tokio::spawn(async move {
                         let mut try_count = 0;
@@ -707,6 +727,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             if stop_flag.load(Ordering::Relaxed) {
                                 return;
                             }
+                            telmet.write(&format!("Request PlaceOrder on {} try {} : {:#?}", i, try_count, place_order_body));
                             let mpp = match task_ng::place_order_ng(client.clone(), shared_headers.clone(), &place_order_body).await
                             {
                                 Ok(response) => response,
@@ -715,6 +736,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     continue;
                                 }
                             };
+                            telmet.write(&format!("Response PlaceOrder on {} try {}: {:#?}", i, try_count, mpp));
                             // Mengecek apakah `mpp` memiliki field `checkoutid`
                             println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
                             if let Some(error) = mpp.get("error") {

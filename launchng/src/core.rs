@@ -886,6 +886,7 @@ impl MyWindow {
                 "--harga".to_string(), harga,
                 "--quantity".to_string(), kuan,
                 "--token".to_string(), "".to_string(),
+                "--dump".to_string(), 
             ];
             // Tambahkan --product hanya jika variasi_combo memiliki lebih dari 1 item
             let count = match unsafe {

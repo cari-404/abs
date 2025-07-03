@@ -1,5 +1,6 @@
 pub mod prepare;
 pub use prepare::{ModelInfo, ShippingInfo, PaymentInfo};
+pub mod telemetry;
 #[cfg(feature = "prepare-ext")]
 pub mod prepare_ext;
 #[cfg(feature = "core")]
