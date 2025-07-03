@@ -1,14 +1,11 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.6 :
+    add bypass breaker
 Whats new in 1.1.5 :
     add logging for request and response for diagnostic
 Whats new in 1.1.4 :
     add support for bypass mode (unstable)
     rework shoporder and shippinginfo data processing
-Whats new in 1.1.3 :
-    Switch back price checker to abs
-    fix for free shipping voucher
-    add support multi product
-    update to winsafe 0.0.24
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -639,16 +636,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let chosen_payment_clone = Arc::clone(&chosen_payment);
                     let place_order_tx = place_order_tx.clone();
                     let stop_flag_refresher = Arc::clone(&stop_flag);
+                    let bypass_breaker = Arc::new(AtomicBool::new(false));
 
                     tokio::spawn(async move {
                         while trigger_rx.recv().await.is_some() {
                             if stop_flag_refresher.load(Ordering::Relaxed) {
                                 break;
                             }
+                            if bypass_breaker.load(Ordering::Relaxed) {
+                                break;
+                            }
                             let client = Arc::clone(&client);
                             let headers = Arc::clone(&shared_headers);
                             let chosen_payment = Arc::clone(&chosen_payment_clone);
                             let get_body_clone = Arc::clone(&get_body_clone);
+                            let bypass_breaker = Arc::clone(&bypass_breaker);
 
                             tokio::spawn({
                                 let place_order_tx = place_order_tx.clone();
@@ -666,6 +668,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     task::recalculate_shipping_subtotal(checkout_price_data, limit);
                                                 }
                                                 let _ = place_order_tx.send(Some(body));
+                                                bypass_breaker.store(true, Ordering::Relaxed);
                                             }else{
                                                 let price_opt = body.checkout_price_data.as_ref()
                                                 .and_then(|d| d.get("merchandise_subtotal"))
