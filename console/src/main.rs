@@ -1,11 +1,11 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.7 :
+    add new features to multi
+    -bypass, dump, and bypass breaker
 Whats new in 1.1.6 :
     add bypass breaker
 Whats new in 1.1.5 :
     add logging for request and response for diagnostic
-Whats new in 1.1.4 :
-    add support for bypass mode (unstable)
-    rework shoporder and shippinginfo data processing
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -126,7 +126,7 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     println!("{:<padding$}: {}", "Model Id", chosen_model.modelid, padding = padding);
     println!("{:<padding$}: {}", "Kurir", chosen_shipping.channel_name, padding = padding);
     if !max_price.is_empty() {
-        println!("{:<padding$}: {}", "Max Price", max_price, padding = padding);
+        println!("{:<padding$}: {} {}", "Max Price", max_price, if opt.bypass {"(Bypass)"} else { "" }, padding = padding);
     }
     println!("{:<padding$}: {}", "Payment", chosen_payment.name, padding = padding);
     if opt.claim_platform_vouchers {

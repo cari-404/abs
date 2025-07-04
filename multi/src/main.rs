@@ -15,6 +15,7 @@ use runtime::task_ng::{self};
 use runtime::voucher::{self};
 use runtime::crypt::{self};
 use runtime::telegram::{self};
+use runtime::telemetry;
 use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike, Utc};
 use std::io::{self, Write, Read};
 use std::process;
@@ -84,6 +85,10 @@ struct Opt {
     no_coins: bool,
     #[structopt(short, long, help = "Test mode")]
     test: bool,
+    #[structopt(short, long, help = "Collect logs")]
+    dump: bool,
+    #[structopt(short, long, help = "Bypass mode(Calculate Without server).!!!UNSTABLE!!!")]
+    bypass: bool,
 }
 
 #[cfg(windows)]
@@ -133,7 +138,7 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     }
     println!("---------------------------------------------------------------");
     if !max_price.is_empty() {
-        println!("{:<padding$}: {}", "Max Price", max_price, padding = padding);
+        println!("{:<padding$}: {}", "Max Price", max_price, if opt.bypass {"(Bypass)"} else { "" }, padding = padding);
     }
     println!("{:<padding$}: {}", "Payment", chosen_payment.name, padding = padding);
     if opt.claim_platform_vouchers {
@@ -209,10 +214,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     println!("Telegram Notification data: {:?}", config);
+        let telmet = if opt.dump {
+        telemetry::Telemetry::new(env!("CARGO_PKG_NAME"))
+    } else {
+        telemetry::Telemetry::default()
+    };
+    telmet.write(&format!("Auto Multi Buy Shopee [Version {}]", version_info));
 	args_checking(&opt);
     clear_screen();
     // Welcome Header
-    println!("Auto Buy Shopee [Version {}]", version_info);
+    println!("Auto Multi Buy Shopee [Version {}]", version_info);
     println!("Logical CPUs: {}", num_cpus::get());
     if config.telegram_notif {
         println!("Telegram Notification: Enabled");
@@ -310,6 +321,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
     }
     let task_time_dt = parse_task_time(&task_time_str)?;
+    for target_url in &target_urls {
+        telmet.write(&format!("Url: {}", target_url));
+    }
+    telmet.write(&format!("Task time set to: {}", task_time_dt));
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_collectionid, &opt, &target_urls, &task_time_str, &selected_file, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
@@ -327,6 +342,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 	println!("State     : {}", address_info.state);
 	println!("City      : {}", address_info.city);
 	println!("District  : {}", address_info.district);
+    telmet.write(&format!(
+        "User info: username={}, email={}, phone={}, state={}, city={}, district={}",
+        userdata.username,
+        userdata.email,
+        userdata.phone,
+        address_info.state,
+        address_info.city,
+        address_info.district
+    ));
     for i in 0..product_infos.len() {
         let product_info = product_infos[i].clone();
         //println!(" - {}", product_info.url);
@@ -450,8 +474,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
     };
     let adjusted_max_price = if !max_price.is_empty() {
+        let total_quantity: i32 = chosen_model.iter().map(|m| m.quantity).sum();
         match max_price.replace(",", "").trim().parse::<i64>() {
-            Ok(val) => Some(val * 100_000),
+            Ok(val) => Some(val * 100_000 * total_quantity as i64), // Convert to cents
             Err(_) => {
                 println!("Gagal mengonversi max_price menjadi angka.");
                 None
@@ -569,33 +594,127 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 print_voucher_info("shop_voucher", &Some(voucher.clone())).await;
             }
         }
-        let mut temp_clone = temp.clone();
-        let raw_checkout_data = Arc::new(task_ng::get_body_builder(&device_info, &chosen_payment, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher), use_coins, &mut temp_clone).await?);
+        let raw_checkout_data = Arc::new(task_ng::get_body_builder(&device_info, &chosen_payment, Arc::new(freeshipping_voucher), Arc::new(final_voucher), Arc::new(selected_shop_voucher), use_coins, &mut temp).await?);
+        let (place_order_tx, place_order_rx) = tokio::sync::watch::channel::<Option<task_ng::PlaceOrderBody>>(None);
+        let (trigger_tx, mut trigger_rx) = tokio::sync::mpsc::channel::<()>(1);
         let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
         let stop_flag = Arc::new(AtomicBool::new(false));
+        let stop_flag_trigger = Arc::clone(&stop_flag);
+        // Task trigger: kirim sinyal setiap 50ms
+        tokio::spawn(async move {
+            loop {
+                if stop_flag_trigger.load(Ordering::Relaxed) {
+                    break;
+                }
+                if trigger_tx.send(()).await.is_err() {
+                    break;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            }
+        });
+        // Task refresher: jalankan get_ng setiap kali ada trigger, update ke watch
+        {
+            let client = Arc::clone(&client);
+            let shared_headers = Arc::clone(&shared_headers);
+            let get_body_clone = Arc::clone(&raw_checkout_data);
+            let chosen_payment_clone = Arc::clone(&chosen_payment);
+            let place_order_tx = place_order_tx.clone();
+            let stop_flag_refresher = Arc::clone(&stop_flag);
+            let bypass_breaker = Arc::new(AtomicBool::new(false));
+
+            tokio::spawn(async move {
+                while trigger_rx.recv().await.is_some() {
+                    if stop_flag_refresher.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    if bypass_breaker.load(Ordering::Relaxed) {
+                        break;
+                    }
+                    let client = Arc::clone(&client);
+                    let headers = Arc::clone(&shared_headers);
+                    let chosen_payment = Arc::clone(&chosen_payment_clone);
+                    let get_body_clone = Arc::clone(&get_body_clone);
+                    let bypass_breaker = Arc::clone(&bypass_breaker);
+
+                    tokio::spawn({
+                        let place_order_tx = place_order_tx.clone();
+                        async move {
+                            if let Ok(mut body) = task_ng::get_ng(
+                                client,
+                                headers,
+                                &get_body_clone.0,
+                                &chosen_payment,
+                                get_body_clone.1.clone(),
+                            ).await {
+                                if let Some(limit) = adjusted_max_price {
+                                    if opt.bypass {
+                                        if let Some(ref mut checkout_price_data) = body.checkout_price_data {
+                                            task::recalculate_shipping_subtotal(checkout_price_data, limit);
+                                        }
+                                        let _ = place_order_tx.send(Some(body));
+                                        bypass_breaker.store(true, Ordering::Relaxed);
+                                    }else{
+                                        let price_opt = body.checkout_price_data.as_ref()
+                                        .and_then(|d| d.get("merchandise_subtotal"))
+                                        .and_then(|v| v.as_i64());
+
+                                        match price_opt {
+                                            Some(price) if price > limit => {
+                                                println!(
+                                                    "[{}]Harga terlalu tinggi ({} > {}). Coba ulang...",
+                                                    chrono::Local::now().format("%H:%M:%S.%3f"),
+                                                    price, limit
+                                                );
+                                                // Retry
+                                            }
+                                            Some(price) => {
+                                                println!(
+                                                    "[{}]Harga cocok ({} <= {}).",
+                                                    chrono::Local::now().format("%H:%M:%S.%3f"),
+                                                    price, limit
+                                                );
+                                                // Lanjut proses
+                                                let _ = place_order_tx.send(Some(body));
+                                            }
+                                            None => {
+                                                println!(
+                                                    "[{}]Gagal membaca merchandise_subtotal, ulangi...",
+                                                    chrono::Local::now().format("%H:%M:%S.%3f")
+                                                );
+                                                // Retry
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    let _ = place_order_tx.send(Some(body));
+                                }
+                            }
+                        }
+                    });
+                }
+            });
+        }
         for i in 0..max_threads {
             println!("Running on thread: {}", i);
             let tx = tx.clone();
             let shared_headers = Arc::clone(&shared_headers);
             let client = Arc::clone(&client);
+            let mut place_order_rx = place_order_rx.clone();
             let stop_flag = Arc::clone(&stop_flag);
-            let chosen_payment_clone = Arc::clone(&chosen_payment);
-            let get_body_clone = Arc::clone(&raw_checkout_data);
+            let telmet = telmet.clone();
     
             tokio::spawn(async move {
                 let mut try_count = 0;
                 while try_count < 3 && !stop_flag.load(Ordering::Relaxed) {
-                    let place_order_body = match task_ng::get_ng(client.clone(), shared_headers.clone(), &get_body_clone.0, &chosen_payment_clone, get_body_clone.1.clone()).await
-                    {
-                        Ok(body) => body,
-                        Err(err) => {
-                            eprintln!("Error in get_builder: {:?}", err);
-                            continue;
-                        }
+                    place_order_rx.changed().await.ok();
+                    let place_order_body = match *place_order_rx.borrow() {
+                        Some(ref body) => body.clone(),
+                        None => continue,
                     };
                     if stop_flag.load(Ordering::Relaxed) {
                         return;
                     }
+                    telmet.write(&format!("Request PlaceOrder on {} try {} : {:#?}", i, try_count, place_order_body));
                     let mpp = match task_ng::place_order_ng(client.clone(), shared_headers.clone(), &place_order_body).await
                     {
                         Ok(response) => response,
@@ -604,6 +723,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             continue;
                         }
                     };
+                    telmet.write(&format!("Response PlaceOrder on {} try {}: {:#?}", i, try_count, mpp));
                     // Mengecek apakah `mpp` memiliki field `checkoutid`
                     println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
                     if let Some(error) = mpp.get("error") {
@@ -638,8 +758,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         drop(tx); // Tutup pengirim setelah semua tugas selesai
         while let Some(url) = rx.recv().await {
             println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
+            let mut list_products = Vec::new();
+            for model in (*chosen_model).iter() {
+                list_products.push(format!("Product: {}\nVariant: {}", model.product_name, model.name));
+            }
             if config.telegram_notif {
-                let msg = format!("Auto Buy Shopee {}\nREPORT!!!\nUsername     : {}\nProduct      : {}\nVariant      : {}\nLink Payment : {}\nCheckout berhasil!", version_info, userdata.username, "Multi", "Multi", url);
+                let msg = format!("Auto Buy Shopee {}\nREPORT!!!\nUsername     : {}\n{}\nLink Payment : {}\nCheckout berhasil!", version_info, userdata.username, list_products.join("\n"), url);
                 telegram::send_msg(client.clone(), &config, &msg).await?;
             }
         }

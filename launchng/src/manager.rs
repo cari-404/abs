@@ -50,6 +50,8 @@ pub struct Multi {
     pub menit_text: gui::Edit,
     pub detik_text: gui::Edit,
     pub mili_text: gui::Edit,
+    pub harga_checkbox: gui::CheckBox,
+    pub harga_text: gui::Edit,
     pub shared_payment_data: Arc<Mutex<Vec<PaymentInfo>>>,
     pub shared_variation_data: Arc<Mutex<Vec<ModelInfo>>>,
     pub shared_kurir_data: Arc<Mutex<Vec<ShippingInfo>>>,
@@ -92,7 +94,9 @@ impl Multi {
         let menit_text = gui::Edit::new_dlg(&wnd2, 926, dont_move);
         let detik_text = gui::Edit::new_dlg(&wnd2, 927, dont_move);
         let mili_text = gui::Edit::new_dlg(&wnd2, 928, dont_move);
-        let new_self = Self{wnd2, cek_button, file_combo, url_text, quantity_text, push_button, my_list, launch_button, fsv_checkbox, platform_checkbox, platform_combo, proid_label, proid_text, signature_label, signature_text, code_label, code_text, collection_label, collection_text, link_label, link_text, variasi_combo, kurir_combo, shopcode_text, payment_combo, jam_text, menit_text, detik_text, mili_text, shared_payment_data, shared_variation_data, shared_kurir_data};
+        let harga_checkbox = gui::CheckBox::new_dlg(&wnd2, 929, dont_move);
+        let harga_text = gui::Edit::new_dlg(&wnd2, 930, dont_move);
+        let new_self = Self{wnd2, cek_button, file_combo, url_text, quantity_text, push_button, my_list, launch_button, fsv_checkbox, platform_checkbox, platform_combo, proid_label, proid_text, signature_label, signature_text, code_label, code_text, collection_label, collection_text, link_label, link_text, variasi_combo, kurir_combo, shopcode_text, payment_combo, jam_text, menit_text, detik_text, mili_text, harga_checkbox, harga_text, shared_payment_data, shared_variation_data, shared_kurir_data};
         new_self.events();
         new_self
     }
@@ -123,6 +127,7 @@ impl Multi {
             func_main::populate_combobox_with_files(&self_clone.file_combo, "akun");
             func_main::populate_payment_combo(&self_clone.payment_combo, self_clone.shared_payment_data.clone());
             self_clone.platform_combo.hwnd().EnableWindow(false);
+            self_clone.harga_text.hwnd().EnableWindow(false);
             func_main::set_visibility(&self_clone.proid_label, &self_clone.proid_text, false);
             func_main::set_visibility(&self_clone.signature_label, &self_clone.signature_text, false);
             func_main::set_visibility(&self_clone.code_label, &self_clone.code_text, false);
@@ -163,6 +168,16 @@ impl Multi {
                 );
                 let _ = self_clone.url_text.set_text("");
                 let _ = self_clone.quantity_text.set_text("1");
+            }
+            Ok(())
+        });
+        let self_clone = self.clone();
+        self.harga_checkbox.on().bn_clicked(move || {
+            println!("harga checkbox clicked!");
+            if self_clone.harga_checkbox.is_checked() == true{
+                self_clone.harga_text.hwnd().EnableWindow(true);
+            }else{
+                self_clone.harga_text.hwnd().EnableWindow(false);
             }
             Ok(())
         });
@@ -413,7 +428,11 @@ impl Multi {
             eprintln!("Payment is not selected");
             return Ok(None);
         };
-        let harga = String::new(); // Outputkan nilai kosong
+        let harga = if self2.harga_checkbox.state() == co::BST::CHECKED {
+            self2.harga_text.text().unwrap_or_else(|_| String::new())
+        }else{
+            String::new()
+        };
         let Ok(Some(file)) = self2.file_combo.items().selected_text() else {
             eprintln!("File is not selected");
             return Ok(None);
@@ -461,6 +480,8 @@ impl Multi {
                 "--time".to_string(), format!("{}:{}:{}.{}", &jam, &menit, &detik, &mili),
                 "--payment".to_string(), payment,
                 "--harga".to_string(), harga,
+                "--no-coins".to_string(),
+                "--dump".to_string(),
                 "--token".to_string(), "".to_string(),
             ];
             command.push("--url".to_string());
@@ -481,6 +502,9 @@ impl Multi {
                     command.push(variasi.clone());
                 }
             }
+            if self2.harga_checkbox.state() == co::BST::CHECKED {
+                command.push("--bypass".to_string());
+            }
             command.extend(extra_args);
             command
         };
@@ -489,9 +513,6 @@ impl Multi {
         if self2.fsv_checkbox.state() == co::BST::CHECKED {
             commands.push("--fsv-only".to_string());
         }
-        /*if self2.coins_checkbox.state() == co::BST::UNCHECKED {
-            commands.push("--no-coins".to_string());
-        }*/
         if self2.platform_checkbox.state() == co::BST::CHECKED {
             match self2.platform_combo.items().selected_index() {
                 Some(0) => {
