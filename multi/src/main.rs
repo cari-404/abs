@@ -138,7 +138,7 @@ async fn heading_app(promotionid: &str, signature: &str, voucher_code_platform: 
     }
     println!("---------------------------------------------------------------");
     if !max_price.is_empty() {
-        println!("{:<padding$}: {}", "Max Price", max_price, if opt.bypass {"(Bypass)"} else { "" }, padding = padding);
+        println!("{:<padding$}: {} {}", "Max Price", max_price, if opt.bypass {"(Bypass)"} else { "" }, padding = padding);
     }
     println!("{:<padding$}: {}", "Payment", chosen_payment.name, padding = padding);
     if opt.claim_platform_vouchers {
