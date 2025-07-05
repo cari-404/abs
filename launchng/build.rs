@@ -1,10 +1,25 @@
 use std::env;
+use std::fs::File;
+use std::io::Write;
 use chrono::{Datelike, Utc};
 extern crate winresource;
 
 #[cfg(all(target_env = "gnu", target_arch = "x86"))]
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
+        println!("cargo:rerun-if-changed=build.rs");
+        println!("cargo:rerun-if-changed=force-rebuild.txt");
+        let now = Utc::now();
+        let year = now.year() as u16 % 100;
+        let month = now.month() as u16;
+        let build = year * 100 + month; // contoh: 2025/06 => 2506
+        let version_u64 =
+            ((major as u64) << 48) |
+            ((minor as u64) << 32) |
+            ((patch as u64) << 16) |
+            (build as u64);
+        let mut f = File::create("src/version_info.rs").unwrap();
+        writeln!(f, "pub const BUILD: &str = \"{}\";", build).unwrap();
         let res_path = env::current_dir()
             .unwrap()
             .join("resources")
@@ -20,6 +35,19 @@ fn main() {
 #[cfg(all(target_env = "gnu", target_arch = "x86_64"))]
 fn main() {
     if std::env::var("CARGO_CFG_TARGET_OS").unwrap() == "windows" {
+        println!("cargo:rerun-if-changed=build.rs");
+        println!("cargo:rerun-if-changed=force-rebuild.txt");
+        let now = Utc::now();
+        let year = now.year() as u16 % 100;
+        let month = now.month() as u16;
+        let build = year * 100 + month; // contoh: 2025/06 => 2506
+        let version_u64 =
+            ((major as u64) << 48) |
+            ((minor as u64) << 32) |
+            ((patch as u64) << 16) |
+            (build as u64);
+        let mut f = File::create("src/version_info.rs").unwrap();
+        writeln!(f, "pub const BUILD: &str = \"{}\";", build).unwrap();
         let res_path = env::current_dir()
             .unwrap()
             .join("resources")
@@ -34,6 +62,8 @@ fn main() {
 }
 #[cfg(target_env = "msvc")]
 fn main() {
+    println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed=force-rebuild.txt");
     let res_path = env::current_dir()
         .unwrap()
         .join("resources")
@@ -55,6 +85,8 @@ fn main() {
         ((minor as u64) << 32) |
         ((patch as u64) << 16) |
         (build as u64);
+    let mut f = File::create("src/version_info.rs").unwrap();
+    writeln!(f, "pub const BUILD: &str = \"{}\";", build).unwrap();
     let mut res = winresource::WindowsResource::new();
     res.set_version_info(winresource::VersionInfo::FILEVERSION, version_u64);
     res.set_version_info(winresource::VersionInfo::PRODUCTVERSION, version_u64);

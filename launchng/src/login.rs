@@ -34,7 +34,7 @@ pub fn login_window(wnd: &gui::WindowModal) -> Result<(), ()> {
         .and_then(|hinstance| {
             hinstance.LoadImageBitmap(
                 w::IdObmStr::Id(1),
-                w::SIZE::new(256, 256),
+                w::SIZE::with(256, 256),
                 w::co::LR::DEFAULTCOLOR,
             )
         });
@@ -115,8 +115,8 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
             println!("Bitmap berhasil dibuat. Ukuran: {:?} x {:?}", width, height);
             //let mut pixels = bitmap.into_raw();
             //pixels.chunks_exact_mut(4).for_each(|chunk| chunk[0..3].reverse());
-            let mut hbitmap = match <HBITMAP as gdi_Hbitmap>::CreateBitmap(
-                w::SIZE::new(width.try_into().unwrap(), height.try_into().unwrap()), // Ukuran bitmap
+            let mut hbitmap = match HBITMAP::CreateBitmap(
+                w::SIZE::with(width.try_into().unwrap(), height.try_into().unwrap()), // Ukuran bitmap
                 1,
                 32,
                 pixels.as_mut_ptr().cast(), // Pointer ke data piksel

@@ -821,7 +821,7 @@ pub fn adjustment_shipping(shipping_orders: &mut [ShippingOrder], shoporders: &[
         }
     }
 }
-pub async fn multi_get_recommend_platform_vouchers(buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, products: &[ModelInfo], shipping: &[ShippingInfo], chosen_payment: &PaymentInfo, place_body: &PlaceOrderBody) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
+pub async fn multi_get_recommend_platform_vouchers(adjusted_max_price: Option<i64>, buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, products: &[ModelInfo], shipping: &[ShippingInfo], chosen_payment: &PaymentInfo, place_body: &PlaceOrderBody) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let mut orders_json = Vec::new();
     for (index, product) in products.iter().enumerate() {
         for order in &place_body.shoporders {
@@ -931,7 +931,7 @@ pub async fn multi_get_recommend_platform_vouchers(buyer_address: &AddressInfo, 
     // Extract freeshipping_vouchers
     if status == reqwest::StatusCode::OK {
         if let Some(freeshipping_vouchers_array) = json_resp.data.as_ref().and_then(|data| data.freeshipping_vouchers.as_ref()) {
-            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| v.fsv_error_message.is_none()) {
+            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| { v.fsv_error_message.is_none() && v.fsv_voucher_card_ui_info.as_ref().map_or(true, |info| adjusted_max_price.map_or(true, |max| info.int_min_spend_fsv_ui_only <= max))}) {
                 freeshipping_voucher = Some(Vouchers {
                     promotionid : voucher.promotionid,
                     voucher_code : voucher.voucher_code.clone(),

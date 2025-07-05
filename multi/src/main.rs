@@ -563,6 +563,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let recommend_task = tokio::spawn(async move{
             if !opt.no_fsv {
                 task_ng::multi_get_recommend_platform_vouchers(
+                    adjusted_max_price,
                     &address_info,
                     client_clone,
                     vc_header_clone,

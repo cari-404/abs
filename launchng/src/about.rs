@@ -1,3 +1,4 @@
+include!("version_info.rs");
 use winsafe::{
     gui, prelude::*
 };
@@ -46,6 +47,7 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let ver_label = gui::Label::new_dlg(&wnd2, 2002, dont_move);
     let os_label = gui::Label::new_dlg(&wnd2, 2003, dont_move);
     let run_label = gui::Label::new_dlg(&wnd2, 2004, dont_move);
+    let build = gui::Label::new_dlg(&wnd2, 2005, dont_move);
     //ver_label.set_text_and_resize(&version_info);
     let wnd2_clone = wnd2.clone();
     ok_button.on().bn_clicked(move || {
@@ -58,6 +60,7 @@ pub fn about_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let _ = ver_label.set_text_and_resize(&version_info);
         let _ = os_label.set_text_and_resize(&version_message);
         let _ = run_label.set_text_and_resize(&run_win);
+        let _ = build.set_text_and_resize(BUILD);
         Ok(true)
     });
     let _ = wnd2.show_modal(wnd);
