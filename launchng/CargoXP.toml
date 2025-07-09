@@ -18,7 +18,7 @@ OriginalFilename = "launcher2ng.exe"
 CompanyName = "Paijo"
 
 [dependencies]
-winsafe = { version = "0.0.25", features = ["gui", "kernel", "advapi", "shell"] }
+winsafe = { git = "https://github.com/cari-404/winsafe.git", features = ["gui", "kernel", "advapi", "shell"] }
 tokio = { version = "1", features = ["full"] }
 runtime = { path = "../runtime", features = ["prepare-ext", "flashsale", "core", "upgrade"] }
 serde_json = "1"
