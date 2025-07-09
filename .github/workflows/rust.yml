@@ -267,7 +267,7 @@ jobs:
         choco install 7zip -y
         cd target/${{ matrix.platform.target }}/release
         Compress-Archive -Path abs.exe,multi.exe,savevoucher.exe,launcabs.exe,launchng.exe,updater.exe -DestinationPath ABS_${{matrix.platform.os_name}}-v${{ env.FINAL_VERSION }}.zip
-        7z a ABS_${{ matrix.platform.os_name }}-v${{ env.FINAL_VERSION }}.7z abs.exe multi.exe savevoucher.exe launcabs.exe launchng.exe updater.exe -mf=off
+        7z a ABS_${{ matrix.platform.os_name }}-v${{ env.FINAL_VERSION }}.7z abs.exe multi.exe savevoucher.exe launcabs.exe launchng.exe updater.exe launchng.pdb -mf=off
 
     - name: Release binary and SHA-256 checksum to GitHub (Linux)
       if: matrix.platform.os_name == 'Linux-x86_64' || matrix.platform.os_name == 'Linux-i686' || matrix.platform.os_name == 'Linux-aarch64' || matrix.platform.os_name == 'Android-aarch64'
