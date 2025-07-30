@@ -302,7 +302,7 @@ pub async fn kurir(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, produc
     let state_encoded = url_encode(&address_info.state);
 	println!("{}-{}-{}", state_encoded, city_encoded, district_encoded);
 
-	let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
+	let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}&town=", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
 	println!("{}", url2);
     // Buat permintaan HTTP POST
     let response = client
@@ -335,7 +335,6 @@ pub async fn kurir(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, produc
 
     if shipping_info_vec.is_empty() {
         eprintln!("No shipping information found.");
-        process::exit(1);
     }
     Ok(shipping_info_vec)
 }

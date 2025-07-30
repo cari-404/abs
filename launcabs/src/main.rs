@@ -407,7 +407,7 @@ impl App {
     fn init(&self){
         self.logs_window.set_visible(true);
         let version_info = env!("CARGO_PKG_VERSION");
-        let log_message1 = format!("Launcher Auto Buy Shopee Version : {} (PREVIEW)", version_info);
+        let log_message1 = format!("Launcher Auto Buy Shopee Version : {}", version_info);
         let lcpu = format!("Logical CPUs: {}", num_cpus::get());
         // Check the target environment
         let compiler = if cfg!(target_env = "msvc") {

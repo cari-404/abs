@@ -594,11 +594,14 @@ impl Multi {
     }
 }
 pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
-    let taskbar = w::CoCreateInstance::<w::ITaskbarList4>(
+    println!("create taskbar");
+    /*let taskbar = w::CoCreateInstance::<w::ITaskbarList4>(
         &co::CLSID::TaskbarList,
         None::<&w::IUnknown>,
         co::CLSCTX::INPROC_SERVER,
     ).map_err(|_| ())?;
+    */
+    println!("ok taskbar");
     let check_version = Arc::new(Mutex::new(String::new()));
     let dont_move = (gui::Horz::None, gui::Vert::None);
     let wnd2 = gui::WindowModal::new_dlg(100);
@@ -614,8 +617,10 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let progress_clone = progress.clone();
     let rollback_button_clone = rollback_button.clone();
     let wnd_clone = wnd.clone();
-    let taskbar_clone = taskbar.clone();
+    //let taskbar_clone = taskbar.clone();
+    println!("prepare updater");
     wnd2.on().wm_init_dialog(move |_| {
+        println!("open updater");
         progress_clone.set_marquee(true);
         rollback_button_clone.hwnd().EnableWindow(false);
         download_button_clone.hwnd().EnableWindow(false);
@@ -624,12 +629,12 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let info_label_clone = info_label_clone.clone();
         let progress_clone = progress_clone.clone();
         let wnd_clone = wnd_clone.clone();
-        let taskbar = taskbar_clone.clone();
+        //let taskbar = taskbar_clone.clone();
         if std::path::Path::new("update-dir-old").exists() {
             rollback_button_clone.hwnd().EnableWindow(true);
         }
         tokio::spawn(async move {
-                let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::INDETERMINATE);
+                //let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::INDETERMINATE);
                 if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/cari-404/abs/releases/latest")).await {
                     println!("Versi terbaru: {}", latest_version);
                     if upgrade::compare_versions(CURRENT_VERSION, &latest_version) == std::cmp::Ordering::Less {
@@ -645,7 +650,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                     let _ = info_label_clone.set_text_and_resize("Gagal mengecek versi terbaru.");
                 }
                 progress_clone.set_marquee(false);
-                let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+                //let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
         });
         Ok(true)
     });
@@ -660,7 +665,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let check_version_clone = check_version.clone();
     let progress_clone = progress.clone();
     let wnd_clone = wnd.clone();
-    let taskbar_clone = taskbar.clone();
+    //let taskbar_clone = taskbar.clone();
     download_button.on().bn_clicked(move || {
         let download_button_clone = download_button_clone.clone();
         let shared =  {
@@ -671,7 +676,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let progress_clone = progress_clone.clone();
         let wnd2_clone = wnd2_clone.clone();
         let wnd_clone = wnd_clone.clone();
-        let taskbar = taskbar_clone.clone();
+        //let taskbar = taskbar_clone.clone();
         if download_button_clone.hwnd().GetWindowText().unwrap_or_default() == "Install" {
             let _ = std::process::Command::new("cmd")
                 .arg("/C")
@@ -739,9 +744,9 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                             let _ = info_label_clone.set_text_and_resize(&format!(
                                 "Kecepatan: {:.2} KB/s | Diunduh: {:.2}/{:.2} MB ({:.1}%) | ETA: {}",                     speed_kb,                     downloaded_mb,                     total_mb,                     percentage,                     format_eta(eta_secs)
                             ));
-                            let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), downloaded as u64, total_size as u64);
+                            //let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), downloaded as u64, total_size as u64);
                         }
-                        let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+                        //let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
                         file.flush().await.expect("failed to flush data");
                         let actual_size = tokio::fs::metadata("update.zip").await.expect("failed to calculate").len();
                         if actual_size != total_size {

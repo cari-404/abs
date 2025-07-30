@@ -1,6 +1,6 @@
 [package]
 name = "libabsho"
-version = "1.1.8"
+version = "1.1.9"
 edition = "2024"
 authors = ["Paijo"]
 description = "Runtime library for ABS & Complement"

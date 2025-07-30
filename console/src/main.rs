@@ -1,12 +1,12 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.1.9 :
+    Remove failsafe on classic shipping info
 Whats new in 1.1.8 :
     add new features to multi
     fix fsv voucher selection
 Whats new in 1.1.7 :
     add new features to multi
     -bypass, dump, and bypass breaker
-Whats new in 1.1.6 :
-    add bypass breaker
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
