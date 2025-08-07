@@ -1,6 +1,6 @@
 [package]
 name = "multi"
-version = "1.1.9"
+version = "1.2.0"
 edition = "2024"
 authors = ["Paijo"]
 description = "Multi Auto Buy from Shopee.co.id(experimental)"

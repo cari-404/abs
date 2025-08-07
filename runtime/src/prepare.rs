@@ -173,6 +173,22 @@ pub struct AddressInfo  {
     pub district: String,
     pub id: i64,
 }
+impl CookieData {
+    pub fn from_headers(headers: &reqwest::header::HeaderMap) -> Self {
+        let csrftoken = headers.get("x-csrftoken")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        let cookie_content = headers.get("cookie")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        CookieData {
+            csrftoken,
+            cookie_content,
+        }
+    }
+}
 impl Default for AddressInfo {
     fn default() -> Self {
         AddressInfo {
