@@ -54,7 +54,7 @@ pub extern "C" fn create_cookie(cookie_content: *const c_char) -> FFICookieData 
     };
 
     // Panggil fungsi internal
-    let cookie_data = prepare::create_cookie(cookie_content_str);
+    let cookie_data = prepare::CookieData::create_cookie(cookie_content_str);
 
     // Konversi dari PrepareCookieData ke FFICookieData
     let cookie_content_cstr = match CString::new(cookie_data.cookie_content) {

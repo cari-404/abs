@@ -152,7 +152,7 @@ pub fn handle_file_selection(file_combo: &gui::ComboBox, cookie_edit: &gui::Edit
         if !file.is_empty() {
             let _ = my_list.items().delete_all();
             let cookie_content = prepare::read_cookie_file(&file);
-            let cookie_data = prepare::create_cookie(&cookie_content);
+            let cookie_data = prepare::CookieData::create_cookie(&cookie_content);
             let sz_token_content = get_fp_data(&file);
             let _ = sz_edit.set_text(&sz_token_content);
             let _ = cookie_edit.set_text(&cookie_content);

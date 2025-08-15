@@ -232,7 +232,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Get account details
     let selected_file = opt.file.clone().unwrap_or_else(|| select_cookie_file().expect("Folder akun dan file cookie tidak ada\n"));
-    let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&selected_file));
+    let cookie_data = prepare::CookieData::create_cookie(&prepare::read_cookie_file(&selected_file));
     println!("csrftoken: {}", cookie_data.csrftoken);
     let base_headers = Arc::new(prepare::create_headers(&cookie_data));
     let shared_headers = Arc::new(task::headers_checkout(&cookie_data));
@@ -545,7 +545,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let platform_task = tokio::spawn(async move{
             if !promotionid.is_empty() && !signature.is_empty() {
                 if opt.no_claim_platform_vouchers {
-                    return voucher::get_voucher_data(client_clone, &promotionid, &signature, vc_header_clone).await;
+                    let (data, _) = voucher::get_voucher_data(client_clone, &promotionid, &signature, vc_header_clone).await?;
+                    return Ok(data);
                 } else {
                     return voucher::save_voucher(client_clone, &promotionid, &signature, vc_header_clone).await;
                 }

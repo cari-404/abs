@@ -94,6 +94,50 @@ pub struct ShippingInfo {
     pub channelidroot: i64,
     pub channel_name: String,
 }
+impl ShippingInfo {
+    pub async fn kurir(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, address_info: &AddressInfo) -> anyhow::Result<Vec<ShippingInfo>> {
+        let city_encoded = url_encode(&address_info.city);
+        let district_encoded = url_encode(&address_info.district);
+        let state_encoded = url_encode(&address_info.state);
+        println!("{}-{}-{}", state_encoded, city_encoded, district_encoded);
+
+        let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}&town=", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
+        println!("{}", url2);
+        // Buat permintaan HTTP POST
+        let response = client
+            .get(&url2)
+            .headers((*headers).clone())
+            .version(Version::HTTP_2) 
+            .send()
+            .await?;
+
+        println!("Status: get_courier");
+        //println!("Headers: {:#?}", response.headers());
+        let hasil: KurirResponse = response.json().await?;
+        //println!("Body: {}", String::from_utf8_lossy(&body));
+        let shipping_info_vec = hasil.data.and_then(|data| data.shipping_infos).map(|infos| {
+                infos.into_iter().map(|shipping_info| {
+                        let original_cost = shipping_info.original_cost.unwrap_or(0);
+                        let (channelid, channel_name) = shipping_info.channel.map(|channel| {
+                                let channelid = channel.channelid.unwrap_or(0);
+                                let channel_name = channel.name.unwrap_or_else(|| "Unknown".to_string());
+                                (channelid, channel_name)
+                            }).unwrap_or((0, "Unknown".to_string()));
+                        ShippingInfo {
+                            original_cost,
+                            channelid,
+                            channelidroot: channelid,
+                            channel_name,
+                        }
+                    }).collect::<Vec<_>>()
+            }).unwrap_or_default();
+
+        if shipping_info_vec.is_empty() {
+            eprintln!("No shipping information found.");
+        }
+        Ok(shipping_info_vec)
+    }
+}
 #[derive(Debug, Deserialize)]
 pub struct KurirResponse {
     pub data: Option<ShippingData>,
@@ -188,6 +232,55 @@ impl CookieData {
             cookie_content,
         }
     }
+    pub fn create_cookie(cookie_content: &str) -> Self {
+        let csrftoken = extract_csrftoken(&cookie_content);
+        
+        let datas = CookieData {
+            cookie_content: cookie_content.to_string(),
+            csrftoken: csrftoken.to_string(),
+        };
+        datas
+    }
+}
+#[derive(Deserialize, Debug)]
+struct GetRespPdp {
+    data: Option<PdpData>,
+}
+#[derive(Deserialize, Debug)]
+struct PdpData {
+    item: Option<ItemPdp>,
+    shop: Option<ShopPdp>,
+    product_shipping: Option<ShippingPdp>,
+}
+#[derive(Deserialize, Debug, Clone)]
+struct ItemPdp {
+    title: Option<String>,
+    models: Option<Vec<ModelsPdp>>,
+}
+#[derive(Deserialize, Debug, Clone)]
+struct ShopPdp {
+    is_official_shop: Option<bool>,
+}
+#[derive(Deserialize, Debug, Clone)]
+struct ModelsPdp {
+    pub name: String,
+    pub price: i64,
+    pub stock: i64,
+    pub model_id: i64,
+}
+#[derive(Deserialize, Debug)]
+struct ShippingPdp {
+    ungrouped_channel_infos: Option<Vec<ChannelInfoPdp>>,
+}
+#[derive(Deserialize, Debug)]
+struct ChannelInfoPdp {
+    channel_id: i64,
+    name: String,
+    price_before_discount: Option<PriceBD>,
+}
+#[derive(Deserialize, Debug)]
+struct PriceBD {
+    single_value: i64,
 }
 impl Default for AddressInfo {
     fn default() -> Self {
@@ -312,48 +405,6 @@ pub fn get_payment(json_data: &str) -> Result<Vec<PaymentInfo>, Box<dyn std::err
         Ok(Vec::new()) // Kalau tidak ada data, kembalikan vektor kosong
     }
 }
-pub async fn kurir(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, address_info: &AddressInfo) -> anyhow::Result<Vec<ShippingInfo>> {
-	let city_encoded = url_encode(&address_info.city);
-    let district_encoded = url_encode(&address_info.district);
-    let state_encoded = url_encode(&address_info.state);
-	println!("{}-{}-{}", state_encoded, city_encoded, district_encoded);
-
-	let url2 = format!("https://shopee.co.id/api/v4/pdp/get_shipping_info?city={}&district={}&itemid={}&shopid={}&state={}&town=", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
-	println!("{}", url2);
-    // Buat permintaan HTTP POST
-    let response = client
-        .get(&url2)
-        .headers((*headers).clone())
-        .version(Version::HTTP_2) 
-        .send()
-        .await?;
-
-	println!("Status: get_courier");
-    //println!("Headers: {:#?}", response.headers());
-    let hasil: KurirResponse = response.json().await?;
-    //println!("Body: {}", String::from_utf8_lossy(&body));
-    let shipping_info_vec = hasil.data.and_then(|data| data.shipping_infos).map(|infos| {
-            infos.into_iter().map(|shipping_info| {
-                    let original_cost = shipping_info.original_cost.unwrap_or(0);
-                    let (channelid, channel_name) = shipping_info.channel.map(|channel| {
-                            let channelid = channel.channelid.unwrap_or(0);
-                            let channel_name = channel.name.unwrap_or_else(|| "Unknown".to_string());
-                            (channelid, channel_name)
-                        }).unwrap_or((0, "Unknown".to_string()));
-                    ShippingInfo {
-                        original_cost,
-                        channelid,
-                        channelidroot: channelid,
-                        channel_name,
-                    }
-                }).collect::<Vec<_>>()
-        }).unwrap_or_default();
-
-    if shipping_info_vec.is_empty() {
-        eprintln!("No shipping information found.");
-    }
-    Ok(shipping_info_vec)
-}
 pub async fn get_flash_sale_batch_get_items(client: Arc<reqwest::Client>, cookie_content: &CookieData, product_info: &[ProductInfo], fs_info: &FSInfo) -> Result<Vec<FSItems>, anyhow::Error> {
     let itemids: Vec<i64> = product_info.iter().map(|p| p.item_id).collect();
     let refe = format!("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Ccutline%25252Cfood_order_status");
@@ -452,6 +503,66 @@ pub async fn get_product(client: Arc<reqwest::Client>, product_info: &ProductInf
         })
         .collect();
 	Ok((name, models_info, is_official_shop, fs_info, status_code))
+}
+pub async fn get_pdp(client: Arc<reqwest::Client>, product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, Vec<ShippingInfo>, String), anyhow::Error> {
+    let url2 = format!("https://mall.shopee.co.id/api/v4/pdp/get?item_id={}&shop_id={}", product_info.item_id, product_info.shop_id);
+    println!("{}", url2);
+    println!("sending Get Shopee request...");
+	
+    let mut headers = FS_BASE_HEADER.clone();
+    headers.insert("referer", reqwest::header::HeaderValue::from_str(&format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id))?);
+    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
+    headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
+    // Buat permintaan HTTP POST
+    let response = client
+        .get(&url2)
+        .headers(headers)
+        .version(Version::HTTP_2) 
+        .send()
+        .await?;
+
+    //println!("Status: {}", response.status());
+    //println!("Headers: {:#?}", response.headers());
+    let status_code = response.status().to_string();
+    let hasil: GetRespPdp = response.json().await?;
+    //println!("Body: {}", &body);
+
+    let (name, raw_models, is_official_shop, raw_shipping_info) = if let Some(data) = hasil.data {
+        (
+            data.item.clone().unwrap().title.unwrap_or_else(|| "Unknown".into()),
+            data.item.clone().unwrap().models.unwrap_or_default(),          // bisa kosong
+            data.shop.clone().unwrap().is_official_shop.unwrap_or(false),
+            data.product_shipping.unwrap().ungrouped_channel_infos.unwrap_or_default(),
+        )
+    } else {
+        println!("Status: {}", status_code);
+        ("INVALID".to_string(), Vec::new(), false, Vec::new())
+    };
+    let models_info: Vec<ModelInfo> = raw_models
+        .into_iter()
+        .map(|m| ModelInfo {
+            name: m.name,
+            product_name: name.clone(),
+            price: m.price,
+            stock: m.stock,
+            modelid: m.model_id,
+            promotionid: 0,
+            shop_id:   product_info.shop_id,   // override di *sini*
+            item_id:   product_info.item_id,
+            quantity:  1,
+            voucher_code: None,
+        })
+        .collect();
+    let shipping_info: Vec<ShippingInfo> = raw_shipping_info
+        .into_iter()
+        .map(|info| ShippingInfo {
+            original_cost: info.price_before_discount.and_then(|p| Some(p.single_value)).unwrap_or(0),
+            channelid: info.channel_id,
+            channelidroot: info.channel_id,
+            channel_name: info.name,
+        })
+        .collect();
+    Ok((name, models_info, is_official_shop, shipping_info, status_code))
 }
 pub async fn address(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) -> Result<AddressInfo, Box<dyn std::error::Error>> {
 	let url2 = format!("https://shopee.co.id/api/v4/account/address/get_user_address_list");
@@ -558,15 +669,6 @@ pub fn create_headers(cookie_content: &CookieData) -> HeaderMap {
     headers.insert("x-csrftoken", HeaderValue::from_str(&cookie_content.csrftoken).unwrap());
     headers.insert("cookie", HeaderValue::from_str(&cookie_content.cookie_content).unwrap());
     headers
-}
-pub fn create_cookie(cookie_content: &str) -> CookieData {
-    let csrftoken = extract_csrftoken(&cookie_content);
-    
-    let datas = CookieData {
-        cookie_content: cookie_content.to_string(),
-        csrftoken: csrftoken.to_string(),
-    };
-    datas
 }
 pub fn extract_csrftoken(cookie_string: &str) -> &str {
     let mut csrftoken = " ";

@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let selected_file = select_cookie_file()?;
     let cookie_content = prepare::read_cookie_file(&selected_file);
 	
-    let cookie_data = prepare::create_cookie(&cookie_content);
+    let cookie_data = prepare::CookieData::create_cookie(&cookie_content);
     let base_headers = Arc::new(prepare::create_headers(&cookie_data));
     println!("csrftoken: {}", cookie_data.csrftoken);
 

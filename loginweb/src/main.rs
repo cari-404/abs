@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
             println!("Cookie Header: {}", cookie_header);
 
             // Langsung gunakan cookie_header, tidak perlu read_cookie_file
-            let cookie_data = prepare::create_cookie(&cookie_header);
+            let cookie_data = prepare::CookieData::create_cookie(&cookie_header);
             println!("csrftoken: {}", cookie_data.csrftoken);
 
             let base_headers = prepare::create_headers(&cookie_data);

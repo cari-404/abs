@@ -263,7 +263,7 @@ impl Multi {
                 self2.cek_button.hwnd().ShowWindow(SW::SHOW);
                 let _ = self2.cek_button.hwnd().SetWindowText("Cek");
             }else{
-                let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
+                let cookie_data = prepare::CookieData::create_cookie(&prepare::read_cookie_file(&file));
                 let device_info = crypt::create_devices(&func_main::get_fp_data(&file));
                 let self2 = self2.clone();
                 tokio::spawn(async move {
@@ -943,7 +943,7 @@ pub fn account_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     cookie_edit.on().en_change(move || {
         let _ = my_list_clone.items().delete_all();
         let cookie_edit_text = cookie_edit_clone.text().unwrap_or_else(|_| String::new());
-        let cookie_data = prepare::create_cookie(&cookie_edit_text);
+        let cookie_data = prepare::CookieData::create_cookie(&cookie_edit_text);
         let _ = my_list_clone.items().add(
             &[
                 "CSRFTOKEN",     &cookie_data.csrftoken, ], None, (),
@@ -1125,7 +1125,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         };
         if let Some(selected_item) = my_list_clone.items().focused() {
             let product_info = prepare::process_url(&selected_item.text(5 as u32));
-            let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
+            let cookie_data = prepare::CookieData::create_cookie(&prepare::read_cookie_file(&file));
             let v: Vec<i64> = serde_json::from_str(&selected_item.text(1 as u32))?;
             let selected_item_index = selected_item.index();
             let my_list_clone = my_list_clone.clone();
@@ -1213,7 +1213,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let _ = func_main::error_modal(&wnd2_clone, "Error check data", &isi);
             progress_clone.set_marquee(false);
         } else {
-            let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
+            let cookie_data = prepare::CookieData::create_cookie(&prepare::read_cookie_file(&file));
             let fs_combo_clone = fs_combo_clone.clone();
             let wnd2_clone = wnd2_clone.clone();
             let shared_fsid_clone = shared_fsid_clone.clone();
@@ -1396,7 +1396,7 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
             return Ok(());
         };
         let cookie_content = prepare::read_cookie_file(&select_cookie_file);
-        let cookie_data = prepare::create_cookie(&cookie_content);
+        let cookie_data = prepare::CookieData::create_cookie(&cookie_content);
         let wnd2_clone = wnd2.clone();
         let my_list_clone = my_list.clone();
         let progress_clone = progress.clone();

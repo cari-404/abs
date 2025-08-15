@@ -18,6 +18,15 @@ pub struct Vouchers {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub shop_id: Option<i64>,
 }
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct VoucherDetail {
+    pub min_spend: i64,
+    pub start_time: i32,
+    pub end_time: i32,
+    pub reward_percentage: i32,
+    pub reward_value: i64,
+    pub reward_cap: i64,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct RecomendPlatformResponse {
@@ -405,7 +414,7 @@ pub async fn save_voucher(client: Arc<reqwest::Client>, start: &str, end: &str, 
 	Ok(vouchers)
 }
 
-pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> anyhow::Result<Option<Vouchers>>{
+pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &str, headers: Arc<HeaderMap>) -> anyhow::Result<(Option<Vouchers>, Option<VoucherDetail>)>{
 	let body_json = GetVoucherRequest{
         promotionid: start.trim().parse().expect("Input tidak valid"),
         voucher_code: "-".to_string(),
@@ -420,6 +429,7 @@ pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &s
 	//println!("");
 	//println!("header:{:#?}", headers);
     let mut vouchers: Option<Vouchers> = None;
+    let mut detail_vouchers: Option<VoucherDetail> = None;
 	loop {
         let response = (*client).clone()
             .post("https://mall.shopee.co.id/api/v2/voucher_wallet/get_voucher_detail")
@@ -448,12 +458,26 @@ pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &s
                     let promotionid = voucher.get("promotionid").and_then(|v| v.as_i64()).unwrap_or_default();
                     let voucher_code = voucher.get("voucher_code").and_then(|v| v.as_str()).unwrap_or_default().to_string();
                     let signature = voucher.get("signature").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    let min_spend = voucher.get("min_spend").and_then(|v| v.as_i64()).unwrap_or_default();
+                    let start_time = voucher.get("start_time").and_then(|v| v.as_i64()).unwrap_or_default() as i32;
+                    let end_time = voucher.get("end_time").and_then(|v| v.as_i64()).unwrap_or_default() as i32;
+                    let reward_percentage = voucher.get("reward_percentage").and_then(|v| v.as_i64()).unwrap_or_default() as i32;
+                    let reward_value = voucher.get("reward_value").and_then(|v| v.as_i64()).unwrap_or_default();
+                    let reward_cap = voucher.get("reward_cap").and_then(|v| v.as_i64()).unwrap_or_default();
                     println!("promotionid: {}, voucher_code: {}, signature: {}", promotionid, voucher_code, signature);
                     vouchers = Some(Vouchers {
                         promotionid,
                         voucher_code,
                         signature,
                         shop_id: None,
+                    });
+                    detail_vouchers = Some(VoucherDetail {
+                        min_spend: min_spend,
+                        start_time: start_time,
+                        end_time: end_time,
+                        reward_percentage: reward_percentage,
+                        reward_value: reward_value,
+                        reward_cap: reward_cap,
                     });
                 }
             }
@@ -467,7 +491,7 @@ pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &s
 			break;
 		}
 	}
-	Ok(vouchers)
+	Ok((vouchers, detail_vouchers))
 }
 
 pub async fn get_recommend_platform_vouchers(adjusted_max_price: Option<i64>, buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{

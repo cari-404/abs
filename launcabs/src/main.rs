@@ -595,12 +595,23 @@ impl App {
         } else if file.is_empty() {
             self.error_cek("Error", "Please select a file before running the program")
         }else{
-            let start = self.url_text.text();
             let cookie_content = prepare::read_cookie_file(&file);
-            let cookie_data = prepare::create_cookie(&cookie_content);
-            let url_1 = start.trim();
-            println!("{}", url_1);
-            let product_info = prepare::process_url(url_1);
+            let cookie_data = prepare::CookieData::create_cookie(&cookie_content);
+            let url = self.url_text.text().trim().to_string();
+            println!("{}", url);
+            let url_1 = url.clone();
+            let (tx, rx) = std::sync::mpsc::channel();
+            tokio::spawn(async move {
+                let url_1 = url_1.trim();
+                let mut product_info = prepare::process_url(&url_1);
+                if product_info.shop_id == 0 && product_info.item_id == 0 {
+                    if let Ok(redirect) = prepare::get_redirect_url(&url_1).await {
+                        product_info = prepare::process_url(&redirect);
+                    }
+                }
+                let _ = tx.send(product_info);
+            });
+            let product_info = rx.recv().unwrap();
             println!("{}, {}", product_info.shop_id, product_info.item_id);
             if product_info.shop_id != 0 && product_info.item_id != 0 {
                 // Clone the notice sender and runtime to move into the new thread
@@ -622,15 +633,15 @@ impl App {
     }
     async fn cek_async(product_info: &ProductInfo, cookie_data: &CookieData, shared_data: Arc<RwLock<SharedData>>) {
         let client = Arc::new(prepare::universal_client_skip_headers().await);
-        let base_headers = Arc::new(prepare::create_headers(&cookie_data));
-        match timeout(Duration::from_secs(10), prepare::get_product(client.clone(), &product_info, cookie_data)).await {
-            Ok(Ok((name, model_info, is_official_shop, _fs_info, rcode))) => {
+        match timeout(Duration::from_secs(10), prepare::get_pdp(client.clone(), &product_info, cookie_data)).await {
+            Ok(Ok((name, model_info, is_official_shop, kurirs, rcode))) => {
                 let mut data = shared_data.write().unwrap();
                 data.name_model = model_info.iter().map(|model| model.name.clone()).collect();
                 data.model_infos = model_info;
                 data.rcode = rcode;
                 data.name_product = name;
                 data.is_official_shop = is_official_shop;
+                data.kurirs = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
             },
             Ok(Err(e)) => {
                 let mut data = shared_data.write().unwrap();
@@ -640,30 +651,7 @@ impl App {
                 let mut data = shared_data.write().unwrap();
                 data.rcode = format!("Timeout: {:?}", e);
             }
-        };
-
-        let address_info = match prepare::address(client.clone(), base_headers.clone()).await {
-            Ok(address) => address,
-            Err(e) => {
-                // Handle the error case
-                eprintln!("Failed to get address: {}", e);
-                return; // Early return or handle the error as needed
-            }
-        };
-        match timeout(Duration::from_secs(10), prepare::kurir(client.clone(), base_headers.clone(), &product_info, &address_info)).await {
-            Ok(Ok(kurirs)) => {
-                let mut data = shared_data.write().unwrap();
-                data.kurirs = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
-            },
-            Ok(Err(e)) => {
-                let mut data = shared_data.write().unwrap();
-                data.kurirs = vec![format!("Error: {:?}", e)];
-            },
-            Err(e) => {
-                let mut data = shared_data.write().unwrap();
-                data.kurirs = vec![format!("Timeout: {:?}", e)];
-            }
-        };
+        }
     }
     fn update_ui(&self) {
         // Update the ComboBox with the new data
@@ -739,7 +727,7 @@ impl App {
         println!("{:?}", command);
     }
     fn collect_gui_input(&self) -> Option<Vec<String>> {
-        let url = self.url_text.text();
+        let url = self.url_text.text().trim().to_string();
         let payment = self.payment_combo.selection_string().unwrap_or_default();
         let harga = if self.harga_checkbox.check_state() == nwg::CheckBoxState::Checked{
             self.harga_text.text()
@@ -760,9 +748,20 @@ impl App {
         let promotionid_text = self.promotionid_text.text();
         let signature_text = self.signature_text.text();
         let collectionid = self.cid_text.text();
-        let url_1 = url.trim();
+        let url_1 = url.clone();
         println!("{}", url_1);
-        let product_info = prepare::process_url(url_1);
+        let (tx, rx) = std::sync::mpsc::channel();
+        tokio::spawn(async move {
+            let url_1 = url_1.trim();
+            let mut product_info = prepare::process_url(&url_1);
+            if product_info.shop_id == 0 && product_info.item_id == 0 {
+                if let Ok(redirect) = prepare::get_redirect_url(&url_1).await {
+                    product_info = prepare::process_url(&redirect);
+                }
+            }
+            let _ = tx.send(product_info);
+        });
+        let product_info = rx.recv().unwrap();
         let refe = format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id);
         // Menjalankan program abs.exe dengan argumen yang dibuat
         let create_command = |extra_args: Vec<String>| -> Vec<String> {

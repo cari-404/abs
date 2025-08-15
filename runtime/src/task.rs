@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use anyhow::anyhow;
 
 use crate::prepare::{CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
-use crate::voucher::Vouchers;
+use crate::voucher::{Vouchers, VoucherDetail};
 use crate::crypt::{self, DeviceInfo};
 
 pub static CO_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
@@ -508,5 +508,24 @@ pub fn recalculate_shipping_subtotal(checkout_price_data: &mut serde_json::Value
         obj.remove("total_savings");
         obj.insert("merchandise_subtotal".to_string(), serde_json::Value::from(adjusted_max_price));
         obj.insert("total_payable".to_string(), serde_json::Value::from(fixed_total_payable));
+    }
+}
+pub fn recalculate_client_voucher(checkout_price_data: &mut serde_json::Value, detail: &VoucherDetail) {
+    let merchandise_subtotal = checkout_price_data["merchandise_subtotal"].as_i64().unwrap_or(0);
+    let shipping_subtotal = checkout_price_data["shipping_subtotal"].as_i64().unwrap_or(0);
+    let insurance_subtotal = checkout_price_data["insurance_subtotal"].as_i64().unwrap_or(0);
+    let buyer_service_fee = checkout_price_data["buyer_service_fee"].as_i64().unwrap_or(0);
+    let buyer_txn_fee = checkout_price_data["buyer_txn_fee"].as_i64().unwrap_or(0);
+    let diskon_normal = (merchandise_subtotal * (detail.reward_percentage as i64)) / 100; // aman overflow
+    let max_diskon = detail.reward_cap as i64;
+    let promocode_applied = std::cmp::min(diskon_normal, max_diskon);
+    let shopee_coins_redeemed = checkout_price_data["shopee_coins_redeemed"].as_i64().unwrap_or(0); //Need Api Comunication
+
+    let fixed_total_payable = merchandise_subtotal + shipping_subtotal + insurance_subtotal + buyer_service_fee + buyer_txn_fee - promocode_applied - shopee_coins_redeemed;
+    if let Some(obj) = checkout_price_data.as_object_mut() {
+        obj.remove("price_breakdown");
+        obj.remove("total_savings");
+        obj.insert("total_payable".to_string(), serde_json::Value::from(fixed_total_payable));
+        obj.insert("promocode_applied".to_string(), serde_json::Value::from(promocode_applied));
     }
 }

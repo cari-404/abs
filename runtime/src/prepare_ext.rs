@@ -1,53 +1,10 @@
 use rquest as reqwest;
-use reqwest::Version;
 use std::sync::Arc;
 use std::mem::drop;
-use serde::Deserialize;
 
-use crate::prepare::{self, CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo, FS_BASE_HEADER};
+use crate::prepare::{self, CookieData, ModelInfo, ShippingInfo, PaymentInfo, ProductInfo, AddressInfo};
 use crate::crypt::DeviceInfo;
 use crate::task::{self};
-
-#[derive(Deserialize, Debug)]
-struct GetRespPdp {
-    data: Option<PdpData>,
-}
-#[derive(Deserialize, Debug)]
-struct PdpData {
-    item: Option<ItemPdp>,
-    shop: Option<ShopPdp>,
-    product_shipping: Option<ShippingPdp>,
-}
-#[derive(Deserialize, Debug, Clone)]
-struct ItemPdp {
-    title: Option<String>,
-    models: Option<Vec<ModelsPdp>>,
-}
-#[derive(Deserialize, Debug, Clone)]
-struct ShopPdp {
-    is_official_shop: Option<bool>,
-}
-#[derive(Deserialize, Debug, Clone)]
-struct ModelsPdp {
-    pub name: String,
-    pub price: i64,
-    pub stock: i64,
-    pub model_id: i64,
-}
-#[derive(Deserialize, Debug)]
-struct ShippingPdp {
-    ungrouped_channel_infos: Option<Vec<ChannelInfo>>,
-}
-#[derive(Deserialize, Debug)]
-struct ChannelInfo {
-    channel_id: i64,
-    name: String,
-    price_before_discount: Option<PriceBD>,
-}
-#[derive(Deserialize, Debug)]
-struct PriceBD {
-    single_value: i64,
-}
 
 pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwest::header::HeaderMap>, shared_headers: Arc<reqwest::header::HeaderMap>, device_info: &DeviceInfo, product_info: Option<&ProductInfo>, address_info: &AddressInfo, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> anyhow::Result<Vec<ShippingInfo>> {
     let product_info = match product_info {
@@ -59,8 +16,8 @@ pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwes
     let cookie_data = CookieData::from_headers(&shared_headers.clone());
     let get_body_ship = task::get_builder(&device_info, &address_info, &[chosen_model.clone()], &chosen_payment, &chosen_shipping, None, None, None).await?;
     let (shipping_info_result, shipping_info_result2, shipping_orders_result) = tokio::join!(
-        prepare::kurir(client.clone(), headers.clone(), &product_info, &address_info),
-        get_pdp(client.clone(), &product_info, &cookie_data),
+        prepare::ShippingInfo::kurir(client.clone(), headers.clone(), &product_info, &address_info),
+        prepare::get_pdp(client.clone(), &product_info, &cookie_data),
         task::checkout_get(client.clone(), shared_headers.clone(), &get_body_ship)
 
     );
@@ -144,64 +101,4 @@ pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwes
     drop(shipping_orders);
     println!("{:?}", shipping_info);
     Ok(shipping_info)
-}
-pub async fn get_pdp(client: Arc<reqwest::Client>, product_info: &ProductInfo, cookie_content: &CookieData) -> Result<(String, Vec<ModelInfo>, bool, Vec<ShippingInfo>, String), anyhow::Error> {
-    let url2 = format!("https://mall.shopee.co.id/api/v4/pdp/get?item_id={}&shop_id={}", product_info.item_id, product_info.shop_id);
-    println!("{}", url2);
-    println!("sending Get Shopee request...");
-	
-    let mut headers = FS_BASE_HEADER.clone();
-    headers.insert("referer", reqwest::header::HeaderValue::from_str(&format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id))?);
-    headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
-    headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
-    // Buat permintaan HTTP POST
-    let response = client
-        .get(&url2)
-        .headers(headers)
-        .version(Version::HTTP_2) 
-        .send()
-        .await?;
-
-    //println!("Status: {}", response.status());
-    //println!("Headers: {:#?}", response.headers());
-    let status_code = response.status().to_string();
-    let hasil: GetRespPdp = response.json().await?;
-    //println!("Body: {}", &body);
-
-    let (name, raw_models, is_official_shop, raw_shipping_info) = if let Some(data) = hasil.data {
-        (
-            data.item.clone().unwrap().title.unwrap_or_else(|| "Unknown".into()),
-            data.item.clone().unwrap().models.unwrap_or_default(),          // bisa kosong
-            data.shop.clone().unwrap().is_official_shop.unwrap_or(false),
-            data.product_shipping.unwrap().ungrouped_channel_infos.unwrap_or_default(),
-        )
-    } else {
-        println!("Status: {}", status_code);
-        ("INVALID".to_string(), Vec::new(), false, Vec::new())
-    };
-    let models_info: Vec<ModelInfo> = raw_models
-        .into_iter()
-        .map(|m| ModelInfo {
-            name: m.name,
-            product_name: name.clone(),
-            price: m.price,
-            stock: m.stock,
-            modelid: m.model_id,
-            promotionid: 0,
-            shop_id:   product_info.shop_id,   // override di *sini*
-            item_id:   product_info.item_id,
-            quantity:  1,
-            voucher_code: None,
-        })
-        .collect();
-    let shipping_info: Vec<ShippingInfo> = raw_shipping_info
-        .into_iter()
-        .map(|info| ShippingInfo {
-            original_cost: info.price_before_discount.and_then(|p| Some(p.single_value)).unwrap_or(0),
-            channelid: info.channel_id,
-            channelidroot: info.channel_id,
-            channel_name: info.name,
-        })
-        .collect();
-    Ok((name, models_info, is_official_shop, shipping_info, status_code))
 }

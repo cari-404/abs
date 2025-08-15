@@ -112,6 +112,7 @@ pub struct Item {
     pub item_group_id: Option<String>,
     pub insurances: Vec<serde_json::Value>,
     pub channel_exclusive_info: ChannelExclusiveInfo,
+    pub stream_info: StreamInfo,
     pub supports_free_returns: bool,
 }
 
@@ -121,6 +122,12 @@ pub struct ChannelExclusiveInfo {
     pub token: String,
     pub is_live_stream: bool,
     pub is_short_video: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct StreamInfo {
+    pub streamer_id_live_stream: i64,
+    pub streamer_id_short_video: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -795,6 +802,10 @@ pub fn multi_product(products: &[ModelInfo]) -> Vec<ShopOrder> {
                             is_live_stream: false,
                             is_short_video: false,
                         },
+                        stream_info: StreamInfo {
+                            streamer_id_live_stream: 0,
+                            streamer_id_short_video: 0,
+                        },
                         supports_free_returns: false,
                     })
                     .collect(),
@@ -956,4 +967,7 @@ pub async fn multi_get_recommend_platform_vouchers(adjusted_max_price: Option<i6
         println!("Status: {}", status);
     }
     Ok((freeshipping_voucher, vouchers))
+}
+pub fn replace_promotion_data(data1: &mut PlaceOrderBody, data2: &PlaceOrderBody) {
+    data1.promotion_data = data2.promotion_data.clone();
 }

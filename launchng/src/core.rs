@@ -453,7 +453,7 @@ impl MyWindow {
                 self2.btn_cek.hwnd().ShowWindow(SW::SHOW);
                 let _ = self2.btn_cek.hwnd().SetWindowText("Cek");
             }else{
-                let cookie_data = prepare::create_cookie(&prepare::read_cookie_file(&file));
+                let cookie_data = prepare::CookieData::create_cookie(&prepare::read_cookie_file(&file));
                 let device_info = crypt::create_devices(&func_main::get_fp_data(&file));
                 let self2 = self2.clone();
                 tokio::spawn(async move {
