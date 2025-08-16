@@ -1,12 +1,13 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.2.2 :
+    fix untrimed input voucher
+    useless upgrade😢
 Whats new in 1.2.1 :
     experimental new algorithm platform voucher only
     ⚠️WARNING: maybe this version contain bug⚠️
 Whats new in 1.2.0 :
     Add api get pdp for get product info and shipping info
     Integrate with get pdp for shipping info
-Whats new in 1.1.9 :
-    Remove failsafe on classic shipping info
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -281,16 +282,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	if opt.platform_vouchers {
 		println!("voucher code platform enable");
-		voucher_code_platform = opt.code_platform.clone().unwrap_or_else(|| get_user_input("Masukan voucher code platform: "));
+		voucher_code_platform = opt.code_platform.clone().unwrap_or_else(|| get_user_input("Masukan voucher code platform: ")).trim().to_string();
 	}
     if opt.collection_vouchers {
 		println!("voucher collection enable");
-		voucher_collectionid = opt.collectionid.clone().unwrap_or_else(|| get_user_input("Masukan collection_id: "));
+		voucher_collectionid = opt.collectionid.clone().unwrap_or_else(|| get_user_input("Masukan collection_id: ")).trim().to_string();
 	}
 	if opt.claim_platform_vouchers {
 		println!("voucher claim enable");
-		promotionid = opt.pro_id.clone().unwrap_or_else(|| get_user_input("Masukan Promotion_Id: "));
-		signature = opt.sign.clone().unwrap_or_else(|| get_user_input("Masukan Signature: "));	
+		promotionid = opt.pro_id.clone().unwrap_or_else(|| get_user_input("Masukan Promotion_Id: ")).trim().to_string();
+		signature = opt.sign.clone().unwrap_or_else(|| get_user_input("Masukan Signature: ")).trim().to_string();	
 	}
 	if !promotionid.is_empty() && !signature.is_empty(){
 		println!("promotionid: {}", promotionid);
