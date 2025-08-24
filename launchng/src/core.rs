@@ -669,6 +669,12 @@ impl MyWindow {
         self.platform_combobox.on().cbn_sel_change(move || {
             println!("Platform Combobox clicked!");
             self2.platform_selection();
+            if self2.platform_combobox.items().selected_text() == Ok(Some("Claim".to_string())) || self2.platform_combobox.items().selected_text() == Ok(Some("Link".to_string())) {
+                self2.bypass_checkbox.hwnd().EnableWindow(true);
+            }else{
+                self2.bypass_checkbox.hwnd().EnableWindow(false);
+                self2.bypass_checkbox.set_state(co::BST::UNCHECKED);
+            }
             Ok(())
         });
         let self2 = self.clone();
@@ -706,6 +712,7 @@ impl MyWindow {
                 func_main::set_visibility(&self2.promotionid_label, &self2.promotionid_text, true);
                 func_main::set_visibility(&self2.signature_label, &self2.signature_text, true);
                 self2.platform_selection();
+                self2.bypass_checkbox.hwnd().EnableWindow(true);
             }else{
                 self2.platform_combobox.hwnd().EnableWindow(false);
                 self2.platform_combobox.items().select(Some(0));
@@ -716,6 +723,8 @@ impl MyWindow {
                 self2.promotionid_text.hwnd().EnableWindow(false);
                 self2.signature_label.hwnd().EnableWindow(false);
                 self2.signature_text.hwnd().EnableWindow(false);
+                self2.bypass_checkbox.hwnd().EnableWindow(false);
+                self2.bypass_checkbox.set_state(co::BST::UNCHECKED);
             }
             Ok(())
         });

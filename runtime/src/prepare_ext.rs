@@ -15,16 +15,20 @@ pub async fn get_shipping_data(client: Arc<reqwest::Client>, headers: Arc<reqwes
     };
     let cookie_data = CookieData::from_headers(&shared_headers.clone());
     let get_body_ship = task::get_builder(&device_info, &address_info, &[chosen_model.clone()], &chosen_payment, &chosen_shipping, None, None, None).await?;
-    let (shipping_info_result, shipping_info_result2, shipping_orders_result) = tokio::join!(
-        prepare::ShippingInfo::kurir(client.clone(), headers.clone(), &product_info, &address_info),
-        prepare::get_pdp(client.clone(), &product_info, &cookie_data),
-        task::checkout_get(client.clone(), shared_headers.clone(), &get_body_ship)
-
-    );
-    let mut shipping_info = shipping_info_result?;
-    let (_, _, _, mut shipping_info2, _) = shipping_info_result2?;
-    shipping_info.append(&mut shipping_info2);
-    let (_, _, _, _, _, _, shipping_orders, _, _, _, _, _, _, _, _) = shipping_orders_result?;
+    let client_clone = Arc::clone(&client);
+    let shared_headers_clone = Arc::clone(&shared_headers);
+    let checkout_fut = tokio::spawn(async move {
+        task::checkout_get(client_clone, shared_headers_clone, &get_body_ship).await
+    });
+    let mut shipping_info = prepare::ShippingInfo::kurir_2(client.clone(), &product_info, &address_info, &cookie_data).await?;
+    if shipping_info.is_empty() {
+        let (_, _, _, shipping_info_pdp, _) = prepare::get_pdp(client.clone(), &product_info, &cookie_data).await?;
+        shipping_info = shipping_info_pdp;
+    }
+    if shipping_info.is_empty() {
+        shipping_info = prepare::ShippingInfo::kurir(client.clone(), headers.clone(), &product_info, &address_info).await?;
+    }
+    let (_, _, _, _, _, _, shipping_orders, _, _, _, _, _, _, _, _) = checkout_fut.await??;
 
     let mut tasks = Vec::new();
     let device_info = Arc::new(device_info.clone());

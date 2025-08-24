@@ -203,7 +203,7 @@ pub static VC_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
 	headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
 	headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
 	headers.insert("x-sap-access-s", HeaderValue::from_static(""));
-    headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+    headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
 	headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id"));
 	headers.insert("accept", HeaderValue::from_static("application/json"));
 	headers.insert("content-type", HeaderValue::from_static("application/json; charset=utf-8"));
@@ -786,7 +786,7 @@ async fn api_1(client: Arc<reqwest::Client>, cid_1: &str, headers: &HeaderMap) -
 }
 pub async fn headers_collection(cookie_content: &CookieData) -> HeaderMap {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("Accept", HeaderValue::from_static("application/json"));
     headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));

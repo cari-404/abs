@@ -137,6 +137,79 @@ impl ShippingInfo {
         }
         Ok(shipping_info_vec)
     }
+    pub async fn kurir_2(client: Arc<reqwest::Client>, product_info: &ProductInfo, address_info: &AddressInfo, cookie_content: &CookieData) -> anyhow::Result<Vec<ShippingInfo>> {
+        let city_encoded = url_encode(&address_info.city);
+        let district_encoded = url_encode(&address_info.district);
+        let state_encoded = url_encode(&address_info.state);
+        println!("{}-{}-{}", state_encoded, city_encoded, district_encoded);
+
+        let url2 = format!("https://mall.shopee.co.id/api/v4/pdp/get_shipping?city={}&district={}&itemid={}&shopid={}&state={}&town=", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
+        println!("{}", url2);
+        let mut headers = FS_BASE_HEADER.clone();
+        headers.insert("referer", reqwest::header::HeaderValue::from_str(&format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id))?);
+        headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
+        headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
+        // Buat permintaan HTTP POST
+        let response = client
+            .get(&url2)
+            .headers(headers)
+            .version(Version::HTTP_2) 
+            .send()
+            .await?;
+
+        println!("Status: get_courier");
+        //println!("Headers: {:#?}", response.headers());
+        let hasil: KurirResponse2 = response.json().await?;
+        //println!("Body: {}", String::from_utf8_lossy(&body));
+        let mut shipping_info_vec = hasil
+            .data
+            .as_ref()
+            .and_then(|data| data.ungrouped_channel_infos.as_ref())
+            .map(|infos| infos.iter().cloned().map(ShippingInfo::from).collect::<Vec<_>>())
+            .unwrap_or_default();
+        if let Some(data) = hasil.data {
+            if let Some(grouped) = data.grouped_channel_infos_by_service_type {
+                for group in grouped {
+                    for info in group.channel_infos {
+                        shipping_info_vec.push(ShippingInfo::from(info));
+                    }
+                }
+            }
+        }
+        if shipping_info_vec.is_empty() {
+            eprintln!("No shipping information found.");
+        }
+        Ok(shipping_info_vec)
+    }
+}
+#[derive(Debug, Deserialize)]
+pub struct KurirResponse2 {
+    pub data: Option<ShippingData2>,
+}
+#[derive(Debug, Deserialize)]
+pub struct ShippingData2 {
+    pub ungrouped_channel_infos: Option<Vec<UngroupedChannelInfos>>,
+    pub grouped_channel_infos_by_service_type: Option<Vec<GroupedChannelInfosByServiceType>>,
+}
+#[derive(Debug, Deserialize)]
+pub struct GroupedChannelInfosByServiceType {
+    pub channel_infos: Vec<UngroupedChannelInfos>,
+}
+#[derive(Debug, Deserialize, Clone)] 
+pub struct UngroupedChannelInfos {
+    pub channel_id: i64,
+    pub name: String,
+    pub price_before_discount: Option<i64>,
+}
+impl From<UngroupedChannelInfos> for ShippingInfo {
+    fn from(info: UngroupedChannelInfos) -> Self {
+        ShippingInfo {
+            original_cost: info.price_before_discount.unwrap_or(0),
+            channelid: info.channel_id,
+            channelidroot: info.channel_id,
+            channel_name: info.name,
+        }
+    }
 }
 #[derive(Debug, Deserialize)]
 pub struct KurirResponse {
@@ -322,7 +395,7 @@ pub static BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
 });
 pub static FS_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("Accept", HeaderValue::from_static("application/json"));
     headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
@@ -336,7 +409,7 @@ pub static FS_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
 });
 pub static PRODUCT_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29339 app_type=1"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("x-shopee-language", HeaderValue::from_static("id"));
     headers.insert("if-none-match-", HeaderValue::from_static("55b03-8476c83de1a4cf3b74cc77b08ce741f9"));

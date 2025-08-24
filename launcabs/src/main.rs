@@ -633,15 +633,22 @@ impl App {
     }
     async fn cek_async(product_info: &ProductInfo, cookie_data: &CookieData, shared_data: Arc<RwLock<SharedData>>) {
         let client = Arc::new(prepare::universal_client_skip_headers().await);
+        let base_headers = Arc::new(prepare::create_headers(&cookie_data));
         match timeout(Duration::from_secs(10), prepare::get_pdp(client.clone(), &product_info, cookie_data)).await {
             Ok(Ok((name, model_info, is_official_shop, kurirs, rcode))) => {
-                let mut data = shared_data.write().unwrap();
-                data.name_model = model_info.iter().map(|model| model.name.clone()).collect();
-                data.model_infos = model_info;
-                data.rcode = rcode;
-                data.name_product = name;
-                data.is_official_shop = is_official_shop;
-                data.kurirs = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
+                if !model_info.is_empty() && !kurirs.is_empty() {
+                    let mut data = shared_data.write().unwrap();
+                    data.name_model = model_info.iter().map(|model| model.name.clone()).collect();
+                    data.model_infos = model_info;
+                    data.rcode = rcode;
+                    data.name_product = name;
+                    data.is_official_shop = is_official_shop;
+                    data.kurirs = kurirs.iter().map(|kurirs| kurirs.channel_name.clone()).collect();
+                    return;
+                }else{
+                    let mut data = shared_data.write().unwrap();
+                    data.rcode = format!("Error: pdp empty? :)");
+                }
             },
             Ok(Err(e)) => {
                 let mut data = shared_data.write().unwrap();
@@ -650,6 +657,47 @@ impl App {
             Err(e) => {
                 let mut data = shared_data.write().unwrap();
                 data.rcode = format!("Timeout: {:?}", e);
+            }
+        }
+        match timeout(Duration::from_secs(10), prepare::get_product(client.clone(), &product_info, &cookie_data)).await {
+            Ok(Ok((name, model_info, is_official_shop, _fs_info, rcode))) => {
+                let mut data = shared_data.write().unwrap();
+                data.name_model = model_info.iter().map(|m| m.name.clone()).collect();
+                data.model_infos = model_info;
+                data.rcode = rcode;
+                data.name_product = name;
+                data.is_official_shop = is_official_shop;
+            }
+            Ok(Err(e)) => {
+                let mut data = shared_data.write().unwrap();
+                data.rcode = format!("Error: {:?}", e);
+                return;
+            }
+            Err(e) => {
+                let mut data = shared_data.write().unwrap();
+                data.rcode = format!("Timeout: {:?}", e);
+                return;
+            }
+        }
+        let address_info = match prepare::address(client.clone(), base_headers.clone()).await {
+            Ok(address) => address,
+            Err(e) => {
+                eprintln!("Failed to get address: {}", e);
+                return;
+            }
+        };
+        match timeout(Duration::from_secs(10), prepare::ShippingInfo::kurir_2(client.clone(), &product_info, &address_info, &cookie_data)).await {
+            Ok(Ok(kurirs)) => {
+                let mut data = shared_data.write().unwrap();
+                data.kurirs = kurirs.iter().map(|k| k.channel_name.clone()).collect();
+            }
+            Ok(Err(e)) => {
+                let mut data = shared_data.write().unwrap();
+                data.kurirs = vec![format!("Error: {:?}", e)];
+            }
+            Err(e) => {
+                let mut data = shared_data.write().unwrap();
+                data.kurirs = vec![format!("Timeout: {:?}", e)];
             }
         }
     }

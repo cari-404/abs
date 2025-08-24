@@ -27,7 +27,7 @@ pub static CO_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
     headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
     headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
     headers.insert("x-sap-access-s", HeaderValue::from_static(""));
-    headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29344 app_type=1"));
+    headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
     headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Cannouncement%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Cearly_life_zone%25252Ccampaign_modules%25252Cflash_sales%25252Clive_streaming%25252Cvideo%25252Cdigital_products%25252Cdeals_nearby%25252Ccutline%25252Cdaily_discover%25252Cfood_order_status"));
     headers.insert("accept", HeaderValue::from_static("application/json"));
     headers.insert("content-type", HeaderValue::from_static("application/json"));
@@ -521,11 +521,18 @@ pub fn recalculate_client_voucher(checkout_price_data: &mut serde_json::Value, d
     let promocode_applied = std::cmp::min(diskon_normal, max_diskon);
     let shopee_coins_redeemed = checkout_price_data["shopee_coins_redeemed"].as_i64().unwrap_or(0); //Need Api Comunication
 
-    let fixed_total_payable = merchandise_subtotal + shipping_subtotal + insurance_subtotal + buyer_service_fee + buyer_txn_fee - promocode_applied - shopee_coins_redeemed;
+    let fixed_total_payable = if merchandise_subtotal == promocode_applied {
+      0
+    }else{
+      merchandise_subtotal + shipping_subtotal + insurance_subtotal + buyer_service_fee + buyer_txn_fee - promocode_applied - shopee_coins_redeemed
+    };
     if let Some(obj) = checkout_price_data.as_object_mut() {
         obj.remove("price_breakdown");
         obj.remove("total_savings");
         obj.insert("total_payable".to_string(), serde_json::Value::from(fixed_total_payable));
         obj.insert("promocode_applied".to_string(), serde_json::Value::from(promocode_applied));
+        if fixed_total_payable == 0 {
+            obj.insert("buyer_service_fee".to_string(), serde_json::Value::Null);
+        }
     }
 }
