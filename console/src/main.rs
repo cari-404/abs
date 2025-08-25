@@ -1,4 +1,6 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.2.4 :
+    Experimental: supported bypass argument for freeshipping with max price (harga)
 Whats new in 1.2.3 :
     supported bypass argument for new algorithm claim platform voucher
     reenable classic claim platform voucher method for compatibilty and stability
@@ -7,9 +9,6 @@ Whats new in 1.2.3 :
 Whats new in 1.2.2 :
     fix untrimed input voucher
     useless upgrade😢
-Whats new in 1.2.1 :
-    experimental new algorithm platform voucher only
-    ⚠️WARNING: maybe this version contain bug⚠️
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -19,7 +18,7 @@ use runtime::voucher::{self};
 use runtime::crypt::{self};
 use runtime::telegram::{self};
 use runtime::telemetry;
-use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike, Utc};
+use chrono::{Local, Duration, NaiveDateTime, DateTime, Timelike, Utc, TimeZone};
 use std::io::{self, Write, Read};
 use std::process;
 use anyhow::Result;
@@ -315,8 +314,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
     }
     let task_time_dt = parse_task_time(&task_time_str)?;
+    let timestamp_dt = Local.from_local_datetime(&(task_time_dt + Duration::seconds(30))).unwrap().timestamp();
     telmet.write(&format!("Url: {}", target_url));
     telmet.write(&format!("Task time set to: {}", task_time_dt));
+    telmet.write(&format!("Timestamp: {}", timestamp_dt));
 
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
@@ -525,12 +526,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         process::exit(0);
     }*/
+    if opt.bypass && (opt.claim_platform_vouchers || opt.fsv_only) {
+        let (fsvd, _) = voucher::get_recommend_platform_vouchers(Some(timestamp_dt), adjusted_max_price, &address_info, client.clone(), vc_header.clone(), &product_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping,).await?;
+        fsv = fsvd;
+    }
     if opt.claim_platform_vouchers{
         if !promotionid.is_empty() && !signature.is_empty() {
-            let (fsvd, _) = voucher::get_recommend_platform_vouchers(adjusted_max_price, &address_info, client.clone(), vc_header.clone(), &product_info, quantity, &chosen_model, &chosen_payment, &chosen_shipping,).await?;
             let (data, detail) = voucher::get_voucher_data(client.clone(), &promotionid, &signature, vc_header.clone()).await?;
             selected_platform_voucher = data;
-            fsv = fsvd;
             detail_voucher = detail;
         } else {
             selected_platform_voucher = None;
@@ -550,6 +553,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         task_ng::replace_promotion_data(&mut resp_fsv_only, &body_complete.1);
+        println!("Response FSV Only: {:?}", serde_json::to_string(&resp_fsv_only).unwrap());
+        speed_steps = Some(resp_fsv_only);
+    }
+    if adjusted_max_price.is_some() && opt.fsv_only && opt.bypass{
+        let body_fsv_only = task_ng::get_body_builder(&device_info, &chosen_payment, Arc::new(fsv.clone()), Arc::new(None), Arc::new(None), use_coins, &mut temp).await?;
+        let mut resp_fsv_only = task_ng::get_ng(client.clone(), shared_headers.clone(), &body_fsv_only.0, &chosen_payment, body_fsv_only.1.clone()).await?;
+        if let Some(limit) = adjusted_max_price {
+            if let Some(ref mut checkout_price_data) = resp_fsv_only.checkout_price_data {
+                task::recalculate_shipping_subtotal(checkout_price_data, limit);
+            }
+        }
         println!("Response FSV Only: {:?}", serde_json::to_string(&resp_fsv_only).unwrap());
         speed_steps = Some(resp_fsv_only);
     }
@@ -586,6 +600,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let recommend_voucher_fut = async {
             if !opt.no_fsv {
                 voucher::get_recommend_platform_vouchers(
+                    Some(timestamp_dt),
                     adjusted_max_price,
                     &address_info,
                     client.clone(),
@@ -638,74 +653,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             },
             async {
-                if selected_platform_voucher.is_some() && opt.bypass{
-                    if let Some(place_order_body) = &speed_steps {
-                        let place_order_body = place_order_body.clone(); 
-                        let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
-                        let stop_flag = Arc::new(AtomicBool::new(false));
-                        for i in 0..max_threads {
-                            println!("Running on thread: {}", i);
-                            let tx = tx.clone();
-                            let shared_headers = Arc::clone(&shared_headers);
-                            let client = Arc::clone(&client);
-                            let place_order_body = place_order_body.clone();
-                            let stop_flag = Arc::clone(&stop_flag);
-                            let telmet = telmet.clone();
-                    
-                            tokio::spawn(async move {
-                                let mut try_count = 0;
-                                while try_count < 3 && !stop_flag.load(Ordering::Relaxed) {
-                                    if stop_flag.load(Ordering::Relaxed) {
-                                        return;
-                                    }
-                                    telmet.write(&format!("Request PlaceOrder on {} try {} : {:#?}", i, try_count, place_order_body));
-                                    let mpp = match task_ng::place_order_ng(client.clone(), shared_headers.clone(), &place_order_body).await
-                                    {
-                                        Ok(response) => response,
-                                        Err(err) => {
-                                            eprintln!("Error in place_order_ng: {:?}", err);
-                                            continue;
-                                        }
-                                    };
-                                    telmet.write(&format!("Response PlaceOrder on {} try {}: {:#?}", i, try_count, mpp));
-                                    // Mengecek apakah `mpp` memiliki field `checkoutid`
-                                    println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
-                                    if let Some(error) = mpp.get("error") {
-                                        match error.as_str().unwrap_or_default() {
-                                            "error_fraud" => {
-                                                println!("[{}]Gagal: error_fraud", Local::now().format("%H:%M:%S.%3f"));
-                                                stop_flag.store(true, Ordering::Relaxed);
-                                                return;
-                                            }
-                                            "error_freeze" => {
-                                                println!("[{}]Gagal: error_freeze", Local::now().format("%H:%M:%S.%3f"));
-                                                stop_flag.store(true, Ordering::Relaxed);
-                                                return;
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    if let Some(checkout_id) = mpp.get("checkoutid") {
-                                        let checkout_id = checkout_id.as_i64().unwrap();
-                                        let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
-                                        println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
-                                        let _ = tx.send(url).await;
-                                        stop_flag.store(true, Ordering::Relaxed);
-                                        return;
-                                    }
-                                    try_count += 1;
+                if let Some(place_order_body) = &speed_steps {
+                    let place_order_body = place_order_body.clone(); 
+                    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(max_threads);
+                    let stop_flag = Arc::new(AtomicBool::new(false));
+                    for i in 0..max_threads {
+                        println!("Running on thread: {}", i);
+                        let tx = tx.clone();
+                        let shared_headers = Arc::clone(&shared_headers);
+                        let client = Arc::clone(&client);
+                        let place_order_body = place_order_body.clone();
+                        let stop_flag = Arc::clone(&stop_flag);
+                        let telmet = telmet.clone();
+                
+                        tokio::spawn(async move {
+                            let mut try_count = 0;
+                            while try_count < 3 && !stop_flag.load(Ordering::Relaxed) {
+                                if stop_flag.load(Ordering::Relaxed) {
+                                    return;
                                 }
-                                eprintln!("[{}]Gagal 3x percobaan", Local::now().format("%H:%M:%S.%3f"));
-                                stop_flag.store(true, Ordering::Relaxed);
-                            });
-                        }
-                        drop(tx); // Tutup pengirim setelah semua tugas selesai
-                        while let Some(url) = rx.recv().await {
-                            println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
-                            if config.telegram_notif {
-                                let msg = format!("Auto Buy Shopee {}\nREPORT!!!\nUsername     : {}\nProduct      : {}\nVariant      : {}\nLink Payment : {}\nCheckout berhasil!", version_info, userdata.username, name, chosen_model.name, url);
-                                telegram::send_msg(client.clone(), &config, &msg).await?;
+                                telmet.write(&format!("Request PlaceOrder on {} try {} : {:#?}", i, try_count, place_order_body));
+                                let mpp = match task_ng::place_order_ng(client.clone(), shared_headers.clone(), &place_order_body).await
+                                {
+                                    Ok(response) => response,
+                                    Err(err) => {
+                                        eprintln!("Error in place_order_ng: {:?}", err);
+                                        continue;
+                                    }
+                                };
+                                telmet.write(&format!("Response PlaceOrder on {} try {}: {:#?}", i, try_count, mpp));
+                                // Mengecek apakah `mpp` memiliki field `checkoutid`
+                                println!("Current time: {}", Local::now().format("%H:%M:%S.%3f"));
+                                if let Some(error) = mpp.get("error") {
+                                    match error.as_str().unwrap_or_default() {
+                                        "error_fraud" => {
+                                            println!("[{}]Gagal: error_fraud", Local::now().format("%H:%M:%S.%3f"));
+                                            stop_flag.store(true, Ordering::Relaxed);
+                                            return;
+                                        }
+                                        "error_freeze" => {
+                                            println!("[{}]Gagal: error_freeze", Local::now().format("%H:%M:%S.%3f"));
+                                            stop_flag.store(true, Ordering::Relaxed);
+                                            return;
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                if let Some(checkout_id) = mpp.get("checkoutid") {
+                                    let checkout_id = checkout_id.as_i64().unwrap();
+                                    let url = format!("https://shopee.co.id/mpp/{}?flow_source=3", checkout_id);
+                                    println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
+                                    let _ = tx.send(url).await;
+                                    stop_flag.store(true, Ordering::Relaxed);
+                                    return;
+                                }
+                                try_count += 1;
                             }
+                            eprintln!("[{}]Gagal 3x percobaan", Local::now().format("%H:%M:%S.%3f"));
+                            stop_flag.store(true, Ordering::Relaxed);
+                        });
+                    }
+                    drop(tx); // Tutup pengirim setelah semua tugas selesai
+                    while let Some(url) = rx.recv().await {
+                        println!("[{}]{}", Local::now().format("%H:%M:%S.%3f"), url);
+                        if config.telegram_notif {
+                            let msg = format!("Auto Buy Shopee {}\nREPORT!!!\nUsername     : {}\nProduct      : {}\nVariant      : {}\nLink Payment : {}\nCheckout berhasil!", version_info, userdata.username, name, chosen_model.name, url);
+                            telegram::send_msg(client.clone(), &config, &msg).await?;
                         }
                     }
                 } else {

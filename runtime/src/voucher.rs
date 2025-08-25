@@ -44,6 +44,7 @@ pub struct VoucherOnRecomendPlatform {
     pub signature: String,
     pub fsv_error_message: Option<String>,
     pub fsv_voucher_card_ui_info: Option<FsvVoucherCardUiInfo>,
+    pub end_time: i32,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -494,7 +495,7 @@ pub async fn get_voucher_data(client: Arc<reqwest::Client>, start: &str, end: &s
 	Ok((vouchers, detail_vouchers))
 }
 
-pub async fn get_recommend_platform_vouchers(adjusted_max_price: Option<i64>, buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
+pub async fn get_recommend_platform_vouchers(timestamp_dt: Option<i64>, adjusted_max_price: Option<i64>, buyer_address: &AddressInfo, client: Arc<reqwest::Client>, headers: Arc<HeaderMap>, product_info: &ProductInfo, quantity: i32, chosen_model: &ModelInfo, chosen_payment: &PaymentInfo, chosen_shipping: &ShippingInfo) -> Result<(Option<Vouchers>, Option<Vouchers>)>{
     let orders_json = vec![Orders {
         shopid: product_info.shop_id,
         carrier_ids: vec![8005, 8003, 80099, 80055, 8006, 80021],
@@ -585,7 +586,7 @@ pub async fn get_recommend_platform_vouchers(adjusted_max_price: Option<i64>, bu
     // Extract freeshipping_vouchers
     if status == reqwest::StatusCode::OK {
         if let Some(freeshipping_vouchers_array) = json_resp.data.as_ref().and_then(|data| data.freeshipping_vouchers.as_ref()) {
-            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| { v.fsv_error_message.is_none() && v.fsv_voucher_card_ui_info.as_ref().map_or(true, |info| adjusted_max_price.map_or(true, |max| info.int_min_spend_fsv_ui_only <= max))}) {
+            if let Some(voucher) = freeshipping_vouchers_array.iter().find(|v| { v.fsv_error_message.is_none() && v.fsv_voucher_card_ui_info.as_ref().map_or(true, |info| adjusted_max_price.map_or(true, |max| info.int_min_spend_fsv_ui_only <= max)) && timestamp_dt.map_or(true, |ts| ts < v.end_time as i64)}) {
                 freeshipping_voucher = Some(Vouchers {
                     promotionid : voucher.promotionid,
                     voucher_code : voucher.voucher_code.clone(),
