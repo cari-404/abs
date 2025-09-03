@@ -1,4 +1,8 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.2.5 :
+    fix calculation for discount (remove unused cent)
+    New mode savevoucher 1.2.6
+    Update definition
 Whats new in 1.2.4 :
     Experimental: supported bypass argument for freeshipping with max price (harga)
 Whats new in 1.2.3 :
@@ -6,9 +10,6 @@ Whats new in 1.2.3 :
     reenable classic claim platform voucher method for compatibilty and stability
     priority checking shipping courier API
     ⚠️WARNING: don't mix bypass, cause no best practice for this argument. eg, max price (harga) and claim in the same scenario⚠️
-Whats new in 1.2.2 :
-    fix untrimed input voucher
-    useless upgrade😢
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};

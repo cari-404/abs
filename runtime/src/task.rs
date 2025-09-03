@@ -27,7 +27,7 @@ pub static CO_HEADER_APP: Lazy<HeaderMap> = Lazy::new(|| {
     headers.insert("if-none-match-", HeaderValue::from_static("55b03-97d86fe6888b54a9c5bfa268cf3d922d"));
     headers.insert("shopee_http_dns_mode", HeaderValue::from_static("1"));
     headers.insert("x-sap-access-s", HeaderValue::from_static(""));
-    headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
+    headers.insert("user-agent", HeaderValue::from_static("Android app Shopee appver=29348 app_type=1"));
     headers.insert("referer", HeaderValue::from_static("https://mall.shopee.co.id/bridge_cmd?cmd=reactPath%3Ftab%3Dbuy%26path%3Dshopee%252FHOME_PAGE%253Fis_tab%253Dtrue%2526layout%253D%25255Bobject%252520Object%25255D%2526native_render%253Dsearch_prefills%25252Clanding_page_banners%25252Cwallet_bar%25252Cannouncement%25252Chome_squares%25252Cskinny_banners%25252Cnew_user_zone%25252Cearly_life_zone%25252Ccampaign_modules%25252Cflash_sales%25252Clive_streaming%25252Cvideo%25252Cdigital_products%25252Cdeals_nearby%25252Ccutline%25252Cdaily_discover%25252Cfood_order_status"));
     headers.insert("accept", HeaderValue::from_static("application/json"));
     headers.insert("content-type", HeaderValue::from_static("application/json"));
@@ -516,7 +516,7 @@ pub fn recalculate_client_voucher(checkout_price_data: &mut serde_json::Value, d
     let insurance_subtotal = checkout_price_data["insurance_subtotal"].as_i64().unwrap_or(0);
     let buyer_service_fee = checkout_price_data["buyer_service_fee"].as_i64().unwrap_or(0);
     let buyer_txn_fee = checkout_price_data["buyer_txn_fee"].as_i64().unwrap_or(0);
-    let diskon_normal = (merchandise_subtotal * (detail.reward_percentage as i64)) / 100; // aman overflow
+    let diskon_normal = ((merchandise_subtotal * (detail.reward_percentage as i64)) / 100 + 99999) / 100_000 * 100_000;
     let max_diskon = detail.reward_cap as i64;
     let promocode_applied = std::cmp::min(diskon_normal, max_diskon);
     let shopee_coins_redeemed = checkout_price_data["shopee_coins_redeemed"].as_i64().unwrap_or(0); //Need Api Comunication

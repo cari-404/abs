@@ -395,7 +395,7 @@ pub static BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
 });
 pub static FS_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29348 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("Accept", HeaderValue::from_static("application/json"));
     headers.insert("Accept-Encoding", HeaderValue::from_static("gzip"));
@@ -409,7 +409,7 @@ pub static FS_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
 });
 pub static PRODUCT_BASE_HEADER: Lazy<HeaderMap> = Lazy::new(|| {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29347 app_type=1"));
+    headers.insert("User-Agent", HeaderValue::from_static("Android app Shopee appver=29348 app_type=1"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
     headers.insert("x-shopee-language", HeaderValue::from_static("id"));
     headers.insert("if-none-match-", HeaderValue::from_static("55b03-8476c83de1a4cf3b74cc77b08ce741f9"));

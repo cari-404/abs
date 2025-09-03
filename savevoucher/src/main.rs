@@ -31,9 +31,12 @@ struct Opt {
     sign: Option<String>,
 	#[structopt(short, long, help = "Set Voucher from collection_id")]
     collectionid: Option<String>,
+	#[structopt(short, long, help = "Set Single or range code")]
+    code: Option<String>,
 }
 
 enum Mode {
+	Code,
 	Collection,
 	Food,
 	Normal,
@@ -111,19 +114,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			println!("Contoh input: \npromotion_id: 1096081392418868, \nCode: MISSION11");
 			let promotion_id = get_or_prompt(opt.pro_id.as_deref(), "Masukan Promotion_Id: ").to_string();
 			let code = get_user_input("Masukan Code: ");
-			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ");
-			if task_time_str.trim().is_empty() {
-				println!("Task time is empty, using default time.");
-				let local: DateTime<Local> = Local::now();
-				let hour = local.hour();
-				let rounded_minute = match local.minute() {
-					m if m <= 14 => 14,
-					m if m <= 29 => 29,
-					m if m <= 44 => 44,
-					_ => 59,
-				};
-				task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
-			}
+			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ").into_owned();
+			set_default_time(&mut task_time_str);
 			let task_time_dt = parse_task_time(&task_time_str)?;
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			let notify = Arc::new(Notify::new());
@@ -178,19 +170,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			println!("Contoh input: \npromotion_id: 856793882394624, \nSignature: 8e8a4ced8d6905570114f163a08a15de55c3fed560f8a3a8a25e6e179783b480");
             let promotion_id = get_or_prompt(opt.pro_id.as_deref(), "Masukan Promotion_Id: ").to_string();
             let signature = get_or_prompt(opt.sign.as_deref(), "Masukan Signature: ").to_string();
-			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ");
-			if task_time_str.trim().is_empty() {
-				println!("Task time is empty, using default time.");
-				let local: DateTime<Local> = Local::now();
-				let hour = local.hour();
-				let rounded_minute = match local.minute() {
-					m if m <= 14 => 14,
-					m if m <= 29 => 29,
-					m if m <= 44 => 44,
-					_ => 59,
-				};
-				task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
-			}
+			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ").into_owned();
+			set_default_time(&mut task_time_str);
 			let task_time_dt = parse_task_time(&task_time_str)?;
 			let (tx, mut rx) = tokio::sync::mpsc::channel::<Option<Vouchers>>(max_threads);
 			let notify = Arc::new(Notify::new());
@@ -244,19 +225,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 		Mode::Collection => {
 			println!("Contoh input: collection_id: 12923214728");
 			let voucher_collectionid = get_or_prompt(opt.collectionid.as_deref(), "Masukan collection_id: ");
-			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ");
-			if task_time_str.trim().is_empty() {
-				println!("Task time is empty, using default time.");
-				let local: DateTime<Local> = Local::now();
-				let hour = local.hour();
-				let rounded_minute = match local.minute() {
-					m if m <= 14 => 14,
-					m if m <= 29 => 29,
-					m if m <= 44 => 44,
-					_ => 59,
-				};
-				task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute).into();
-			}
+			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ").into_owned();
+			set_default_time(&mut task_time_str);
 			let task_time_dt = parse_task_time(&task_time_str)?;
 			// Process HTTP with common function
 			countdown_to_task(&task_time_dt).await;
@@ -264,6 +234,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 			println!("promotion_id : {}", &promotion_id);
 			println!("signature	: {}", &signature);
 			voucher::save_voucher(client.clone(), &promotion_id, &signature, vc_header).await?;
+		}
+		Mode::Code => {
+			let code = get_or_prompt(opt.code.as_deref(), "Masukkan kode voucher: ");
+			let codes = parse_codes(&code);
+			let mut task_time_str = get_or_prompt(opt.time.as_deref(), "Enter task time (HH:MM:SS.NNNNNNNNN): ").into_owned();
+			set_default_time(&mut task_time_str);
+			let task_time_dt = parse_task_time(&task_time_str)?;
+			// Process HTTP with common function
+			countdown_to_task(&task_time_dt).await;
+			for cd in codes {
+				let vouchers = voucher::save_platform_voucher_by_voucher_code(client.clone(), &cd, vc_header.clone()).await?;
+				println!("[{}]Vouchers ditemukan: {:?}", Local::now().format("%H:%M:%S.%3f"), &vouchers);
+				if config.telegram_notif {
+					let msg = format!("Save Voucher Shopee {}\nREPORT!!!\nUsername     : {}\nMode      : Code\nVoucher Data      : {:?}\nClaim berhasil!", version_info, userdata.username, &vouchers);
+					telegram::send_msg(client.clone(), &config, &msg).await?;
+				}
+			}
 		}
 	}
 	println!("\nTask completed! Current time: {}", Local::now().format("%H:%M:%S.%3f"));
@@ -276,11 +263,13 @@ fn select_mode(opt: &Opt) -> Mode {
 		println!("1. Normal");
 		println!("2. Collection");
 		println!("3. Food");
+		println!("4. Code");
         let input = opt.mode.clone().unwrap_or_else(|| get_user_input("Masukkan pilihan (1/2/..): "));
 		match input.trim() {
 			"1" => return Mode::Normal,
 			"2" => return Mode::Collection,
 			"3" => return Mode::Food,
+			"4" => return Mode::Code,
 			_ => println!("Pilihan tidak valid, coba lagi."),
 		}
 	}
@@ -379,4 +368,50 @@ fn get_or_prompt<'a>(opt: Option<&'a str>, prompt: &str) -> Cow<'a, str> {
         Some(s) => Cow::Borrowed(s),
         None => Cow::Owned(get_user_input(prompt)),
     }
+}
+fn parse_codes(input: &str) -> Vec<String> {
+    let input = input.trim();
+
+    if input.contains('-') {
+        // Format range
+        let parts: Vec<&str> = input.split('-').collect();
+        if parts.len() == 2 {
+            let start = parts[0];
+            let end = parts[1];
+
+            // ambil prefix dan angka
+            let prefix = &start[..start.len() - 3];
+            let start_num: u32 = start[start.len() - 3..].parse().unwrap();
+            let end_num: u32 = end[end.len() - 3..].parse().unwrap();
+
+            return (start_num..=end_num)
+                .map(|i| format!("{}{:03}", prefix, i))
+                .collect();
+        }
+    } else if input.contains(',') {
+        // Format list manual
+        return input
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
+    } else {
+        // Format single
+        return vec![input.to_string()];
+    }
+
+    Vec::new()
+}
+fn set_default_time(task_time_str: &mut String) {
+	if task_time_str.trim().is_empty() {
+		println!("Task time is empty, using default time.");
+		let local: DateTime<Local> = Local::now();
+		let hour = local.hour();
+		let rounded_minute = match local.minute() {
+			m if m <= 14 => 14,
+			m if m <= 29 => 29,
+			m if m <= 44 => 44,
+			_ => 59,
+		};
+		*task_time_str = format!("{:02}:{:02}:59.900", hour, rounded_minute);
+	}
 }

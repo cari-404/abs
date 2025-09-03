@@ -10,4 +10,7 @@ listview.*
 *.dll
 *.zip
 *.tar.gz
+*.asm
+*.com
+*.obj
 update-dir/*
