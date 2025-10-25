@@ -6,16 +6,12 @@ use anyhow::Result;
 use std::sync::Arc;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct GetFSDetail {
-    data: Option<SessionData>,
+struct UniversalResp<T> {
+    data: Option<T>,
 }
 #[derive(Serialize, Deserialize, Debug)]
 struct SessionData {
     sessions: Vec<FSInfo>,
-}
-#[derive(Serialize, Deserialize, Debug)]
-struct GetFSItemids {
-    data: Option<ItemIdsData>,
 }
 #[derive(Serialize, Deserialize, Debug)]
 struct ItemIdsData {
@@ -45,7 +41,7 @@ pub async fn get_current_fsid(client: Arc<reqwest::Client>, cookie_content: &Coo
 
     //println!("Status: {}", response.status());
     //println!("Headers: {:#?}", response.headers());
-    let hasil: GetFSDetail = response.json().await?;
+    let hasil: UniversalResp<SessionData> = response.json().await?;
 
     let sessions = hasil.data.map(|d| d.sessions).unwrap_or_default();
 
@@ -70,7 +66,7 @@ pub async fn get_itemids_from_fsid(client: Arc<reqwest::Client>, fsid: &FSInfo, 
 
     //println!("Status: {}", response.status());
     //println!("Headers: {:#?}", response.headers());
-    let hasil: GetFSItemids = response.json().await?;
+    let hasil: UniversalResp<ItemIdsData> = response.json().await?;
 
     let item_brief_list = hasil.data.map(|d| d.item_brief_list).unwrap_or_default();
 

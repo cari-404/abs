@@ -113,7 +113,7 @@ impl ShippingInfo {
 
         println!("Status: get_courier");
         //println!("Headers: {:#?}", response.headers());
-        let hasil: KurirResponse = response.json().await?;
+        let hasil: KurirResponse<ShippingData> = response.json().await?;
         //println!("Body: {}", String::from_utf8_lossy(&body));
         let shipping_info_vec = hasil.data.and_then(|data| data.shipping_infos).map(|infos| {
                 infos.into_iter().map(|shipping_info| {
@@ -145,46 +145,53 @@ impl ShippingInfo {
 
         let url2 = format!("https://mall.shopee.co.id/api/v4/pdp/get_shipping?city={}&district={}&itemid={}&shopid={}&state={}&town=", city_encoded, district_encoded, product_info.item_id, product_info.shop_id, state_encoded);
         println!("{}", url2);
-        let mut headers = FS_BASE_HEADER.clone();
-        headers.insert("referer", reqwest::header::HeaderValue::from_str(&format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id))?);
-        headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
-        headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
-        // Buat permintaan HTTP POST
-        let response = client
-            .get(&url2)
-            .headers(headers)
-            .version(Version::HTTP_2) 
-            .send()
-            .await?;
 
-        println!("Status: get_courier");
-        //println!("Headers: {:#?}", response.headers());
-        let hasil: KurirResponse2 = response.json().await?;
-        //println!("Body: {}", String::from_utf8_lossy(&body));
-        let mut shipping_info_vec = hasil
-            .data
-            .as_ref()
-            .and_then(|data| data.ungrouped_channel_infos.as_ref())
-            .map(|infos| infos.iter().cloned().map(ShippingInfo::from).collect::<Vec<_>>())
-            .unwrap_or_default();
-        if let Some(data) = hasil.data {
-            if let Some(grouped) = data.grouped_channel_infos_by_service_type {
-                for group in grouped {
-                    for info in group.channel_infos {
-                        shipping_info_vec.push(ShippingInfo::from(info));
+        let mut attempt = 0;
+        let max_attempts = 5;
+        loop {
+            let mut headers = FS_BASE_HEADER.clone();
+            headers.insert("referer", reqwest::header::HeaderValue::from_str(&format!("https://shopee.co.id/product/{}/{}", product_info.shop_id, product_info.item_id))?);
+            headers.insert("x-csrftoken", reqwest::header::HeaderValue::from_str(&cookie_content.csrftoken)?);
+            headers.insert("cookie", reqwest::header::HeaderValue::from_str(&cookie_content.cookie_content)?);
+            // Buat permintaan HTTP GET
+            let response = client
+                .get(&url2)
+                .headers(headers)
+                .version(Version::HTTP_2)
+                .send()
+                .await?;
+
+            println!("Status: get_courier");
+            let hasil: KurirResponse<ShippingData2> = response.json().await?;
+            if hasil.error == Some(5) {
+                attempt += 1;
+                eprintln!("Error 5 received, retrying... (attempt {}/{})", attempt, max_attempts);
+                if attempt >= max_attempts {
+                    return Err(anyhow::anyhow!("Error 5 received after {} attempts", max_attempts));
+                }
+                continue;
+            }
+            let mut shipping_info_vec = hasil
+                .data
+                .as_ref()
+                .and_then(|data| data.ungrouped_channel_infos.as_ref())
+                .map(|infos| infos.iter().cloned().map(ShippingInfo::from).collect::<Vec<_>>())
+                .unwrap_or_default();
+            if let Some(data) = hasil.data {
+                if let Some(grouped) = data.grouped_channel_infos_by_service_type {
+                    for group in grouped {
+                        for info in group.channel_infos {
+                            shipping_info_vec.push(ShippingInfo::from(info));
+                        }
                     }
                 }
             }
+            if shipping_info_vec.is_empty() {
+                eprintln!("No shipping information found.");
+            }
+            return Ok(shipping_info_vec);
         }
-        if shipping_info_vec.is_empty() {
-            eprintln!("No shipping information found.");
-        }
-        Ok(shipping_info_vec)
     }
-}
-#[derive(Debug, Deserialize)]
-pub struct KurirResponse2 {
-    pub data: Option<ShippingData2>,
 }
 #[derive(Debug, Deserialize)]
 pub struct ShippingData2 {
@@ -212,8 +219,9 @@ impl From<UngroupedChannelInfos> for ShippingInfo {
     }
 }
 #[derive(Debug, Deserialize)]
-pub struct KurirResponse {
-    pub data: Option<ShippingData>,
+pub struct KurirResponse<T> {
+    pub error: Option<i64>,
+    pub data: Option<T>,
 }
 #[derive(Debug, Deserialize)]
 pub struct ShippingData {
@@ -271,8 +279,16 @@ pub struct UserData {
     pub userid: i64,
 }
 #[derive(Deserialize, Debug)]
-struct InfoAkun {
-    data: Option<UserData>,
+pub struct UserDataWithDefaultAddress {
+    pub username: String,
+    pub email: String,
+    pub phone: String,
+    pub userid: i64,
+    pub default_address: Option<AddressInfo>,
+}
+#[derive(Deserialize, Debug)]
+struct InfoAkun<T> {
+    data: Option<T>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -677,7 +693,7 @@ pub async fn info_akun(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) ->
         .await?;
 
     if response.status() == StatusCode::OK {
-        let hasil: InfoAkun = response.json().await?;
+        let hasil: InfoAkun<UserData> = response.json().await?;
         if let Some(data) = hasil.data {
             Ok(data)
         } else {
@@ -687,6 +703,40 @@ pub async fn info_akun(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) ->
                 phone: "LOGOUT (WARNING)".to_string(),
                 userid: 0,
             })
+        }
+    } else {
+        println!("Status: {}", response.status());
+        println!("Harap Ganti akun");
+        process::exit(1);
+    }
+}
+pub async fn info_akun_with_address(client: Arc<reqwest::Client>, headers: Arc<HeaderMap>) -> Result<(UserData, AddressInfo), Box<dyn std::error::Error>> {
+	let url2 = format!("https://shopee.co.id/api/v2/user/account_info?skip_address=0");
+	println!("{}", url2);
+    // Buat permintaan HTTP POST
+    let response = client
+        .get(&url2)
+        .headers((*headers).clone())
+        .version(Version::HTTP_2) 
+        .send()
+        .await?;
+
+    if response.status() == StatusCode::OK {
+        let hasil: InfoAkun<UserDataWithDefaultAddress> = response.json().await?;
+        if let Some(data) = hasil.data {
+            Ok((UserData {
+                username: data.username,
+                email: data.email,
+                phone: data.phone,
+                userid: data.userid,
+            }, data.default_address.unwrap_or_default()))
+        } else {
+            Ok((UserData {
+                username: "LOGOUT (WARNING)".to_string(),
+                email: "LOGOUT (WARNING)".to_string(),
+                phone: "LOGOUT (WARNING)".to_string(),
+                userid: 0,
+            }, AddressInfo::default()))
         }
     } else {
         println!("Status: {}", response.status());
@@ -717,17 +767,17 @@ pub fn process_url(url: &str) -> ProductInfo {
     let mut shop_id = String::new();
     let mut item_id = String::new();
     if !url.is_empty() {
-        if !url.contains("/product/") {
+        if !url.contains("/product/") && !url.contains("/opaanlp/") {
             let split: Vec<&str> = url.split('.').collect();
             if split.len() >= 2 {
                 shop_id = split[split.len() - 2].to_string();
-                item_id = split[split.len() - 1].split('?').next().unwrap_or("").to_string();
+                item_id = split[split.len() - 1].split('?').next().unwrap_or("").trim_matches('/').to_string();
             }
         } else {
-            let split2: Vec<&str> = url.split('/').collect();
-            if split2.len() >= 2 {
-                shop_id = split2[split2.len() - 2].to_string();
-                item_id = split2[split2.len() - 1].split('?').next().unwrap_or("").to_string();
+            let split: Vec<&str> = url.split('/').filter(|s| !s.is_empty()).collect();
+            if split.len() >= 2 {
+                shop_id = split[split.len() - 2].to_string();
+                item_id = split[split.len() - 1].split('?').next().unwrap_or("").to_string();
             }
         }
     }

@@ -135,7 +135,7 @@ async fn claim_reward(cookie_data: &CookieData, user: &UserData, device_info: &D
         println!("Body: {}", body_resp);
         let msg = format!("Username: {}\nIsi: {}", user.username, body_resp);
         if config.telegram_notif {
-            telegram::send_msg(&config, &msg).await?;
+            telegram::send_msg(Arc::new(client), &config, &msg).await?;
         }
     } else {
         println!("Status: {}", response.status());

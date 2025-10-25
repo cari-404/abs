@@ -58,7 +58,7 @@ impl MyWindow {
         let shared_kurir_data = Arc::new(Mutex::new(vec![]));
         let (menu, accel_table) = Self::build_menu().unwrap();
         let wnd = gui::WindowMain::new(gui::WindowMainOpts {
-            title: "Launcher *NG* for ABS".to_owned(),
+            title: "Launcher *NG* for ABS",
             style: gui::WindowMainOpts::default().style
                 | co::WS::MINIMIZEBOX | co::WS::MAXIMIZEBOX | co::WS::SIZEBOX,
             class_icon: gui::Icon::Id(101),
@@ -79,7 +79,7 @@ impl MyWindow {
     
         // Input URL
         let _lbl_url = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "URL".to_owned(),
+            text: "URL",
             position: (10, 10),
             ..Default::default()
         });
@@ -90,7 +90,7 @@ impl MyWindow {
             ..Default::default()
         });
         let btn_cek = gui::Button::new(&wnd, gui::ButtonOpts {
-            text: "Cek".to_owned(),
+            text: "Cek",
             position: (500, 10),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
             ..Default::default()
@@ -98,14 +98,14 @@ impl MyWindow {
     
         // Payment ComboBox
         let _lbl_payment = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Payment".to_owned(),
+            text: "Payment",
             position: (10, 50),
             ..Default::default()
         });
         let payment_combo = gui::ComboBox::new(&wnd, gui::ComboBoxOpts {
             position: (80, 50),
             width: 210,
-            items: vec!["ShopeePay".to_owned(), "GoPay".to_owned(), "OVO".to_owned()],
+            items: &["ShopeePay", "GoPay", "OVO"],
             selected_item: Some(0),
             resize_behavior: (gui::Horz::Resize, gui::Vert::None),
             ..Default::default()
@@ -113,7 +113,7 @@ impl MyWindow {
     
         // File Picker
         let _lbl_file = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Pilih file".to_owned(),
+            text: "Pilih file",
             position: (310, 50),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
             ..Default::default()
@@ -127,12 +127,12 @@ impl MyWindow {
         });
         // Harga Max & Kuantiti
         let _lbl_harga = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Harga Max".to_owned(),
+            text: "Harga Max",
             position: (10, 80),
             ..Default::default()
         });
         let harga_text = gui::Edit::new(&wnd, gui::EditOpts {
-            text: "1000".to_owned(),
+            text: "1000",
             position: (80, 80),
             width: 150,
             control_style: ES::NUMBER,
@@ -140,20 +140,20 @@ impl MyWindow {
             ..Default::default()
         });
         let harga_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
-            text: "Set".to_owned(),
+            text: "Set",
             position: (250, 80),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
             ..Default::default()
         });
     
         let _lbl_qty = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Kuantiti".to_owned(),
+            text: "Kuantiti",
             position: (10, 110),
             size: (60, 20),
             ..Default::default()
         });
         let kuan_text = gui::Edit::new(&wnd, gui::EditOpts {
-            text: "1".to_owned(),
+            text: "1",
             position: (80, 110),
             width: 210,
             control_style: ES::NUMBER,
@@ -162,7 +162,7 @@ impl MyWindow {
         });
     
         let _lbl_kurir = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Kurir".to_owned(),
+            text: "Kurir",
             position: (310, 110),
             size: (60, 20),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
@@ -177,7 +177,7 @@ impl MyWindow {
         });
     
         let _lbl_variasi = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Variasi".to_owned(),
+            text: "Variasi",
             position: (310, 80),
             size: (60, 20),
             resize_behavior: (gui::Horz::Repos, gui::Vert::None),
@@ -191,14 +191,14 @@ impl MyWindow {
             ..Default::default()
         });
         let coins_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
-            text: "Use Coins".to_owned(),
+            text: "Use Coins",
             position: (380, 160),
             size: (80, 20),
             check_state: co::BST::CHECKED,
             ..Default::default()
         });
         let bypass_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
-            text: "Bypass".to_owned(),
+            text: "Bypass",
             position: (480, 160),
             size: (80, 20),
             check_state: co::BST::CHECKED,
@@ -207,62 +207,62 @@ impl MyWindow {
     
         // Time
         let _time_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Time".to_owned(),
+            text: "Time",
             position: (10, 160),
             size: (60, 20),
             ..Default::default()
         });
         let _jam_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Jam".to_owned(),
+            text: "Jam",
             position: (80, 160),
             size: (60, 20),
             control_style: SS::CENTER,
             ..Default::default()
         });
         let jam_text = gui::Edit::new(&wnd, gui::EditOpts {
-            text: "23".to_owned(),
+            text: "23",
             position: (80, 190),
             width: 60,
             control_style: ES::NUMBER,
             ..Default::default()
         });
         let _menit_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Menit".to_owned(),
+            text: "Menit",
             position: (150, 160),
             size: (60, 20),
             control_style: SS::CENTER,
             ..Default::default()
         });
         let menit_text = gui::Edit::new(&wnd, gui::EditOpts {
-            text: "59".to_owned(),
+            text: "59",
             position: (150, 190),
             width: 60,
             control_style: ES::NUMBER,
             ..Default::default()
         });
         let _detik_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Detik".to_owned(),
+            text: "Detik",
             position: (220, 160),
             size: (60, 20),
             control_style: SS::CENTER,
             ..Default::default()
         });
         let detik_text = gui::Edit::new(&wnd, gui::EditOpts {
-            text: "59".to_owned(),
+            text: "59",
             position: (220, 190),
             width: 60,
             control_style: ES::NUMBER,
             ..Default::default()
         });
         let _mili_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Mili".to_owned(),
+            text: "Mili",
             position: (290, 160),
             size: (60, 20),
             control_style: SS::CENTER,
             ..Default::default()
         });
         let mili_text = gui::Edit::new(&wnd, gui::EditOpts {
-            text: "900".to_owned(),
+            text: "900",
             position: (290, 190),
             width: 60,
             control_style: ES::NUMBER,
@@ -271,14 +271,14 @@ impl MyWindow {
     
         // Tombol Jalankan
         let btn_jalankan = gui::Button::new(&wnd, gui::ButtonOpts {
-            text: "Jalankan".to_owned(),
+            text: "Jalankan",
             position: (500, 300),
             resize_behavior: (gui::Horz::Resize, gui::Vert::Repos),
             ..Default::default()
         });
 
         /*let voucher_groupbox = gui::Button::new(&wnd, gui::ButtonOpts {
-            text: "Voucher".to_owned(),
+            text: "Voucher",
             position: (10, 220),
             width: 400,
             height: 150,
@@ -289,14 +289,14 @@ impl MyWindow {
     
         // Checkbox sebagai pengganti Radio Buttons
         let fsv_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
-            text: "fsv only".to_owned(),
+            text: "fsv only",
             position: (18, 240),
             size: (80, 20),
             ..Default::default()
         });
     
         let platform_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
-            text: "Platform".to_owned(),
+            text: "Platform",
             position: (18, 270),
             size: (80, 20),
             ..Default::default()
@@ -305,20 +305,20 @@ impl MyWindow {
         let platform_combobox = gui::ComboBox::new(&wnd, gui::ComboBoxOpts {
             position: (130, 270),
             width: 210,
-            items: vec!["Claim".to_owned(), "Code".to_owned(), "Collection id".to_owned(), "Link".to_owned()],
+            items: &["Claim", "Code", "Collection id", "Link"],
             selected_item: Some(0),
             ..Default::default()
         });
     
         let shop_checkbox = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
-            text: "Shop Code".to_owned(),
+            text: "Shop Code",
             position: (18, 360),
             size: (80, 20),
             ..Default::default()
         });
 
         let code_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Code".to_owned(),
+            text: "Code",
             position: (35, 300),
             ..Default::default()
         });
@@ -336,7 +336,7 @@ impl MyWindow {
         });
 
         let cid_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "CollectionId".to_owned(),
+            text: "CollectionId",
             position: (35, 300),
             ..Default::default()
         });
@@ -348,7 +348,7 @@ impl MyWindow {
         });
 
         let link_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Link Voucher".to_owned(),
+            text: "Link Voucher",
             position: (35, 300),
             ..Default::default()
         });
@@ -360,7 +360,7 @@ impl MyWindow {
         });
 
         let promotionid_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "PromotionId".to_owned(),
+            text: "PromotionId",
             position: (35, 300),
             ..Default::default()
         });
@@ -372,7 +372,7 @@ impl MyWindow {
         });
 
         let signature_label = gui::Label::new(&wnd, gui::LabelOpts {
-            text: "Signature".to_owned(),
+            text: "Signature",
             position: (35, 330),
             ..Default::default()
         });
@@ -385,7 +385,7 @@ impl MyWindow {
     
         // CheckBox Official
         /*let chk_official = gui::CheckBox::new(&wnd, gui::CheckBoxOpts {
-            text: "Official".to_owned(),
+            text: "Official",
             position: (10, 330),
             size: (80, 20),
             ..Default::default()
@@ -653,6 +653,8 @@ impl MyWindow {
                 w::MenuItem::Entry{cmd_id: 102, text: "Generate Struct"},
                 w::MenuItem::Entry{cmd_id: 103, text: "Save Voucher"},
                 w::MenuItem::Separator,
+                w::MenuItem::Entry{cmd_id: 104, text: "Refresh Courier with selected Variation"},
+                w::MenuItem::Separator,
                 w::MenuItem::Entry{cmd_id: 3, text: "E&xit"},
             ])?;
 
@@ -775,6 +777,22 @@ impl MyWindow {
                 new_command.extend(command);
                 let _ = self2.generate_struct(new_command.clone());
                 let _ = self2.execute(new_command);
+            }
+			Ok(())
+		});
+        let self2 = self.clone();
+        self.wnd.on().wm_command_acc_menu(104 as u16, move || {
+            let shared_v = self2.shared_variation_data.lock().unwrap();
+            let selected_variation = self2.variasi_combo.items().selected_index();
+            //check same value or not?
+            println!("Refresh Courier with selected Variation clicked!");
+            println!("Selected Variation Index: {:?}", selected_variation);
+            if let Some(index) = selected_variation {
+                if let Some(chosen_model) = shared_v.get(index as usize) {
+                    println!("Chosen Model: {:?}", chosen_model);   
+                }
+            }else{
+                println!("No Variation selected.");
             }
 			Ok(())
 		});

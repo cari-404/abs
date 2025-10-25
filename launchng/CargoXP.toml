@@ -1,6 +1,6 @@
 [package]
 name = "launchng"
-version = "1.2.5"
+version = "1.2.6"
 edition = "2024"
 authors = ["Paijo"]
 description = "Launcher NG for ABS"

@@ -1,6 +1,6 @@
 [package]
 name = "launchng"
-version = "1.2.5"
+version = "1.2.6"
 edition = "2024"
 authors = ["Paijo"]
 description = "Launcher NG for ABS"
@@ -17,7 +17,7 @@ OriginalFilename = "launcher2ng.exe"
 CompanyName = "Paijo"
 
 [dependencies]
-winsafe = { git = "https://github.com/cari-404/winsafe.git", features = ["gui", "kernel", "advapi", "shell"] }
+winsafe = { version = "0.0.26", features = ["gui", "kernel", "advapi", "shell"] }
 tokio = { version = "1", features = ["full"] }
 runtime = { path = "../runtime", features = ["prepare-ext", "flashsale", "core", "upgrade"] }
 serde_json = "1"

@@ -193,7 +193,7 @@ pub struct BuyerAddressData {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct PrescriptionInfo {
-    pub images: Vec<String>,
+    pub images: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -649,7 +649,7 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
             shoporder_indexes: vec![0],
             selected_preferred_delivery_time_option_id: 0,
             prescription_info: PrescriptionInfo {
-                images: vec![],
+                images: Some(vec![]),
             },
             fulfillment_info: FulfillmentInfo {
                 fulfillment_flag: 18,
@@ -752,7 +752,6 @@ pub async fn get_builder(client: Arc<reqwest::Client>, base_headers: Arc<HeaderM
             }
         }
     }
-
     place_order_body.insert("selected_payment_channel_data", Some(chosen_payment.place_order.clone()));
 
 	Ok(place_order_body)

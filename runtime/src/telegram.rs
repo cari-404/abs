@@ -11,6 +11,7 @@ pub struct TeleInfo {
     pub telegram_notif: bool,
     pub telegram_token: String,
     pub telegram_chat_id: String,
+    pub backup_account: Option<String>,
 }
 
 pub async fn save_config_file(content: String) -> Result<(), Box<dyn std::error::Error>> {
@@ -34,6 +35,7 @@ pub fn get_data(token: &str, chat_id: &str) -> TeleInfo {
         telegram_notif: false,
         telegram_token: token.to_string(),
         telegram_chat_id: chat_id.to_string(),
+        backup_account: None,
     }
 }
 

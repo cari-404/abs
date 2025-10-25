@@ -23,6 +23,7 @@ struct Opt {
 	time: Option<String>,
     #[structopt(short, long, help = "Set item")]
     item_id: Option<String>,
+}
 
 fn select_cookie_file() -> Result<String> {
     println!("Daftar file cookie yang tersedia:");

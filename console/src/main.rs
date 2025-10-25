@@ -1,15 +1,13 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.2.6 :
+    fix new data type
+    preparing refactoring code
 Whats new in 1.2.5 :
     fix calculation for discount (remove unused cent)
     New mode savevoucher 1.2.6
     Update definition
 Whats new in 1.2.4 :
     Experimental: supported bypass argument for freeshipping with max price (harga)
-Whats new in 1.2.3 :
-    supported bypass argument for new algorithm claim platform voucher
-    reenable classic claim platform voucher method for compatibilty and stability
-    priority checking shipping courier API
-    ⚠️WARNING: don't mix bypass, cause no best practice for this argument. eg, max price (harga) and claim in the same scenario⚠️
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};
@@ -323,14 +321,22 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, "", "", &chosen_model, &chosen_shipping, &chosen_payment).await;
     // Perform the main task
-    let (info_result, address_result, product_result) = tokio::join!(
-        prepare::info_akun(client.clone(), base_headers.clone()),
-        prepare::address(client.clone(), base_headers.clone()),
-        prepare::get_product(client.clone(), &product_info, &cookie_data)
-    );
-    let userdata = info_result?;
-    let address_info = address_result?;
-    let (name, model_info, is_official_shop, fs_info, status_code) = product_result?;
+    let client_clone = Arc::clone(&client);
+    let product_info_clone = product_info.clone();
+    let cookie_data_clone = cookie_data.clone();
+    let product_result = tokio::spawn(async move {
+        prepare::get_product(client_clone, &product_info_clone, &cookie_data_clone).await
+    });
+    let (mut userdata, mut address_info) = prepare::info_akun_with_address(client.clone(), base_headers.clone()).await?;
+    if address_info.id == 0 || userdata.userid == 0 {
+        let (info_result, address_result) = tokio::join!(
+            prepare::info_akun(client.clone(), base_headers.clone()),
+            prepare::address(client.clone(), base_headers.clone())
+        );
+        userdata = info_result?;
+        address_info = address_result?;
+    }
+    let (mut name, mut model_info, mut is_official_shop, mut fs_info, status_code) = product_result.await??;
 	println!("Username  : {}", userdata.username);
 	println!("Email     : {}", userdata.email);
 	println!("Phone     : {}", userdata.phone);
@@ -351,11 +357,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("item_id: {}", product_info.item_id);
 
     if status_code != "200 OK"{
-        println!("Status: {}", status_code);
-        println!("Harap Ganti akun");
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).expect("Gagal membaca baris");
-        process::exit(1);
+        if config.backup_account.is_some() && config.backup_account.as_deref().unwrap() != selected_file {
+            let backup_file = config.backup_account.as_deref().unwrap();
+            println!("{}", backup_file);
+            let backup_cookie_data = prepare::CookieData::create_cookie(&prepare::read_cookie_file(&backup_file));
+            println!("csrftoken: {}", backup_cookie_data.csrftoken);
+            let (name2, model_info2, is_official_shop2, fs_info2, status_code2) =  prepare::get_product(client.clone(), &product_info, &backup_cookie_data).await?;
+            if status_code2 == "200 OK"{
+                name = name2;
+                model_info = model_info2;
+                is_official_shop = is_official_shop2;
+                fs_info = fs_info2;
+            }else{
+                println!("Status: {}", status_code2);
+                println!("Gagal menggunakan akun utama dan backup");
+                println!("Harap Ganti akun");
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).expect("Gagal membaca baris");
+                process::exit(1);
+            }
+        } else {
+            println!("Status: {}", status_code);
+            println!("Harap Ganti akun");
+            let mut input = String::new();
+            io::stdin().read_line(&mut input).expect("Gagal membaca baris");
+            process::exit(1);
+        }
     }
     clear_screen();
     heading_app(&promotionid, &signature, &voucher_code_platform, &voucher_code_shop, &voucher_collectionid, &opt, &target_url, &task_time_str, &selected_file, &userdata.username, "", &chosen_model, &chosen_shipping, &chosen_payment).await;
