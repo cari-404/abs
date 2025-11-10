@@ -516,8 +516,16 @@ pub fn recalculate_client_voucher(checkout_price_data: &mut serde_json::Value, d
     let insurance_subtotal = checkout_price_data["insurance_subtotal"].as_i64().unwrap_or(0);
     let buyer_service_fee = checkout_price_data["buyer_service_fee"].as_i64().unwrap_or(0);
     let buyer_txn_fee = checkout_price_data["buyer_txn_fee"].as_i64().unwrap_or(0);
-    let diskon_normal = ((merchandise_subtotal * (detail.reward_percentage as i64)) / 100 + 99999) / 100_000 * 100_000;
-    let max_diskon = detail.reward_cap as i64;
+    let diskon_normal = if detail.reward_percentage == 0 && detail.reward_cap == 0{
+      detail.reward_value as i64
+    } else {
+      ((merchandise_subtotal * (detail.reward_percentage as i64)) / 100 + 99999) / 100_000 * 100_000
+    };
+    let max_diskon = if detail.reward_cap == 0 && detail.reward_percentage == 0 {
+      detail.reward_value as i64
+    } else {
+      detail.reward_cap as i64
+    };
     let promocode_applied = std::cmp::min(diskon_normal, max_diskon);
     let shopee_coins_redeemed = checkout_price_data["shopee_coins_redeemed"].as_i64().unwrap_or(0); //Need Api Comunication
 

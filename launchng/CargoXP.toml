@@ -1,6 +1,6 @@
 [package]
 name = "launchng"
-version = "1.2.6"
+version = "1.2.7"
 edition = "2024"
 authors = ["Paijo"]
 description = "Launcher NG for ABS"
@@ -34,4 +34,6 @@ windows = { version = "0.59", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_Memory",
     "Win32_System_DataExchange",
+    "Win32_UI",
+    "Win32_UI_Shell",
 ] }

@@ -111,7 +111,7 @@ fn login_internals(label: &gui::Label, interrupt_flag: &Arc<AtomicBool>, tx_msg:
                 _ => png_image.to_rgba8(), // Konversi ke RGB8 jika format awal berbeda
             };
             */
-            let (mut pixels, width, height, _stride) = unsafe { png_base64_to_pixels_ptr(&qrcode_base64).unwrap() };
+            let (mut pixels, width, height, _stride) = png_base64_to_pixels_ptr(&qrcode_base64).unwrap();
             println!("Bitmap berhasil dibuat. Ukuran: {:?} x {:?}", width, height);
             //let mut pixels = bitmap.into_raw();
             //pixels.chunks_exact_mut(4).for_each(|chunk| chunk[0..3].reverse());

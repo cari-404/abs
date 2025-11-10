@@ -1,4 +1,6 @@
 /*This Is a Auto Buy Shopee
+Whats new in 1.2.7 :
+    fix client side calculation
 Whats new in 1.2.6 :
     fix new data type
     preparing refactoring code
@@ -6,8 +8,6 @@ Whats new in 1.2.5 :
     fix calculation for discount (remove unused cent)
     New mode savevoucher 1.2.6
     Update definition
-Whats new in 1.2.4 :
-    Experimental: supported bypass argument for freeshipping with max price (harga)
 */
 use runtime::prepare::{self, ModelInfo, ShippingInfo, PaymentInfo};
 use runtime::task_ng::{SelectedGet, SelectedPlaceOrder, ChannelItemOptionInfo};

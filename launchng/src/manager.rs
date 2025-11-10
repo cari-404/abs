@@ -12,8 +12,11 @@ use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use tokio::io::{self, BufWriter, AsyncWriteExt};
 use futures_util::StreamExt;
 use chrono::{Local, DateTime, Timelike};
+use windows::{
+    Win32::UI::Shell::*,
+};
 
-use crate::func_main;
+use crate::func_main::{self, Taskbar};
 use crate::login;
 const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 const OS: &str = std::env::consts::OS;
@@ -595,12 +598,7 @@ impl Multi {
 }
 pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     println!("create taskbar");
-    /*let taskbar = w::CoCreateInstance::<w::ITaskbarList4>(
-        &co::CLSID::TaskbarList,
-        None::<&w::IUnknown>,
-        co::CLSCTX::INPROC_SERVER,
-    ).map_err(|_| ())?;
-    */
+    let taskbar = Taskbar::new().map_err(|_| ())?;
     println!("ok taskbar");
     let check_version = Arc::new(Mutex::new(String::new()));
     let dont_move = (gui::Horz::None, gui::Vert::None);
@@ -617,7 +615,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let progress_clone = progress.clone();
     let rollback_button_clone = rollback_button.clone();
     let wnd_clone = wnd.clone();
-    //let taskbar_clone = taskbar.clone();
+    let taskbar_clone = taskbar.clone();
     println!("prepare updater");
     wnd2.on().wm_init_dialog(move |_| {
         println!("open updater");
@@ -629,12 +627,13 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let info_label_clone = info_label_clone.clone();
         let progress_clone = progress_clone.clone();
         let wnd_clone = wnd_clone.clone();
-        //let taskbar = taskbar_clone.clone();
+        let taskbar = taskbar_clone.clone();
         if std::path::Path::new("update-dir-old").exists() {
             rollback_button_clone.hwnd().EnableWindow(true);
         }
         tokio::spawn(async move {
-                //let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::INDETERMINATE);
+                let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                let _ = taskbar.set_progress_state(hwnd_safe, TBPF_INDETERMINATE);
                 if let Some(latest_version) = upgrade::get_latest_release(&format!("https://api.github.com/repos/cari-404/abs/releases/latest")).await {
                     println!("Versi terbaru: {}", latest_version);
                     if upgrade::compare_versions(CURRENT_VERSION, &latest_version) == std::cmp::Ordering::Less {
@@ -650,7 +649,8 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                     let _ = info_label_clone.set_text_and_resize("Gagal mengecek versi terbaru.");
                 }
                 progress_clone.set_marquee(false);
-                //let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+                let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                let _ = taskbar.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
         });
         Ok(true)
     });
@@ -665,7 +665,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let check_version_clone = check_version.clone();
     let progress_clone = progress.clone();
     let wnd_clone = wnd.clone();
-    //let taskbar_clone = taskbar.clone();
+    let taskbar_clone = taskbar.clone();
     download_button.on().bn_clicked(move || {
         let download_button_clone = download_button_clone.clone();
         let shared =  {
@@ -676,7 +676,7 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let progress_clone = progress_clone.clone();
         let wnd2_clone = wnd2_clone.clone();
         let wnd_clone = wnd_clone.clone();
-        //let taskbar = taskbar_clone.clone();
+        let taskbar = taskbar_clone.clone();
         if download_button_clone.hwnd().GetWindowText().unwrap_or_default() == "Install" {
             let _ = std::process::Command::new("cmd")
                 .arg("/C")
@@ -744,9 +744,11 @@ pub fn updater_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                             let _ = info_label_clone.set_text_and_resize(&format!(
                                 "Kecepatan: {:.2} KB/s | Diunduh: {:.2}/{:.2} MB ({:.1}%) | ETA: {}",                     speed_kb,                     downloaded_mb,                     total_mb,                     percentage,                     format_eta(eta_secs)
                             ));
-                            //let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), downloaded as u64, total_size as u64);
+                            let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                            let _ = taskbar.set_progress_value(hwnd_safe, downloaded as u64, total_size as u64);
                         }
-                        //let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+                        let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                        let _ = taskbar.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
                         file.flush().await.expect("failed to flush data");
                         let actual_size = tokio::fs::metadata("update.zip").await.expect("failed to calculate").len();
                         if actual_size != total_size {
@@ -1055,11 +1057,7 @@ pub fn log_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     Ok(())
 }
 pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
-    let taskbar = w::CoCreateInstance::<w::ITaskbarList4>(
-        &co::CLSID::TaskbarList,
-        None::<&w::IUnknown>,
-        co::CLSCTX::INPROC_SERVER,
-    ).map_err(|_| ())?;
+    let taskbar = Taskbar::new().map_err(|_| ())?;
     let (tx_msg, rx_msg) = mpsc::unbounded_channel::<String>();
     let _ = tx_msg.send("Stopped".to_string());
     let interrupt_flag = Arc::new(AtomicBool::new(false));
@@ -1156,6 +1154,7 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let file_combo_clone = file_combo.clone();
     let my_list_clone = my_list.clone();
     wnd2.on().wm_init_dialog(move |_| {
+        println!("init fs window");
         let _ = my_list_clone.cols().add("Name", 120);
         let _ = my_list_clone.cols().add("Modelid", 120);
         let _ = my_list_clone.cols().add("Estimate", 120);
@@ -1202,7 +1201,8 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
     let wnd_clone = wnd.clone();
     cek_button.on().bn_clicked(move || {
         progress_clone.set_marquee(true);
-        let _ = taskbar_clone.SetProgressState(wnd_clone.hwnd(), co::TBPF::INDETERMINATE);
+        let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+        let _ = taskbar_clone.set_progress_state(hwnd_safe, TBPF_INDETERMINATE);
         let file = match file_combo_clone.items().selected_text() {
             Ok(Some(text)) => text,
             Ok(None) => "".to_string(),
@@ -1212,13 +1212,14 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
             let isi = format!("Please select a file before checking the fs");
             let _ = func_main::error_modal(&wnd2_clone, "Error check data", &isi);
             progress_clone.set_marquee(false);
+            let _ = taskbar_clone.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
         } else {
             let cookie_data = prepare::CookieData::create_cookie(&prepare::read_cookie_file(&file));
             let fs_combo_clone = fs_combo_clone.clone();
             let wnd2_clone = wnd2_clone.clone();
             let shared_fsid_clone = shared_fsid_clone.clone();
             let progress_clone = progress_clone.clone();
-            let taskbar = taskbar_clone.clone();
+            let taskbar_clone = taskbar_clone.clone();
             let wnd_clone = wnd_clone.clone();
             tokio::spawn(async move {
                 let client_clone = Arc::new(prepare::universal_client_skip_headers().await);
@@ -1228,6 +1229,9 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                     Ok(fsid_current) => {
                         if fsid_current.is_empty() {
                             let _ = func_main::error_modal(&wnd2_clone, "Info", "Tidak ada fsid yang tersedia.\nPeriksa akun yang dipilih");
+                            progress_clone.set_marquee(false);
+                            let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                            let _ = taskbar_clone.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
                             return;
                         }
                         for fsi in &fsid_current {
@@ -1241,13 +1245,15 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
                         shared.clear();
                         *shared = fsid_current.clone();
                         progress_clone.set_marquee(false);
-                        let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+                        let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                        let _ = taskbar_clone.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
                     }
                     Err(e) => {
                         let isi = format!("Error: {}", e);
                         let _ = func_main::error_modal(&wnd2_clone, "Error", &isi);
                         progress_clone.set_marquee(false);
-                        let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+                        let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                        let _ = taskbar_clone.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
                     }
                 };
             });
@@ -1342,7 +1348,8 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         let isi = format!("Scan was stopped by user");
         let _ = func_main::info_modal(&wnd2_clone, "Info", &isi);
         progress_clone.set_state(w::co::PBST::PAUSED);
-        let _ = taskbar_clone.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+        let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+        let _ = taskbar_clone.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
         Ok(())
     });
     let interrupt_flag_clone = interrupt_flag.clone();
@@ -1366,7 +1373,8 @@ pub fn show_fs_window(wnd: &gui::WindowMain) -> Result<(), ()> {
         }
         let _ = my_list_clone.items().delete_all();
         println!("Window is gone, goodbye!");
-        let _ = taskbar_clone.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+        let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+        let _ = taskbar_clone.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
         Ok(())
     });
 
@@ -1381,11 +1389,7 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
         Err(_) => "".to_string()
     };
     let wnd_clone = wnd.clone();
-    let taskbar_clone = w::CoCreateInstance::<w::ITaskbarList4>(
-        &co::CLSID::TaskbarList,
-        None::<&w::IUnknown>,
-        co::CLSCTX::INPROC_SERVER,
-    ).map_err(|_| ())?;
+    let taskbar_clone = Taskbar::new().map_err(|_| ())?;
     if file.is_empty() {
         let isi = format!("Please select a file before checking the fs");
         let _ = func_main::error_modal(&wnd2, "Error check data", &isi);
@@ -1453,7 +1457,8 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
                             let progressinf = format!("{}/{}", potition, max);
                             println!("Progress: {}", progressinf);
                             let _ = progress_label_clone.set_text_and_resize(&progressinf);
-                            let _ = taskbar.SetProgressValue(wnd_clone.hwnd(), potition as u64, max as u64);
+                            let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+                            let _ = taskbar.set_progress_value(hwnd_safe, potition as u64, max as u64);
                         }
                     }
                     Err(e) => {
@@ -1464,7 +1469,8 @@ fn get_flashsale_products(wnd: &gui::WindowMain, wnd2: &gui::WindowModal, fsinfo
                 let _ = tx_msg.send("Stopped".to_string());
             }
             let _ = tx_msg.send("Stopped".to_string());
-            let _ = taskbar.SetProgressState(wnd_clone.hwnd(), co::TBPF::NOPROGRESS);
+            let hwnd_safe = windows::Win32::Foundation::HWND(wnd_clone.hwnd().ptr());
+            let _ = taskbar.set_progress_state(hwnd_safe, TBPF_NOPROGRESS);
         });
     };
     Ok(())

@@ -16,10 +16,65 @@ use windows::{
         GdipBitmapLockBits, GdipBitmapUnlockBits, GdipDisposeImage,
         BitmapData, Rect, ImageLockModeRead,
     },
+    core::{self},
+    Win32::Foundation::HWND,
+    Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER},
+    Win32::UI::Shell::*,
 };
+#[derive(Clone)]
+pub struct Taskbar {
+    inner: Option<Arc<Mutex<ITaskbarList4>>>,
+}
+
+unsafe impl Send for Taskbar {}
+unsafe impl Sync for Taskbar {}
+
+impl Taskbar {
+    pub fn new() -> core::Result<Self> {
+        unsafe {
+            let inner: ITaskbarList4 = match CoCreateInstance(
+                &TaskbarList,
+                None,
+                CLSCTX_INPROC_SERVER,
+            ) {
+                Ok(taskbar) => taskbar,
+                Err(err) => {
+                    eprintln!(
+                        "Taskbar API tidak didukung atau gagal diinisialisasi: {err:?}. \
+                         Fallback diaktifkan."
+                    );
+                    return Ok(Self { inner: None });
+                }
+            };
+
+            Ok(Self {
+                inner: Some(Arc::new(Mutex::new(inner))),
+            })
+        }
+    }
+
+    pub fn set_progress_value(&self, hwnd: HWND, current: u64, total: u64) -> core::Result<()> {
+        if let Some(ref inner) = self.inner {
+            if let Ok(guard) = inner.lock() {
+                unsafe { guard.SetProgressValue(hwnd, current, total)?; }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn set_progress_state(&self, hwnd: HWND, state: TBPFLAG) -> core::Result<()> {
+        if let Some(ref inner) = self.inner {
+            if let Ok(guard) = inner.lock() {
+                unsafe { guard.SetProgressState(hwnd, state)?; }
+            }
+        }
+        Ok(())
+    }
+}
+
 const PIXEL_FORMAT32BPP_ARGB: i32 = 0x26200A; // Add this if not present
 
-pub unsafe fn png_base64_to_pixels_ptr(base64_str: &str) -> windows::core::Result<(Vec<u8>, u32, u32, i32)> {
+pub fn png_base64_to_pixels_ptr(base64_str: &str) -> windows::core::Result<(Vec<u8>, u32, u32, i32)> {
     let bytes = base64::decode(base64_str).unwrap();
     let hglobal = unsafe{windows::Win32::System::Memory::GlobalAlloc(
         windows::Win32::System::Memory::GMEM_MOVEABLE,
